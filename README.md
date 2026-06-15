@@ -24,3 +24,17 @@ contract-agent-grpc
 ```
 
 The default gRPC port is `50051`; override it with `AGENT_GRPC_PORT`.
+
+## LLM Configuration
+
+`contract-agent` uses a provider abstraction with an OpenAI-compatible default. Official OpenAI and compatible services can be selected by environment variables:
+
+```powershell
+$env:LLM_PROVIDER = "openai_compatible"
+$env:LLM_API_KEY = "..."
+$env:LLM_BASE_URL = "https://api.openai.com/v1"
+$env:LLM_CHAT_MODEL = "gpt-4.1"
+$env:LLM_EMBEDDING_MODEL = "text-embedding-3-large"
+```
+
+The older Qwen variables still work as aliases: `QWEN_API_KEY`, `QWEN_BASE_URL`, `QWEN_CHAT_MODEL`, and `QWEN_EMBEDDING_MODEL`.
