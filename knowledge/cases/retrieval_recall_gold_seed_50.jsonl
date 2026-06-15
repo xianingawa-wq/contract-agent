@@ -1,0 +1,50 @@
+{"risk_id": "r001", "contract_id": "seed-c001", "contract_type": "采购合同", "query": "采购合同中约定甲方逾期付款违约责任应适用哪些法条", "gold_article_labels": ["第五百七十七条", "第五百八十五条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r002", "contract_id": "seed-c002", "contract_type": "采购合同", "query": "供货方迟延交付设备的违约责任法律依据", "gold_article_labels": ["第五百七十七条", "第五百八十二条", "第五百八十四条", "第六百一十七条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r003", "contract_id": "seed-c003", "contract_type": "采购合同", "query": "采购合同未明确质量标准时应如何确定履行标准", "gold_article_labels": ["第五百一十条", "第五百一十一条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r004", "contract_id": "seed-c004", "contract_type": "采购合同", "query": "合同格式条款中免除供货方责任条款的效力依据", "gold_article_labels": ["第四百九十六条", "第四百九十七条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r005", "contract_id": "seed-c005", "contract_type": "采购合同", "query": "采购合同争议条款约定不明时的解释规则", "gold_article_labels": ["第四百九十八条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r006", "contract_id": "seed-c006", "contract_type": "采购合同", "query": "采购合同中违约金过高是否可以调整法律依据", "gold_article_labels": ["第五百八十五条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r007", "contract_id": "seed-c007", "contract_type": "采购合同", "query": "采购合同中同时约定定金和违约金的处理规则", "gold_article_labels": ["第五百八十八条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r008", "contract_id": "seed-c008", "contract_type": "采购合同", "query": "买方逾期验收导致损失扩大的责任分担规则", "gold_article_labels": ["第五百九十一条", "第五百九十二条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r009", "contract_id": "seed-c009", "contract_type": "采购合同", "query": "采购合同解除后已付款和已交货如何返还", "gold_article_labels": ["第五百六十六条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r010", "contract_id": "seed-c010", "contract_type": "采购合同", "query": "采购合同订立后未签字但已履行时合同是否成立", "gold_article_labels": ["第四百九十条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r011", "contract_id": "seed-c011", "contract_type": "服务合同", "query": "服务合同中顾问未按约交付成果的违约依据", "gold_article_labels": ["第五百七十七条", "第五百八十四条", "第八百八十一条", "第八百八十四条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r012", "contract_id": "seed-c012", "contract_type": "服务合同", "query": "服务合同价款约定不明如何确定支付标准", "gold_article_labels": ["第五百一十条", "第五百一十一条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r013", "contract_id": "seed-c013", "contract_type": "服务合同", "query": "服务方将合同义务全部转委托给第三人的限制依据", "gold_article_labels": ["第五百一十八条", "第五百一十九条", "第五百五十一条", "第九百二十三条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r014", "contract_id": "seed-c014", "contract_type": "服务合同", "query": "服务过程中一方先履行抗辩权适用法条", "gold_article_labels": ["第五百二十六条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r015", "contract_id": "seed-c015", "contract_type": "服务合同", "query": "对方明确表示不履行服务义务时能否中止履行", "gold_article_labels": ["第五百二十七条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r016", "contract_id": "seed-c016", "contract_type": "服务合同", "query": "服务合同违约金与实际损失不一致时如何处理", "gold_article_labels": ["第五百八十五条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r017", "contract_id": "seed-c017", "contract_type": "服务合同", "query": "服务合同因不可抗力导致延期履行责任规则", "gold_article_labels": ["第五百九十条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r018", "contract_id": "seed-c018", "contract_type": "服务合同", "query": "服务合同解除后未结算服务费的清算依据", "gold_article_labels": ["第五百六十六条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r019", "contract_id": "seed-c019", "contract_type": "服务合同", "query": "服务方迟延履行导致客户扩大损失时是否减责", "gold_article_labels": ["第五百九十一条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r020", "contract_id": "seed-c020", "contract_type": "服务合同", "query": "服务合同中免责格式条款无效的法律依据", "gold_article_labels": ["第四百九十七条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r021", "contract_id": "seed-c021", "contract_type": "保密协议", "query": "保密协议违约赔偿范围与可得利益损失依据", "gold_article_labels": ["第五百八十四条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r022", "contract_id": "seed-c022", "contract_type": "保密协议", "query": "保密协议约定违约金过低能否请求增加", "gold_article_labels": ["第五百八十五条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r023", "contract_id": "seed-c023", "contract_type": "保密协议", "query": "保密义务主体对第三人泄密责任承担规则", "gold_article_labels": ["第五百九十三条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r024", "contract_id": "seed-c024", "contract_type": "保密协议", "query": "保密协议格式条款存在歧义时解释规则", "gold_article_labels": ["第四百九十八条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r025", "contract_id": "seed-c025", "contract_type": "保密协议", "query": "保密协议成立生效的一般法律依据", "gold_article_labels": ["第四百六十五条", "第四百八十三条", "第五百零二条"], "severity": "low", "note": "待法务复核"}
+{"risk_id": "r026", "contract_id": "seed-c026", "contract_type": "保密协议", "query": "保密协议中一方先履行抗辩权的适用条件", "gold_article_labels": ["第五百二十六条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r027", "contract_id": "seed-c027", "contract_type": "保密协议", "query": "违约方主张不可抗力免责的抗辩依据", "gold_article_labels": ["第五百九十条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r028", "contract_id": "seed-c028", "contract_type": "保密协议", "query": "保密协议解除后返还资料及后续义务处理规则", "gold_article_labels": ["第五百六十六条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r029", "contract_id": "seed-c029", "contract_type": "保密协议", "query": "因受害方未及时止损导致损失扩大的责任分配", "gold_article_labels": ["第五百九十一条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r030", "contract_id": "seed-c030", "contract_type": "保密协议", "query": "格式条款排除主要权利时是否无效", "gold_article_labels": ["第四百九十七条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r031", "contract_id": "seed-c031", "contract_type": "租赁合同", "query": "租赁合同中租金支付时间约定不明的补充规则", "gold_article_labels": ["第五百一十条", "第五百一十一条", "第七百二十一条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r032", "contract_id": "seed-c032", "contract_type": "租赁合同", "query": "承租方逾期支付租金的违约责任法条", "gold_article_labels": ["第五百七十七条", "第五百八十五条", "第七百五十二条", "第七百二十二条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r033", "contract_id": "seed-c033", "contract_type": "租赁合同", "query": "出租方迟延交付房屋造成损失的赔偿依据", "gold_article_labels": ["第五百八十四条", "第七百四十八条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r034", "contract_id": "seed-c034", "contract_type": "租赁合同", "query": "租赁合同解除后押金返还及占有恢复规则", "gold_article_labels": ["第五百六十六条", "第七百五十八条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r035", "contract_id": "seed-c035", "contract_type": "租赁合同", "query": "租赁合同中免责格式条款效力判断依据", "gold_article_labels": ["第四百九十七条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r036", "contract_id": "seed-c036", "contract_type": "租赁合同", "query": "租赁合同违约金过高请求调减依据", "gold_article_labels": ["第五百八十五条", "第七百四十二条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r037", "contract_id": "seed-c037", "contract_type": "租赁合同", "query": "因不可抗力导致租赁目的不能实现时责任规则", "gold_article_labels": ["第五百九十条", "第七百四十七条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r038", "contract_id": "seed-c038", "contract_type": "租赁合同", "query": "双方对条款理解不一致时如何解释", "gold_article_labels": ["第四百九十八条"], "severity": "low", "note": "待法务复核"}
+{"risk_id": "r039", "contract_id": "seed-c039", "contract_type": "租赁合同", "query": "租赁纠纷中损失扩大部分是否由受害方承担", "gold_article_labels": ["第五百九十一条", "第七百四十九条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r040", "contract_id": "seed-c040", "contract_type": "租赁合同", "query": "合同义务由第三人履行但不符合约定的责任归属", "gold_article_labels": ["第五百二十三条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r041", "contract_id": "seed-c041", "contract_type": "劳务合同", "query": "劳务合同中报酬支付义务违约责任依据", "gold_article_labels": ["第五百七十七条", "第五百八十四条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r042", "contract_id": "seed-c042", "contract_type": "劳务合同", "query": "劳务合同内容约定不全时补充确定规则", "gold_article_labels": ["第五百一十条", "第五百一十一条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r043", "contract_id": "seed-c043", "contract_type": "劳务合同", "query": "劳务合同中格式条款免除用工方责任效力", "gold_article_labels": ["第四百九十七条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r044", "contract_id": "seed-c044", "contract_type": "劳务合同", "query": "劳务合同违约金约定与损失不符的处理依据", "gold_article_labels": ["第五百八十五条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r045", "contract_id": "seed-c045", "contract_type": "劳务合同", "query": "一方明确拒绝继续履行劳务义务时相对方权利", "gold_article_labels": ["第五百二十五条", "第五百二十六条", "第五百七十八条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r046", "contract_id": "seed-c046", "contract_type": "劳务合同", "query": "劳务合同解除后结算与返还的法律依据", "gold_article_labels": ["第五百六十六条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r047", "contract_id": "seed-c047", "contract_type": "劳务合同", "query": "不可抗力造成劳务不能履行的免责规则", "gold_article_labels": ["第五百九十条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r048", "contract_id": "seed-c048", "contract_type": "劳务合同", "query": "劳务争议中未及时止损导致扩大的损失由谁承担", "gold_article_labels": ["第五百九十一条"], "severity": "medium", "note": "待法务复核"}
+{"risk_id": "r049", "contract_id": "seed-c049", "contract_type": "劳务合同", "query": "第三人原因导致劳务合同违约时责任承担依据", "gold_article_labels": ["第五百九十三条"], "severity": "high", "note": "待法务复核"}
+{"risk_id": "r050", "contract_id": "seed-c050", "contract_type": "劳务合同", "query": "合同权利义务转让需经相对方同意的法律依据", "gold_article_labels": ["第五百四十五条", "第五百四十六条"], "severity": "medium", "note": "待法务复核"}
