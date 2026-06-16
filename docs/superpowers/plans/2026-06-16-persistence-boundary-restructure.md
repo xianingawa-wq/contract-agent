@@ -17,12 +17,12 @@
 - Modify: `contract_agent/db/session.py`
 - Create: `tests/test_runtime_database.py`
 
-- [ ] Add tests proving `runtime.database` exposes `get_engine`, `get_session_factory`, `SessionLocal`, and `session_scope`.
-- [ ] Add tests proving `db.session` re-exports those same objects.
-- [ ] Move session implementation into `runtime.database`.
-- [ ] Convert `db.session` into a compatibility shim.
-- [ ] Run compile and tests.
-- [ ] Commit.
+- [x] Add tests proving `runtime.database` exposes `get_engine`, `get_session_factory`, `SessionLocal`, and `session_scope`.
+- [x] Add tests proving `db.session` re-exports those same objects.
+- [x] Move session implementation into `runtime.database`.
+- [x] Convert `db.session` into a compatibility shim.
+- [x] Run compile and tests.
+- [x] Commit.
 
 ### Task 2: Knowledge Persistence
 
@@ -34,12 +34,12 @@
 - Modify knowledge repository import callers.
 - Create: `tests/test_knowledge_persistence.py`
 
-- [ ] Add tests proving knowledge canonical and compatibility imports resolve to the same objects.
-- [ ] Move `KnowledgeChunkModel` into `knowledge.models`.
-- [ ] Move `KnowledgeChunkRepository` into `knowledge.repository`.
-- [ ] Convert old repository/model paths into shims.
-- [ ] Run compile and tests.
-- [ ] Commit.
+- [x] Add tests proving knowledge canonical and compatibility imports resolve to the same objects.
+- [x] Move `KnowledgeChunkModel` into `knowledge.models`.
+- [x] Move `KnowledgeChunkRepository` into `knowledge.repository`.
+- [x] Convert old repository/model paths into shims.
+- [x] Run compile and tests.
+- [x] Commit.
 
 ### Task 3: Memory Persistence
 
@@ -54,12 +54,12 @@
 - Modify memory manager import callers.
 - Create: `tests/test_memory_persistence.py`
 
-- [ ] Add tests proving memory canonical and compatibility imports resolve to the same objects.
-- [ ] Move `AgentOutputRecord` into `memory.models`.
-- [ ] Move `HotLayer`, `WarmLayer`, `ColdLayer`, and `MemoryManager` into `memory` modules.
-- [ ] Convert `multi_agent.memory` and `db.multi_agent_models` into shims.
-- [ ] Run compile and tests.
-- [ ] Commit.
+- [x] Add tests proving memory canonical and compatibility imports resolve to the same objects.
+- [x] Move `AgentOutputRecord` into `memory.models`.
+- [x] Move `HotLayer`, `WarmLayer`, `ColdLayer`, and `MemoryManager` into `memory` modules.
+- [x] Convert `multi_agent.memory` and `db.multi_agent_models` into shims.
+- [x] Run compile and tests.
+- [x] Commit.
 
 ### Task 4: Runtime Schema Initialization
 
@@ -69,12 +69,12 @@
 - Modify schema initialization callers.
 - Create: `tests/test_runtime_schema.py`
 
-- [ ] Add tests proving `ensure_runtime_schema` creates both knowledge and memory metadata.
-- [ ] Add tests proving `ensure_postgres_schema` is a compatibility alias.
-- [ ] Move schema initialization into `runtime.schema`.
-- [ ] Update knowledge repository to call `ensure_runtime_schema`.
-- [ ] Run compile and tests.
-- [ ] Commit.
+- [x] Add tests proving `ensure_runtime_schema` creates both knowledge and memory metadata.
+- [x] Add tests proving `ensure_postgres_schema` is a compatibility alias.
+- [x] Move schema initialization into `runtime.schema`.
+- [x] Update knowledge repository to call `ensure_runtime_schema`.
+- [x] Run compile and tests.
+- [x] Commit.
 
 ### Task 5: Documentation and Final Verification
 
@@ -82,8 +82,8 @@
 - Modify: `README.md`
 - Modify: `docs/architecture.md`
 
-- [ ] Document `knowledge`, `memory`, and runtime database/schema ownership.
-- [ ] Run `git diff --check`.
-- [ ] Run `python -m compileall -q contract_agent tests`.
-- [ ] Run `python -m unittest discover -s tests -v`.
-- [ ] Commit if documentation changed after Task 4.
+- [x] Document `knowledge`, `memory`, and runtime database/schema ownership.
+- [x] Run `git diff --check`.
+- [x] Run `python -m compileall -q contract_agent tests`.
+- [x] Run `python -m unittest discover -s tests -v`.
+- [x] Commit if documentation changed after Task 4.

@@ -27,17 +27,19 @@ There is no single `app/agent` package in the source project. The agent closure 
 
 The independent `contract-agent` project now owns the Python agent closure:
 
-- `contract_agent/runtime`: environment-backed settings; `core` remains a compatibility namespace.
+- `contract_agent/runtime`: environment-backed settings, database sessions, and runtime schema initialization; `core` remains a compatibility namespace.
 - `contract_agent/interfaces`: CLI and minimal HTTP/FastAPI adapters.
 - `contract_agent/llm`: prompt templates and LLM client wiring.
 - `contract_agent/review`: local CLI rule-review facade, report models, and renderers.
 - `contract_agent/rulesets`: built-in deterministic rule definitions used by the rule engine.
+- `contract_agent/knowledge`: persisted knowledge chunk metadata and repository access.
+- `contract_agent/memory`: multi-agent hot Redis, warm PostgreSQL, cold RAG-backed memory stores, and memory manager.
 - `contract_agent/services`: deterministic parsing, extraction, classification, rule review, chat runtime, and review orchestration.
 - `contract_agent/rag`: legal chunking, vector store construction, retrieval, reranking, and recall evaluation.
 - `contract_agent/multi_agent`: gateway routing, single-agent path, supervisor loop, protocol models, memory tiers, and event publishing.
 - `contract_agent/agent_rpc`: gRPC server and generated protobuf modules.
 - `contract_agent/schemas`: Pydantic request and response contracts.
-- `contract_agent/db`: optional PostgreSQL persistence for knowledge and multi-agent memory.
+- `contract_agent/db`: compatibility namespace for older persistence imports.
 - `knowledge/`: copied legal knowledge base inputs.
 
 The source repository should now treat `contract-agent` as the Python agent source of truth. Any remaining source-project Python entrypoints should be compatibility shims or process launchers, while the Java backend and frontend remain in `context-verify-agent`.
