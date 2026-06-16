@@ -13,7 +13,7 @@ class ColdLayer:
 
     def is_available(self) -> bool:
         try:
-            from contract_agent.rag.vector_store import is_knowledge_base_ready
+            from contract_agent.knowledge.rag.vector_store import is_knowledge_base_ready
             return is_knowledge_base_ready(settings.knowledge_vector_store_dir)
         except Exception:
             return False
@@ -22,8 +22,8 @@ class ColdLayer:
         if not self.is_available():
             return []
         try:
-            from contract_agent.rag.vector_store import load_vector_store
-            from contract_agent.rag.retriever import ContractKnowledgeRetriever
+            from contract_agent.knowledge.rag.vector_store import load_vector_store
+            from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
             store = load_vector_store(settings.knowledge_vector_store_dir)
             retriever = ContractKnowledgeRetriever(store)
             docs = retriever.retrieve_documents(query=query, k=top_k)

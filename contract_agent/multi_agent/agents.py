@@ -195,8 +195,8 @@ def legal_ref_agent(ctx: dict[str, Any]) -> AgentOutput:
 
     from contract_agent.llm.agent_prompts import legal_ref_prompt
     from contract_agent.llm.client import get_chat_model
-    from contract_agent.rag.vector_store import load_vector_store
-    from contract_agent.rag.retriever import ContractKnowledgeRetriever
+    from contract_agent.knowledge.rag.vector_store import load_vector_store
+    from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 
     # Vector retrieval (kept as LLM input)
     retrieved_docs = []

@@ -32,10 +32,9 @@ The independent `contract-agent` project now owns the Python agent closure:
 - `contract_agent/llm`: prompt templates and LLM client wiring.
 - `contract_agent/review`: local CLI rule-review facade, report models, and renderers.
 - `contract_agent/rulesets`: built-in deterministic rule definitions used by the rule engine.
-- `contract_agent/knowledge`: persisted knowledge chunk metadata and repository access.
+- `contract_agent/knowledge`: persisted knowledge metadata, legal chunking, vector store construction, retrieval, reranking, and recall evaluation.
 - `contract_agent/memory`: multi-agent hot Redis, warm PostgreSQL, cold RAG-backed memory stores, and memory manager.
 - `contract_agent/services`: deterministic parsing, extraction, classification, rule review, chat runtime, and review orchestration.
-- `contract_agent/rag`: legal chunking, vector store construction, retrieval, reranking, and recall evaluation.
 - `contract_agent/multi_agent`: gateway routing, single-agent path, supervisor loop, protocol models, memory tiers, and event publishing.
 - `contract_agent/agent_rpc`: gRPC server and generated protobuf modules.
 - `contract_agent/schemas`: Pydantic request and response contracts.

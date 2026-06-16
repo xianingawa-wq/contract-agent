@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from contract_agent.rag.retriever import ContractKnowledgeRetriever
+from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 from contract_agent.schemas.chat import ChatSearchResult
 
 

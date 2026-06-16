@@ -9,7 +9,7 @@ from typing import Any, Protocol
 from langchain_core.documents import Document
 
 from contract_agent.runtime.config import settings
-from contract_agent.rag.reranker import QwenReranker, Reranker
+from contract_agent.knowledge.rag.reranker import QwenReranker, Reranker
 
 
 class SimilaritySearchStore(Protocol):

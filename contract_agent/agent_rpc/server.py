@@ -435,8 +435,8 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         try:
             from contract_agent.knowledge.repository import KnowledgeChunkRepository
             from contract_agent.schemas.knowledge import KnowledgeChunk
-            from contract_agent.rag.knowledge_documents import build_knowledge_documents
-            from contract_agent.rag.vector_store import load_vector_store, save_vector_store, build_vector_store
+            from contract_agent.knowledge.rag.knowledge_documents import build_knowledge_documents
+            from contract_agent.knowledge.rag.vector_store import load_vector_store, save_vector_store, build_vector_store
             from contract_agent.runtime.config import settings
 
             chunk = KnowledgeChunk(

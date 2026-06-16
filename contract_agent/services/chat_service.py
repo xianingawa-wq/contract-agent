@@ -18,8 +18,8 @@ from contract_agent.llm.prompts import (
     react_synthesis_prompt,
     search_answer_prompt,
 )
-from contract_agent.rag.retriever import ContractKnowledgeRetriever
-from contract_agent.rag.vector_store import load_vector_store
+from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
+from contract_agent.knowledge.rag.vector_store import load_vector_store
 from contract_agent.schemas.chat import ChatRequest, ChatResponse, ChatSearchResult
 from contract_agent.schemas.review import ReviewRequest
 from contract_agent.services.react_runtime import (
