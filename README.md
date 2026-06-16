@@ -25,6 +25,14 @@ contract-agent-grpc
 
 The default gRPC port is `50051`; override it with `AGENT_GRPC_PORT`.
 
+Run a local rule-based review without external services:
+
+```powershell
+contract-agent review .\contract.txt --type purchase --side buyer
+contract-agent review .\contract.txt --format json
+contract-agent config
+```
+
 ## LLM Configuration
 
 `contract-agent` uses a provider abstraction with an OpenAI-compatible default. Official OpenAI and compatible services can be selected by environment variables:
