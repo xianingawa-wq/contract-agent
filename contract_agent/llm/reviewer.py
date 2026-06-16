@@ -3,7 +3,7 @@
 from contract_agent.schemas.review import RiskItem
 
 from contract_agent.llm_provider.client import get_chat_model
-from contract_agent.llm.prompts import risk_explain_prompt
+from contract_agent.constants.prompts import risk_explain_prompt
 
 
 class LLMReviewer:

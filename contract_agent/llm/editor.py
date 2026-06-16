@@ -4,7 +4,7 @@ import re
 
 from contract_agent.runtime.config import settings
 from contract_agent.llm_provider.client import get_chat_model
-from contract_agent.llm.prompts import contract_redraft_chunk_prompt, contract_redraft_prompt
+from contract_agent.constants.prompts import contract_redraft_chunk_prompt, contract_redraft_prompt
 
 
 class ContractEditor:
