@@ -40,6 +40,14 @@ contract-agent review .\contract.txt --format json
 contract-agent config
 ```
 
+Open the interactive CLI demo:
+
+```powershell
+contract-agent demo
+```
+
+The demo shows a welcome banner, checks whether a local profile exists at `.run/cli_profile.json`, guides first-time model setup, checks the database component, verifies the configured model provider, then opens a small agent console. The console currently supports `/help`, `/status`, `/config`, and `/exit`, plus a demo agent reply for normal chat messages.
+
 ## LLM Configuration
 
 `contract-agent` uses a provider abstraction with an OpenAI-compatible default. Official OpenAI and compatible services can be selected by environment variables:

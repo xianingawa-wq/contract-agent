@@ -5,12 +5,20 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
+from contract_agent.interfaces.console import DEFAULT_PROFILE_PATH, run_console_demo
 from contract_agent.runtime.config import settings
 from contract_agent.review.reporting import render_json, render_markdown
 from contract_agent.review.service import review_text
 
 
-def main(argv: list[str] | None = None, *, stdout: TextIO | None = None, stderr: TextIO | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    stdin: TextIO | None = None,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+) -> int:
+    stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
     _prefer_utf8(stdout)
@@ -18,6 +26,8 @@ def main(argv: list[str] | None = None, *, stdout: TextIO | None = None, stderr:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    if args.command in {None, "demo"}:
+        return _demo_command(args, stdin, stdout, stderr)
     if args.command == "review":
         return _review_command(args, stdout, stderr)
     if args.command == "config":
@@ -31,6 +41,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="contract-agent")
     subcommands = parser.add_subparsers(dest="command")
 
+    demo = subcommands.add_parser("demo", help="open the interactive local agent console demo")
+    demo.add_argument("--profile", default=str(DEFAULT_PROFILE_PATH), help="path to local CLI initialization profile")
+    demo.add_argument("--skip-db-connect", action="store_true", help="show database configuration without opening a connection")
+
     review = subcommands.add_parser("review", help="review a plain text contract")
     review.add_argument("path", help="path to a UTF-8 text contract")
     review.add_argument("--type", dest="contract_type", default=None, help="contract type, e.g. purchase")
@@ -39,6 +53,18 @@ def _build_parser() -> argparse.ArgumentParser:
 
     subcommands.add_parser("config", help="print active model configuration")
     return parser
+
+
+def _demo_command(args: argparse.Namespace, stdin: TextIO, stdout: TextIO, stderr: TextIO) -> int:
+    profile = Path(getattr(args, "profile", str(DEFAULT_PROFILE_PATH)))
+    skip_db_connect = bool(getattr(args, "skip_db_connect", False))
+    return run_console_demo(
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+        profile_path=profile,
+        skip_db_connect=skip_db_connect,
+    )
 
 
 def _review_command(args: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> int:
