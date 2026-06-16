@@ -19,7 +19,7 @@ from contract_agent.services.parser import ContractParser
 from contract_agent.services.rule_engine import RuleEngine
 
 try:
-    from contract_agent.llm.reviewer import LLMReviewer
+    from contract_agent.agents.reviewer import LLMReviewer
 except Exception as exc:
     import logging
     logging.getLogger(__name__).warning("Failed to import LLMReviewer: %s", exc)

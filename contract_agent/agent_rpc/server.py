@@ -16,7 +16,7 @@ from contract_agent.schemas.review import ReviewRequest
 from contract_agent.multi_agent.protocol import AgentMode, GatewayResponse, PipelineState, PipelineStatus
 
 if TYPE_CHECKING:
-    from contract_agent.llm.editor import ContractEditor
+    from contract_agent.agents.editor import ContractEditor
     from contract_agent.services.chat_service import ChatService
     from contract_agent.services.review_service import ReviewService
 
@@ -138,7 +138,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             if not settings.qwen_api_key:
                 raise RuntimeError("QWEN_API_KEY 未配置，无法生成合同修订稿。")
             if self.contract_editor is None:
-                from contract_agent.llm.editor import ContractEditor
+                from contract_agent.agents.editor import ContractEditor
 
                 self.contract_editor = ContractEditor()
             editor = self.contract_editor
@@ -161,7 +161,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         import json
 
         from contract_agent.multi_agent.gateway import GatewayRouter
-        from contract_agent.multi_agent.agents import (
+        from contract_agent.agents.workers import (
             parser_agent, risk_checker_agent, legal_ref_agent,
             redrafter_agent,
         )
@@ -279,7 +279,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
 
         from contract_agent.multi_agent.gateway import GatewayRouter
         from contract_agent.multi_agent.supervisor import SupervisorAgent
-        from contract_agent.multi_agent.agents import (
+        from contract_agent.agents.workers import (
             parser_agent, risk_checker_agent, legal_ref_agent, redrafter_agent,
         )
         from contract_agent.memory.manager import MemoryManager
