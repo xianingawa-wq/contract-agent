@@ -1,6 +1,6 @@
 import unittest
 
-from contract_agent.service import review_text
+from contract_agent.review.service import review_text
 
 
 class ServiceTests(unittest.TestCase):

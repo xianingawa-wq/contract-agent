@@ -29,6 +29,7 @@ The independent `contract-agent` project now owns the Python agent closure:
 
 - `contract_agent/core`: environment-backed settings.
 - `contract_agent/llm`: prompt templates and LLM client wiring.
+- `contract_agent/review`: local CLI rule-review facade, report models, and renderers.
 - `contract_agent/services`: deterministic parsing, extraction, classification, rule review, chat runtime, and review orchestration.
 - `contract_agent/rag`: legal chunking, vector store construction, retrieval, reranking, and recall evaluation.
 - `contract_agent/multi_agent`: gateway routing, single-agent path, supervisor loop, protocol models, memory tiers, and event publishing.

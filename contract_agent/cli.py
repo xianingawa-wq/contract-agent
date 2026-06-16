@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import TextIO
 
 from contract_agent.core.config import settings
-from contract_agent.report import render_json, render_markdown
-from contract_agent.service import review_text
+from contract_agent.review.reporting import render_json, render_markdown
+from contract_agent.review.service import review_text
 
 
 def main(argv: list[str] | None = None, *, stdout: TextIO | None = None, stderr: TextIO | None = None) -> int:

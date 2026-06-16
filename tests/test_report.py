@@ -1,8 +1,8 @@
 import json
 import unittest
 
-from contract_agent.models import Finding, ReviewReport, Severity
-from contract_agent.report import render_json, render_markdown
+from contract_agent.review.models import Finding, ReviewReport, Severity
+from contract_agent.review.reporting import render_json, render_markdown
 
 
 class ReportTests(unittest.TestCase):

@@ -1,7 +1,7 @@
 import unittest
 
-from contract_agent.models import ReviewRequest, Severity
-from contract_agent.rules import run_rules
+from contract_agent.review.models import ReviewRequest, Severity
+from contract_agent.review.rules import run_rules
 
 
 class RuleTests(unittest.TestCase):

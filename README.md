@@ -8,6 +8,7 @@ The project contains the Python agent capabilities for parsing contracts, runnin
 
 - `contract_agent/`: Python package for agent runtime.
 - `contract_agent/agent_rpc/`: gRPC service entrypoint.
+- `contract_agent/review/`: local rule-review facade used by the CLI.
 - `contract_agent/multi_agent/`: gateway, supervisor, protocols, memory, and agents.
 - `contract_agent/llm/`: prompts and model client/provider integration.
 - `contract_agent/rag/`: knowledge ingestion, vector stores, retrieval, and reranking.
