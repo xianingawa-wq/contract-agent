@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Protocol
 
 from langchain_core.embeddings import Embeddings
-from langchain_openai import ChatOpenAI
 from openai import OpenAI
 
 from contract_agent.core.config import settings
+
+if TYPE_CHECKING:
+    from langchain_openai import ChatOpenAI
 
 
 @dataclass(frozen=True)
@@ -39,7 +41,7 @@ class ModelResponse:
 class LLMProvider(Protocol):
     config: LLMConfig
 
-    def chat_model(self) -> ChatOpenAI:
+    def chat_model(self) -> "ChatOpenAI":
         ...
 
     def embeddings(self) -> Embeddings:
@@ -100,7 +102,9 @@ class OpenAICompatibleProvider:
             kwargs["base_url"] = config.base_url
         self.client = OpenAI(**kwargs)
 
-    def chat_model(self) -> ChatOpenAI:
+    def chat_model(self) -> "ChatOpenAI":
+        from langchain_openai import ChatOpenAI
+
         kwargs: dict[str, Any] = {
             "api_key": self.config.api_key,
             "model": self.config.chat_model,

@@ -5,17 +5,20 @@ import os
 import threading
 import uuid
 from concurrent import futures
+from typing import TYPE_CHECKING
 
 import grpc
 
 from contract_agent.core.config import settings
 from contract_agent.schemas.chat import ChatRequest
 from contract_agent.schemas.review import ReviewRequest
-from contract_agent.services.chat_service import ChatService
-from contract_agent.services.review_service import ReviewService
 
-from contract_agent.llm.editor import ContractEditor
 from contract_agent.multi_agent.protocol import AgentMode, GatewayResponse, PipelineState, PipelineStatus
+
+if TYPE_CHECKING:
+    from contract_agent.llm.editor import ContractEditor
+    from contract_agent.services.chat_service import ChatService
+    from contract_agent.services.review_service import ReviewService
 
 try:
     from contract_agent.agent_rpc import agent_pb2, agent_pb2_grpc
@@ -25,13 +28,27 @@ except Exception as exc:  # pragma: no cover
 
 class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
     def __init__(self) -> None:
-        self.review_service = ReviewService()
-        self.chat_service = ChatService()
-        self.contract_editor: ContractEditor | None = None
+        self.review_service: "ReviewService | None" = None
+        self.chat_service: "ChatService | None" = None
+        self.contract_editor: "ContractEditor | None" = None
         self._embed_lock = threading.Lock()
 
+    def _get_review_service(self) -> "ReviewService":
+        if self.review_service is None:
+            from contract_agent.services.review_service import ReviewService
+
+            self.review_service = ReviewService()
+        return self.review_service
+
+    def _get_chat_service(self) -> "ChatService":
+        if self.chat_service is None:
+            from contract_agent.services.chat_service import ChatService
+
+            self.chat_service = ChatService()
+        return self.chat_service
+
     def Health(self, request, context):
-        health = self.review_service.health()
+        health = self._get_review_service().health()
         return agent_pb2.HealthResponse(
             status=health.status,
             llm_configured=health.llm_configured,
@@ -42,7 +59,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
 
     def ParseFile(self, request, context):
         try:
-            doc = self.review_service.parse_file(request.file_name, request.content)
+            doc = self._get_review_service().parse_file(request.file_name, request.content)
             payload = {"document": doc.model_dump(mode="json")}
             return agent_pb2.JsonResponse(code=200, json=json.dumps(payload, ensure_ascii=False))
         except ValueError as exc:
@@ -55,7 +72,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
     def Review(self, request, context):
         try:
             if request.HasField("contract_text"):
-                result = self.review_service.review(
+                result = self._get_review_service().review(
                     ReviewRequest(
                         contract_text=request.contract_text,
                         contract_type=request.contract_type or None,
@@ -63,7 +80,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                     )
                 )
             else:
-                result = self.review_service.review_file(
+                result = self._get_review_service().review_file(
                     file_name=request.file.file_name,
                     content=request.file.content,
                     contract_type=request.contract_type or None,
@@ -81,7 +98,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         try:
             payload = json.loads(request.payload_json)
             chat_request = ChatRequest.model_validate(payload)
-            result = self.chat_service.chat(chat_request)
+            result = self._get_chat_service().chat(chat_request)
             return agent_pb2.JsonResponse(code=200, json=result.model_dump_json())
         except ValueError as exc:
             return agent_pb2.JsonResponse(code=400, error=str(exc))
@@ -94,7 +111,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         try:
             payload = json.loads(request.payload_json)
             chat_request = ChatRequest.model_validate(payload)
-            for event in self.chat_service.chat_stream(chat_request):
+            for event in self._get_chat_service().chat_stream(chat_request):
                 yield agent_pb2.ChatStreamResponse(
                     event=str(event.get("event", "message")),
                     data_json=json.dumps(event.get("data", {}), ensure_ascii=False),
@@ -121,6 +138,8 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             if not settings.qwen_api_key:
                 raise RuntimeError("QWEN_API_KEY 未配置，无法生成合同修订稿。")
             if self.contract_editor is None:
+                from contract_agent.llm.editor import ContractEditor
+
                 self.contract_editor = ContractEditor()
             editor = self.contract_editor
             revised = editor.redraft_contract(
