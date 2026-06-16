@@ -37,6 +37,7 @@ The independent `contract-agent` project now owns the Python agent closure:
 - `contract_agent/knowledge`: persisted knowledge metadata, legal chunking, vector store construction, retrieval, reranking, and recall evaluation.
 - `contract_agent/memory`: multi-agent hot Redis, warm PostgreSQL, cold RAG-backed memory stores, and memory manager.
 - `contract_agent/logger`: structured JSONL audit logging for review and agent execution flows.
+- `contract_agent/trace`: token usage tracing and estimated consumption summaries returned to users.
 - `contract_agent/services`: deterministic parsing, extraction, classification, rule review, chat runtime, and review orchestration.
 - `contract_agent/orchestration`: gateway routing, single-agent path, supervisor loop, protocol models, pipeline state, and event publishing.
 - `contract_agent/agent_rpc`: gRPC server and generated protobuf modules.

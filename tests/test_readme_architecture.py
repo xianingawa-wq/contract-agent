@@ -11,6 +11,7 @@ class ReadmeArchitectureTests(unittest.TestCase):
             "contract_agent/agents/",
             "contract_agent/orchestration/",
             "contract_agent/logger/",
+            "contract_agent/trace/",
         ]
 
         for package in required_packages:

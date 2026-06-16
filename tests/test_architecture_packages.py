@@ -18,6 +18,7 @@ class ArchitecturePackageTests(unittest.TestCase):
             "contract_agent.orchestration.gateway",
             "contract_agent.orchestration.pipeline",
             "contract_agent.orchestration.supervisor",
+            "contract_agent.trace.tokens",
         ]
 
         for path in canonical_paths:

@@ -14,6 +14,7 @@ from contract_agent.schemas.review import (
     ReviewResponse,
     ReviewSummary,
 )
+from contract_agent.trace.tokens import TokenTrace
 from contract_agent.services.classifier import ContractClassifier
 from contract_agent.services.extractor import ContractExtractor
 from contract_agent.services.parser import ContractParser
@@ -67,6 +68,8 @@ class ReviewService:
         )
 
         try:
+            trace = TokenTrace()
+            trace.add_input("contract_text", contract_text)
             llm_reviewer = self._require_llm_reviewer()
             knowledge_retriever = self._require_knowledge_retriever()
             extracted_fields = self.extractor.extract(contract_text)
@@ -77,8 +80,16 @@ class ReviewService:
                 risk_count=len(risks),
             )
             risks = self._apply_party_context(risks, our_side)
-            risks = self._enrich_risks(risks, document, detected_contract_type, llm_reviewer, knowledge_retriever)
+            risks = self._enrich_risks(
+                risks,
+                document,
+                detected_contract_type,
+                llm_reviewer,
+                knowledge_retriever,
+                token_trace=trace,
+            )
             report = self._build_report(risks, detected_contract_type, document.metadata.title or document.metadata.file_name)
+            trace_summary = trace.summary()
 
             response = ReviewResponse(
                 summary=ReviewSummary(
@@ -89,12 +100,14 @@ class ReviewService:
                 extracted_fields=extracted_fields,
                 risks=risks,
                 report=report,
+                trace=trace_summary,
             )
             self.audit_logger.emit(
                 "review.completed",
                 contract_type=response.summary.contract_type,
                 overall_risk=response.summary.overall_risk,
                 risk_count=response.summary.risk_count,
+                estimated_total_tokens=trace_summary.estimated_total_tokens,
             )
             return response
         except Exception as exc:
@@ -144,12 +157,22 @@ class ReviewService:
             filtered.append(risk)
         return filtered
 
-    def _enrich_risks(self, risks: list, document, contract_type: str, llm_reviewer, knowledge_retriever) -> list:
+    def _enrich_risks(
+        self,
+        risks: list,
+        document,
+        contract_type: str,
+        llm_reviewer,
+        knowledge_retriever,
+        token_trace: TokenTrace | None = None,
+    ) -> list:
         for risk in risks:
             clause_text = self._find_clause_text(document, risk)
             query = f"{contract_type} {risk.title} {risk.risk_domain or ''} {risk.evidence} {clause_text}"
             retrieved_docs = knowledge_retriever.retrieve_documents_with_rerank(query=query, fetch_k=settings.retrieval_fetch_k, final_k=settings.retrieval_final_k)
             retrieved_contexts = [doc.page_content for doc in retrieved_docs]
+            if token_trace is not None:
+                token_trace.add_input("risk_enrichment_context", "\n".join([query, clause_text, *retrieved_contexts]))
             risk.basis_sources = [
                 KnowledgeReference(
                     source_title=doc.metadata.get("title") or doc.metadata.get("doc_name") or "未命名知识片段",
@@ -158,8 +181,10 @@ class ReviewService:
                     source_path=doc.metadata.get("source_path"),
                 )
                 for doc in retrieved_docs
-                ]
+            ]
             llm_reviewer.enrich_risk(risk, contract_type, clause_text, retrieved_contexts)
+            if token_trace is not None:
+                token_trace.add_output("risk_enrichment_output", "\n".join(filter(None, [risk.ai_explanation, risk.suggestion])))
             self.audit_logger.emit(
                 "review.risk.enriched",
                 rule_id=risk.rule_id,

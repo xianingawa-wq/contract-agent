@@ -19,6 +19,7 @@ The project contains the Python agent capabilities for parsing contracts, runnin
 - `contract_agent/agents/`: reviewer, editor, parser, risk checker, legal reference, and redrafter roles.
 - `contract_agent/orchestration/`: gateway, supervisor, protocol models, events, and pipeline orchestration.
 - `contract_agent/logger/`: structured audit logging for review and agent execution flows.
+- `contract_agent/trace/`: token usage tracing and estimated consumption summaries.
 - `knowledge/`: copied legal knowledge base inputs.
 - `docs/architecture.md`: migration architecture report.
 
@@ -52,6 +53,10 @@ The demo shows a welcome banner, checks whether a local profile exists at `.run/
 ## Audit Logs
 
 Service-backed review flows write structured JSONL audit events to `.run/audit.jsonl`. The logger records review start, rule-check completion, per-risk LLM enrichment, review completion, and review failure events so the audit path can be inspected after a run.
+
+## Token Trace
+
+Service-backed review responses include a `trace` object with estimated input, output, and total token usage. The first implementation uses local character-based estimates so users can see approximate consumption immediately; provider-reported token usage can replace those estimates later.
 
 ## LLM Configuration
 

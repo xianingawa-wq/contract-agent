@@ -52,6 +52,8 @@ class AuditLoggerTests(unittest.TestCase):
             events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
 
         self.assertTrue(result.risks)
+        self.assertIsNotNone(result.trace)
+        self.assertGreater(result.trace.estimated_total_tokens, 0)
         event_names = [event["event"] for event in events]
         self.assertEqual(event_names[0], "review.started")
         self.assertIn("review.rules.completed", event_names)

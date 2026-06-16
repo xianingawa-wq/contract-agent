@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from contract_agent.trace.tokens import TraceSummary
+
 
 Severity = Literal["high", "medium", "low", "info"]
 
@@ -76,3 +78,4 @@ class ReviewResponse(BaseModel):
     extracted_fields: ExtractedFields
     risks: list[RiskItem]
     report: ReviewReport
+    trace: TraceSummary | None = None
