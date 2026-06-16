@@ -1,14 +1,12 @@
 import unittest
 
-from contract_agent.db import models as legacy_models
 from contract_agent.knowledge import models as knowledge_models
 from contract_agent.knowledge import repository as knowledge_repository
 
 
 class KnowledgePersistenceTests(unittest.TestCase):
-    def test_db_models_reexport_knowledge_models(self):
-        self.assertIs(legacy_models.Base, knowledge_models.Base)
-        self.assertIs(legacy_models.KnowledgeChunkModel, knowledge_models.KnowledgeChunkModel)
+    def test_knowledge_models_are_canonical(self):
+        self.assertEqual(knowledge_models.KnowledgeChunkModel.__tablename__, "knowledge_chunks")
 
     def test_knowledge_repository_is_canonical_repository_path(self):
         self.assertTrue(hasattr(knowledge_repository, "KnowledgeChunkRepository"))
