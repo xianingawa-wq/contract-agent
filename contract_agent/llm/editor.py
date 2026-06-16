@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 from contract_agent.runtime.config import settings
-from contract_agent.llm.client import get_chat_model
+from contract_agent.llm_provider.client import get_chat_model
 from contract_agent.llm.prompts import contract_redraft_chunk_prompt, contract_redraft_prompt
 
 

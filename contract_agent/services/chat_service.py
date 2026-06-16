@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterator
 
 from contract_agent.runtime.config import settings
-from contract_agent.llm.client import get_chat_model
+from contract_agent.llm_provider.client import get_chat_model
 from contract_agent.llm.prompts import (
     advice_answer_prompt,
     chat_answer_prompt,
