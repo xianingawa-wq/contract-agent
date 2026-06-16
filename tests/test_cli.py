@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from contract_agent.cli import main
+from contract_agent.interfaces.cli import main
 
 
 class CliTests(unittest.TestCase):

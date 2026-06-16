@@ -28,6 +28,7 @@ There is no single `app/agent` package in the source project. The agent closure 
 The independent `contract-agent` project now owns the Python agent closure:
 
 - `contract_agent/core`: environment-backed settings.
+- `contract_agent/interfaces`: CLI and minimal HTTP/FastAPI adapters.
 - `contract_agent/llm`: prompt templates and LLM client wiring.
 - `contract_agent/review`: local CLI rule-review facade, report models, and renderers.
 - `contract_agent/services`: deterministic parsing, extraction, classification, rule review, chat runtime, and review orchestration.

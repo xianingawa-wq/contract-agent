@@ -25,9 +25,8 @@ dependencies = [
 ]
 
 [project.scripts]
-contract-agent = "contract_agent.cli:main"
+contract-agent = "contract_agent.interfaces.cli:main"
 contract-agent-grpc = "contract_agent.agent_rpc.server:serve"
 
 [tool.setuptools.packages.find]
 include = ["contract_agent*"]
-
