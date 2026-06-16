@@ -10,7 +10,18 @@ The original `context-verify-agent` repository contains a split product:
 - `knowledge/`: legal knowledge seed content and retrieval baselines.
 - `tests/`: Python tests around parser, RAG, review service, chat service, and multi-agent flow.
 
-The Python runtime is already conceptually isolated from the Java backend. Its public integration surface is primarily `app/agent_rpc/server.py`, which exposes health, parse, review, chat, redraft, embedding, and multi-agent review RPCs.
+The Python runtime is already conceptually isolated from the Java backend. Its public integration surface is primarily the original `app/agent_rpc/server.py`, which exposes health, parse, review, chat, redraft, embedding, and multi-agent review RPCs.
+
+There is no single `app/agent` package in the source project. The agent closure is spread across:
+
+- `app/core`: environment-backed runtime configuration.
+- `app/llm`: LangChain prompt templates, Qwen/OpenAI-compatible model wiring, and reviewer/editor helpers.
+- `app/services`: parser, extractor, classifier, rule review, chat, and ReAct-style tool runtime.
+- `app/rag`: legal document loading, chunking, vector stores, retriever, reranker, and recall evaluation.
+- `app/multi_agent`: gateway, pipeline, supervisor, specialist agents, memory, events, and protocol models.
+- `app/agent_rpc`: gRPC integration boundary used by the Java backend.
+- `app/db` and `app/schemas`: persistence models and Pydantic contracts required by the runtime.
+- `knowledge`: legal seed content, ingested chunks, and recall baseline data.
 
 ## Extracted Runtime Boundary
 
@@ -25,6 +36,8 @@ The independent `contract-agent` project now owns the Python agent closure:
 - `contract_agent/schemas`: Pydantic request and response contracts.
 - `contract_agent/db`: optional PostgreSQL persistence for knowledge and multi-agent memory.
 - `knowledge/`: copied legal knowledge base inputs.
+
+The source repository should now treat `contract-agent` as the Python agent source of truth. Any remaining source-project Python entrypoints should be compatibility shims or process launchers, while the Java backend and frontend remain in `context-verify-agent`.
 
 ## Current Execution Flow
 
@@ -43,6 +56,18 @@ The independent `contract-agent` project now owns the Python agent closure:
 5. Add a CLI for local review and health/config inspection.
 6. Run import, unit, and CLI checks; commit each phase with a focused message.
 
+Implemented commit history:
+
+- `9ca5d01 Initial project setup`
+- `5a7bf08 Extract Python agent runtime`
+- `797b7c3 Add OpenAI-compatible LLM provider`
+
+The remaining commits after this report should keep the same discipline:
+
+- CLI and local rule-review facade.
+- Runtime entrypoint cleanup and import-light LLM provider hardening.
+- Documentation/report updates.
+
 ## Risks
 
 - Some source strings display mojibake in the current checkout. The migration preserves bytes and behavior rather than rewriting text content.
@@ -52,5 +77,26 @@ The independent `contract-agent` project now owns the Python agent closure:
 
 ## OpenAI Documentation Notes
 
-Context7 was requested, but no Context7 tool was available in this Codex session. Official OpenAI documentation was used instead. The implementation direction follows the current OpenAI guidance that the Responses API is the primary interface for agentic model calls, with tool/function calling modeled as tool definitions plus tool-result continuations, and structured outputs relying on JSON schema constraints such as strict schemas and explicit object properties.
+Context7 was requested, but no Context7 tool or plugin was available in this Codex session. Official OpenAI documentation was used instead:
 
+- Responses API migration guide: https://developers.openai.com/api/docs/guides/migrate-to-responses
+- Function calling guide: https://developers.openai.com/api/docs/guides/function-calling
+- Structured Outputs guide: https://developers.openai.com/api/docs/guides/structured-outputs
+- OpenAI Python SDK package: https://pypi.org/project/openai/
+
+The implementation direction follows the current OpenAI guidance that the Responses API is the preferred interface for agent-like model calls, including multi-turn state and tools. Function calling is modeled as tool definitions, model-emitted calls, application-side execution, and tool-output continuation. Structured Outputs are implemented through JSON Schema with `strict: true`; helper code recursively adds `additionalProperties: false` for object schemas to keep outputs constrained.
+
+The provider keeps Chat Completions fallback behavior because many OpenAI-compatible services support chat completions before they fully support Responses. This preserves current Qwen/DashScope behavior while allowing official OpenAI usage by configuration.
+
+## Verification
+
+Run from `E:\Progarms\contract-agent`:
+
+```powershell
+python -m compileall -q contract_agent tests
+python -m unittest discover -s tests -v
+python -c "from contract_agent.agent_rpc.server import AgentRpcServicer; print('import-ok')"
+contract-agent config
+```
+
+Infrastructure-backed checks such as Milvus retrieval, PostgreSQL-backed multi-agent memory, and live OpenAI/Qwen calls require corresponding services and API keys.
