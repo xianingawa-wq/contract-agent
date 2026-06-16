@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from contract_agent.runtime.config import settings
-from contract_agent.rag.knowledge_chunk_repository import KnowledgeChunkRepository
+from contract_agent.knowledge.repository import KnowledgeChunkRepository
 from contract_agent.rag.knowledge_documents import build_knowledge_documents
 from contract_agent.rag.legal_chunker import LegalKnowledgeChunker
 from contract_agent.rag.vector_store import build_vector_store, save_vector_store
