@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import logging
@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.llm.client import get_chat_model
 from contract_agent.llm.prompts import (
     advice_answer_prompt,

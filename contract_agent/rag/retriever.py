@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import math
 import re
@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 from langchain_core.documents import Document
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.rag.reranker import QwenReranker, Reranker
 
 

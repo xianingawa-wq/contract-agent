@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.rag.retriever import ContractKnowledgeRetriever
 from contract_agent.rag.vector_store import is_knowledge_base_ready, load_vector_store
 from contract_agent.schemas.review import (

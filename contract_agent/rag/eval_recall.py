@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -10,7 +10,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.rag.retriever import ContractKnowledgeRetriever
 from contract_agent.rag.vector_store import load_vector_store
 

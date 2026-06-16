@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import time
@@ -8,7 +8,7 @@ from urllib import error, request
 
 from langchain_core.documents import Document
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 
 
 @dataclass(frozen=True)

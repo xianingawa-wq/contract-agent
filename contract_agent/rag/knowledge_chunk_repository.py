@@ -1,11 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.db.init_db import ensure_postgres_schema
 from contract_agent.db.models import KnowledgeChunkModel
 from contract_agent.db.session import session_scope

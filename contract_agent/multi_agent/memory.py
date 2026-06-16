@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import logging
@@ -7,7 +7,7 @@ from typing import Any
 
 import redis
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.multi_agent.config import MultiAgentConfig
 from contract_agent.multi_agent.protocol import AgentOutput, PipelineState
 

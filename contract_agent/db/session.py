@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from contextlib import contextmanager
 from typing import Iterator
@@ -6,7 +6,7 @@ from typing import Iterator
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 
 _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None

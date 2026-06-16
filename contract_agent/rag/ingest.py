@@ -1,11 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.rag.knowledge_chunk_repository import KnowledgeChunkRepository
 from contract_agent.rag.knowledge_documents import build_knowledge_documents
 from contract_agent.rag.legal_chunker import LegalKnowledgeChunker

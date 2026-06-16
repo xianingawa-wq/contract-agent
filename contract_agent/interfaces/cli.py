@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.review.reporting import render_json, render_markdown
 from contract_agent.review.service import review_text
 

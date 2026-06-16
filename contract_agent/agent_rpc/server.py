@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import os
@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import grpc
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.schemas.chat import ChatRequest
 from contract_agent.schemas.review import ReviewRequest
 
@@ -437,7 +437,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             from contract_agent.schemas.knowledge import KnowledgeChunk
             from contract_agent.rag.knowledge_documents import build_knowledge_documents
             from contract_agent.rag.vector_store import load_vector_store, save_vector_store, build_vector_store
-            from contract_agent.core.config import settings
+            from contract_agent.runtime.config import settings
 
             chunk = KnowledgeChunk(
                 chunk_id=request.doc_id,

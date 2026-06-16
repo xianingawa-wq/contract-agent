@@ -1,11 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import re
 from datetime import datetime, timezone
 from typing import Any
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.multi_agent.protocol import AgentFinding, AgentOutput, AgentStatus
 from contract_agent.services.rule_engine import RuleEngine
 

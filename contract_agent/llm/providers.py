@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Protocol
 from langchain_core.embeddings import Embeddings
 from openai import OpenAI
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 
 if TYPE_CHECKING:
     from langchain_openai import ChatOpenAI

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -8,7 +8,7 @@ from uuid import uuid4
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 
-from contract_agent.core.config import settings
+from contract_agent.runtime.config import settings
 from contract_agent.llm.client import get_embeddings
 
 

@@ -1,4 +1,4 @@
-﻿from contract_agent.data.rules import RULES
+from contract_agent.rulesets.built_in import RULES
 from contract_agent.schemas.document import ClauseChunk, ParsedDocument
 from contract_agent.schemas.review import RiskItem
 
