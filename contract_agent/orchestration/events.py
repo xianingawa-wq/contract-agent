@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Any, Callable
 
-from contract_agent.multi_agent.protocol import PipelineEvent
+from contract_agent.orchestration.protocol import PipelineEvent
 
 logger = logging.getLogger(__name__)
 

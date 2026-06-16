@@ -13,7 +13,7 @@ from contract_agent.runtime.config import settings
 from contract_agent.schemas.chat import ChatRequest
 from contract_agent.schemas.review import ReviewRequest
 
-from contract_agent.multi_agent.protocol import AgentMode, GatewayResponse, PipelineState, PipelineStatus
+from contract_agent.orchestration.protocol import AgentMode, GatewayResponse, PipelineState, PipelineStatus
 
 if TYPE_CHECKING:
     from contract_agent.agents.editor import ContractEditor
@@ -160,14 +160,14 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         """Multi-agent review with pipeline orchestration."""
         import json
 
-        from contract_agent.multi_agent.gateway import GatewayRouter
+        from contract_agent.orchestration.gateway import GatewayRouter
         from contract_agent.agents.workers import (
             parser_agent, risk_checker_agent, legal_ref_agent,
             redrafter_agent,
         )
         from contract_agent.memory.manager import MemoryManager
-        from contract_agent.multi_agent.events import EventPublisher
-        from contract_agent.multi_agent.config import MultiAgentConfig
+        from contract_agent.orchestration.events import EventPublisher
+        from contract_agent.orchestration.config import MultiAgentConfig
 
         try:
             config = MultiAgentConfig()
@@ -181,7 +181,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             mode = gateway._detect_mode(contract_text, clause_count)
 
             if mode == AgentMode.SINGLE:
-                from contract_agent.multi_agent.single import SingleAgentHandler
+                from contract_agent.orchestration.single import SingleAgentHandler
                 state = PipelineState(
                     pipeline_id=str(uuid.uuid4()),
                     contract_id=contract_text[:64] or "unknown",
@@ -207,7 +207,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             )
             state = gateway.create_pipeline_state(route_resp, contract_id=contract_text[:64] or "unknown")
 
-            from contract_agent.multi_agent.supervisor import SupervisorAgent
+            from contract_agent.orchestration.supervisor import SupervisorAgent
             supervisor = SupervisorAgent(config)
             for agent_id, agent_fn in [
                 ("parser", parser_agent),
@@ -277,13 +277,13 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         import json
         import uuid
 
-        from contract_agent.multi_agent.gateway import GatewayRouter
-        from contract_agent.multi_agent.supervisor import SupervisorAgent
+        from contract_agent.orchestration.gateway import GatewayRouter
+        from contract_agent.orchestration.supervisor import SupervisorAgent
         from contract_agent.agents.workers import (
             parser_agent, risk_checker_agent, legal_ref_agent, redrafter_agent,
         )
         from contract_agent.memory.manager import MemoryManager
-        from contract_agent.multi_agent.config import MultiAgentConfig
+        from contract_agent.orchestration.config import MultiAgentConfig
 
         try:
             config = MultiAgentConfig()
@@ -304,7 +304,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             mode = gateway._detect_mode(contract_text, clause_count)
 
             if mode == AgentMode.SINGLE:
-                from contract_agent.multi_agent.single import SingleAgentHandler
+                from contract_agent.orchestration.single import SingleAgentHandler
                 state = PipelineState(
                     pipeline_id=str(uuid.uuid4()),
                     contract_id=contract_text[:64] or "unknown",

@@ -3,8 +3,8 @@
 import uuid
 from typing import Literal
 
-from contract_agent.multi_agent.config import MultiAgentConfig
-from contract_agent.multi_agent.protocol import (
+from contract_agent.orchestration.config import MultiAgentConfig
+from contract_agent.orchestration.protocol import (
     AgentMode,
     GatewayResponse,
     PipelineEvent,

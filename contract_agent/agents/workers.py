@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from contract_agent.runtime.config import settings
-from contract_agent.multi_agent.protocol import AgentFinding, AgentOutput, AgentStatus
+from contract_agent.orchestration.protocol import AgentFinding, AgentOutput, AgentStatus
 from contract_agent.services.rule_engine import RuleEngine
 
 

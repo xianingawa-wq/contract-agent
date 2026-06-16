@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import redis
 
-from contract_agent.multi_agent.config import MultiAgentConfig
-from contract_agent.multi_agent.protocol import AgentOutput, PipelineState
+from contract_agent.orchestration.config import MultiAgentConfig
+from contract_agent.orchestration.protocol import AgentOutput, PipelineState
 
 
 class HotLayer:

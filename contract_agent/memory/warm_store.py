@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from contract_agent.memory.models import AgentOutputRecord
-from contract_agent.multi_agent.protocol import AgentOutput
+from contract_agent.orchestration.protocol import AgentOutput
 from contract_agent.runtime.database import SessionLocal
 
 

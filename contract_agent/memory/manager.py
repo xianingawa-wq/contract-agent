@@ -5,8 +5,8 @@ from typing import Any
 from contract_agent.memory.cold_store import ColdLayer
 from contract_agent.memory.hot_store import HotLayer
 from contract_agent.memory.warm_store import WarmLayer
-from contract_agent.multi_agent.config import MultiAgentConfig
-from contract_agent.multi_agent.protocol import PipelineState
+from contract_agent.orchestration.config import MultiAgentConfig
+from contract_agent.orchestration.protocol import PipelineState
 
 
 class MemoryManager:
