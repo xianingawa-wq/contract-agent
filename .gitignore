@@ -11,4 +11,5 @@ build/
 .env
 .run/
 .codex/
+.agent-data/
 docs/superpowers/specs/
