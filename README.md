@@ -18,6 +18,7 @@ The project contains the Python agent capabilities for parsing contracts, runnin
 - `contract_agent/constants/`: LLM and agent prompt constants.
 - `contract_agent/agents/`: reviewer, editor, parser, risk checker, legal reference, and redrafter roles.
 - `contract_agent/orchestration/`: gateway, supervisor, protocol models, events, and pipeline orchestration.
+- `contract_agent/logger/`: structured audit logging for review and agent execution flows.
 - `knowledge/`: copied legal knowledge base inputs.
 - `docs/architecture.md`: migration architecture report.
 
@@ -47,6 +48,10 @@ contract-agent demo
 ```
 
 The demo shows a welcome banner, checks whether a local profile exists at `.run/cli_profile.json`, guides first-time model setup, checks the database component, verifies the configured model provider, then opens a small agent console. The console currently supports `/help`, `/status`, `/config`, and `/exit`, plus a demo agent reply for normal chat messages.
+
+## Audit Logs
+
+Service-backed review flows write structured JSONL audit events to `.run/audit.jsonl`. The logger records review start, rule-check completion, per-risk LLM enrichment, review completion, and review failure events so the audit path can be inspected after a run.
 
 ## LLM Configuration
 

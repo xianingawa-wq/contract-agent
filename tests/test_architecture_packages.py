@@ -12,6 +12,7 @@ class ArchitecturePackageTests(unittest.TestCase):
             "contract_agent.agents.reviewer",
             "contract_agent.agents.editor",
             "contract_agent.agents.workers",
+            "contract_agent.logger.audit",
             "contract_agent.orchestration.config",
             "contract_agent.orchestration.protocol",
             "contract_agent.orchestration.gateway",

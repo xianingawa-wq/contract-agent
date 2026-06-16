@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from contract_agent.logger.audit import AuditLogger, get_audit_logger
 from contract_agent.runtime.config import settings
 from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 from contract_agent.knowledge.rag.vector_store import is_knowledge_base_ready, load_vector_store
@@ -27,13 +28,14 @@ except Exception as exc:
 
 
 class ReviewService:
-    def __init__(self) -> None:
+    def __init__(self, audit_logger: AuditLogger | None = None) -> None:
         self.classifier = ContractClassifier()
         self.extractor = ContractExtractor()
         self.parser = ContractParser()
         self.rule_engine = RuleEngine()
         self._llm_reviewer = None
         self._knowledge_retriever = None
+        self.audit_logger = audit_logger or get_audit_logger()
 
     def health(self) -> HealthResponse:
         return HealthResponse(
@@ -54,27 +56,54 @@ class ReviewService:
         return self.parser.parse_bytes(file_name, content)
 
     def _review_document(self, document, contract_type: str | None, our_side: str) -> ReviewResponse:
-        llm_reviewer = self._require_llm_reviewer()
-        knowledge_retriever = self._require_knowledge_retriever()
-
         contract_text = document.raw_text
         detected_contract_type = contract_type or self.classifier.classify(contract_text)
-        extracted_fields = self.extractor.extract(contract_text)
-        risks = self.rule_engine.check(detected_contract_type, document)
-        risks = self._apply_party_context(risks, our_side)
-        risks = self._enrich_risks(risks, document, detected_contract_type, llm_reviewer, knowledge_retriever)
-        report = self._build_report(risks, detected_contract_type, document.metadata.title or document.metadata.file_name)
-
-        return ReviewResponse(
-            summary=ReviewSummary(
-                contract_type=detected_contract_type or settings.default_contract_type,
-                overall_risk=self._overall_risk(risks),
-                risk_count=len(risks),
-            ),
-            extracted_fields=extracted_fields,
-            risks=risks,
-            report=report,
+        self.audit_logger.emit(
+            "review.started",
+            contract_type=detected_contract_type or settings.default_contract_type,
+            our_side=our_side,
+            text_length=len(contract_text),
+            source_title=document.metadata.title or document.metadata.file_name,
         )
+
+        try:
+            llm_reviewer = self._require_llm_reviewer()
+            knowledge_retriever = self._require_knowledge_retriever()
+            extracted_fields = self.extractor.extract(contract_text)
+            risks = self.rule_engine.check(detected_contract_type, document)
+            self.audit_logger.emit(
+                "review.rules.completed",
+                contract_type=detected_contract_type or settings.default_contract_type,
+                risk_count=len(risks),
+            )
+            risks = self._apply_party_context(risks, our_side)
+            risks = self._enrich_risks(risks, document, detected_contract_type, llm_reviewer, knowledge_retriever)
+            report = self._build_report(risks, detected_contract_type, document.metadata.title or document.metadata.file_name)
+
+            response = ReviewResponse(
+                summary=ReviewSummary(
+                    contract_type=detected_contract_type or settings.default_contract_type,
+                    overall_risk=self._overall_risk(risks),
+                    risk_count=len(risks),
+                ),
+                extracted_fields=extracted_fields,
+                risks=risks,
+                report=report,
+            )
+            self.audit_logger.emit(
+                "review.completed",
+                contract_type=response.summary.contract_type,
+                overall_risk=response.summary.overall_risk,
+                risk_count=response.summary.risk_count,
+            )
+            return response
+        except Exception as exc:
+            self.audit_logger.emit(
+                "review.failed",
+                contract_type=detected_contract_type or settings.default_contract_type,
+                error=str(exc),
+            )
+            raise
 
     def _overall_risk(self, risks: list) -> str:
         severities = {risk.severity for risk in risks}
@@ -129,8 +158,15 @@ class ReviewService:
                     source_path=doc.metadata.get("source_path"),
                 )
                 for doc in retrieved_docs
-            ]
+                ]
             llm_reviewer.enrich_risk(risk, contract_type, clause_text, retrieved_contexts)
+            self.audit_logger.emit(
+                "review.risk.enriched",
+                rule_id=risk.rule_id,
+                title=risk.title,
+                severity=risk.severity,
+                basis_sources=len(risk.basis_sources),
+            )
         return risks
 
     def _build_report(self, risks: list, contract_type: str, document_title: str) -> ReviewReport:
