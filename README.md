@@ -14,8 +14,10 @@ The project contains the Python agent capabilities for parsing contracts, runnin
 - `contract_agent/rulesets/`: built-in rule definitions consumed by the rule engine.
 - `contract_agent/knowledge/`: persisted knowledge metadata, ingestion, vector stores, retrieval, and reranking.
 - `contract_agent/memory/`: multi-agent hot/warm/cold memory stores and manager.
-- `contract_agent/multi_agent/`: gateway, supervisor, protocols, memory, and agents.
-- `contract_agent/llm/`: prompts and model client/provider integration.
+- `contract_agent/provider/`: model provider abstraction for chat, embeddings, structured output, and tool calls.
+- `contract_agent/constants/`: LLM and agent prompt constants.
+- `contract_agent/agents/`: reviewer, editor, parser, risk checker, legal reference, and redrafter roles.
+- `contract_agent/orchestration/`: gateway, supervisor, protocol models, events, and pipeline orchestration.
 - `knowledge/`: copied legal knowledge base inputs.
 - `docs/architecture.md`: migration architecture report.
 

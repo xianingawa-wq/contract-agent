@@ -1,6 +1,6 @@
 import unittest
 
-from contract_agent.llm_provider.providers import LLMConfig, OpenAICompatibleProvider, _with_strict_objects
+from contract_agent.provider.providers import LLMConfig, OpenAICompatibleProvider, _with_strict_objects
 
 
 class LLMProviderTests(unittest.TestCase):

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from contract_agent.constants.agent_prompts import supervisor_prompt
-from contract_agent.llm_provider.client import get_chat_model
+from contract_agent.provider.client import get_chat_model
 from contract_agent.orchestration.config import MultiAgentConfig
 from contract_agent.orchestration.protocol import (
     AgentOutput,

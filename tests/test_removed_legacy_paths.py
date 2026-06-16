@@ -16,6 +16,7 @@ class RemovedLegacyPathTests(unittest.TestCase):
             "contract_agent.db",
             "contract_agent.scripts",
             "contract_agent.llm",
+            "contract_agent.llm_provider",
             "contract_agent.multi_agent",
             "contract_agent.multi_agent.memory",
             "contract_agent.rag",

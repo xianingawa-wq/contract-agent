@@ -9,7 +9,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 
 from contract_agent.runtime.config import settings
-from contract_agent.llm_provider.client import get_embeddings
+from contract_agent.provider.client import get_embeddings
 
 
 class VectorStoreLike(Protocol):

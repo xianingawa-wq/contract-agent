@@ -37,7 +37,7 @@ def parser_agent(ctx: dict[str, Any]) -> AgentOutput:
     our_side: str = ctx.get("our_side", "甲方")
 
     from contract_agent.constants.agent_prompts import parser_prompt
-    from contract_agent.llm_provider.client import get_chat_model
+    from contract_agent.provider.client import get_chat_model
     from contract_agent.services.parser import ContractParser
     from contract_agent.services.classifier import ContractClassifier
 
@@ -104,7 +104,7 @@ def risk_checker_agent(ctx: dict[str, Any]) -> AgentOutput:
     contract_text: str = ctx.get("contract_text", "")
 
     from contract_agent.constants.agent_prompts import risk_checker_prompt
-    from contract_agent.llm_provider.client import get_chat_model
+    from contract_agent.provider.client import get_chat_model
     from contract_agent.schemas.document import ClauseChunk, DocumentMetadata, ParsedDocument
 
     # Rule engine as supplementary hints
@@ -194,7 +194,7 @@ def legal_ref_agent(ctx: dict[str, Any]) -> AgentOutput:
         )
 
     from contract_agent.constants.agent_prompts import legal_ref_prompt
-    from contract_agent.llm_provider.client import get_chat_model
+    from contract_agent.provider.client import get_chat_model
     from contract_agent.knowledge.rag.vector_store import load_vector_store
     from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 
@@ -273,7 +273,7 @@ def redrafter_agent(ctx: dict[str, Any]) -> AgentOutput:
         )
 
     from contract_agent.constants.agent_prompts import redrafter_prompt
-    from contract_agent.llm_provider.client import get_chat_model
+    from contract_agent.provider.client import get_chat_model
 
     findings_with_refs = []
     for i, fd in enumerate(findings_data):

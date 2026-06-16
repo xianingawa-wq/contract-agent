@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from contract_agent.llm_provider.providers import LLMProvider, get_provider
+from contract_agent.provider.providers import LLMProvider, get_provider
 
 if TYPE_CHECKING:
     from langchain_core.embeddings import Embeddings

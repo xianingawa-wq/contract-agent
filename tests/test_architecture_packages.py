@@ -5,8 +5,8 @@ import unittest
 class ArchitecturePackageTests(unittest.TestCase):
     def test_canonical_agent_runtime_packages_are_discoverable(self):
         canonical_paths = [
-            "contract_agent.llm_provider.client",
-            "contract_agent.llm_provider.providers",
+            "contract_agent.provider.client",
+            "contract_agent.provider.providers",
             "contract_agent.constants.prompts",
             "contract_agent.constants.agent_prompts",
             "contract_agent.agents.reviewer",

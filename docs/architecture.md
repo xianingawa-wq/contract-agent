@@ -29,7 +29,7 @@ The independent `contract-agent` project now owns the Python agent closure:
 
 - `contract_agent/runtime`: environment-backed settings, database sessions, and runtime schema initialization.
 - `contract_agent/interfaces`: CLI and minimal HTTP/FastAPI adapters.
-- `contract_agent/llm_provider`: chat model, embedding, structured-output, and tool-call provider abstraction.
+- `contract_agent/provider`: chat model, embedding, structured-output, and tool-call provider abstraction.
 - `contract_agent/constants`: LLM and agent system prompt templates.
 - `contract_agent/agents`: concrete reviewer, editor, parser, risk checker, legal reference, and redrafter agent roles.
 - `contract_agent/review`: local CLI rule-review facade, report models, and renderers.
