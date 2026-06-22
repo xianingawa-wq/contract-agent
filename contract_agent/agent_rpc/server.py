@@ -135,7 +135,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
     def Redraft(self, request, context):
         try:
             accepted_issues = json.loads(request.accepted_issues_json)
-            if not settings.qwen_api_key:
+            if not settings.chat_api_key:
                 raise RuntimeError("QWEN_API_KEY 未配置，无法生成合同修订稿。")
             if self.contract_editor is None:
                 from contract_agent.agents.editor import ContractEditor

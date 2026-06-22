@@ -425,7 +425,7 @@ class ChatService:
                 yield content
 
     def _require_llm(self):
-        if not settings.qwen_api_key:
+        if not settings.chat_api_key:
             raise RuntimeError("QWEN_API_KEY 未配置，无法启用对话功能。")
         if self.llm is None:
             try:

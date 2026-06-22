@@ -8,8 +8,9 @@ from typing import Any, Protocol
 
 from langchain_core.documents import Document
 
+from contract_agent.knowledge.rag.rerank.interface import Reranker
+from contract_agent.knowledge.rag.rerank.factory import create_reranker_service
 from contract_agent.runtime.config import settings
-from contract_agent.knowledge.rag.reranker import QwenReranker, Reranker
 
 
 class SimilaritySearchStore(Protocol):
@@ -24,7 +25,7 @@ class ContractKnowledgeRetriever:
         reranker: Reranker | None = None,
     ) -> None:
         self.vector_store = vector_store
-        self.reranker = reranker or QwenReranker()
+        self.reranker = reranker or create_reranker_service().create_reranker()
         self.last_rerank_meta: dict[str, object] = {
             "attempted": False,
             "success": False,

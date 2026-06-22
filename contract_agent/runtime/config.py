@@ -32,11 +32,21 @@ class Settings(BaseModel):
     llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0"))
     llm_use_responses_api: bool = _bool_env("LLM_USE_RESPONSES_API", "true")
 
+    chat_provider: str = os.getenv("CHAT_PROVIDER") or llm_provider
+    chat_api_key: str | None = os.getenv("CHAT_API_KEY") or llm_api_key
+    chat_base_url: str | None = os.getenv("CHAT_BASE_URL") or llm_base_url
+    chat_model: str = os.getenv("CHAT_MODEL") or llm_chat_model
+
+    embedding_provider: str = os.getenv("EMBEDDING_PROVIDER") or llm_provider
+    embedding_api_key: str | None = os.getenv("EMBEDDING_API_KEY") or llm_api_key
+    embedding_base_url: str | None = os.getenv("EMBEDDING_BASE_URL") or llm_base_url
+    embedding_model: str = os.getenv("EMBEDDING_MODEL") or llm_embedding_model
+
     # Backward-compatible aliases for extracted modules that still use Qwen names.
-    qwen_api_key: str | None = llm_api_key
-    qwen_base_url: str | None = llm_base_url
-    langchain_model: str = llm_chat_model
-    langchain_embedding_model: str = llm_embedding_model
+    qwen_api_key: str | None = chat_api_key
+    qwen_base_url: str | None = chat_base_url
+    langchain_model: str = chat_model
+    langchain_embedding_model: str = embedding_model
 
     vector_backend: str = os.getenv("VECTOR_BACKEND", "milvus")
     knowledge_vector_store_dir: str = os.getenv(
@@ -47,6 +57,9 @@ class Settings(BaseModel):
     milvus_collection_name: str = os.getenv("MILVUS_COLLECTION_NAME", "legal_knowledge_chunks")
     milvus_consistency_level: str = os.getenv("MILVUS_CONSISTENCY_LEVEL", "Session")
     retrieval_enable_rerank: bool = _bool_env("RETRIEVAL_ENABLE_RERANK", "true")
+    rerank_provider: str = os.getenv("RERANK_PROVIDER", "qwen")
+    rerank_api_key: str | None = os.getenv("RERANK_API_KEY") or qwen_api_key
+    rerank_base_url: str | None = os.getenv("RERANK_BASE_URL") or qwen_base_url
     rerank_model: str = os.getenv("RERANK_MODEL", "qwen3-rerank")
     rerank_endpoint: str | None = os.getenv("RERANK_ENDPOINT")
     retrieval_fetch_k: int = int(os.getenv("RETRIEVAL_FETCH_K", "12"))

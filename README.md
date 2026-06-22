@@ -9,6 +9,7 @@ The project contains the Python agent capabilities for parsing contracts, runnin
 - `contract_agent/`: Python package for agent runtime.
 - `contract_agent/interfaces/`: CLI and minimal HTTP/FastAPI entrypoints.
 - `contract_agent/runtime/`: environment-backed settings, database sessions, and schema initialization.
+- `contract_agent/model_config/`: role-based model configuration using `interface -> service -> impl -> factory`.
 - `contract_agent/agent_rpc/`: gRPC service entrypoint.
 - `contract_agent/review/`: local rule-review facade used by the CLI.
 - `contract_agent/rulesets/`: built-in rule definitions consumed by the rule engine.
@@ -48,7 +49,18 @@ Open the interactive CLI demo:
 contract-agent demo
 ```
 
-The demo shows a welcome banner, checks whether a local profile exists at `.run/cli_profile.json`, guides first-time model setup, checks the database component, verifies the configured model provider, then opens a small agent console. The console currently supports `/help`, `/status`, `/config`, and `/exit`, plus a demo agent reply for normal chat messages.
+The demo shows a welcome banner, checks whether a local profile exists at `.run/cli_profile.json`, guides first-time setup for separate chat, embedding, and rerank model endpoints, checks the database component, verifies the configured model providers, then opens a small agent console. The setup wizard offers provider presets for OpenAI, DashScope/Qwen, and a custom OpenAI-compatible URL. API keys are saved into the local profile for later CLI runs, while `/config` only reports whether each key is configured. The console currently supports `/help`, `/status`, `/config`, and `/exit`, plus a demo agent reply for normal chat messages.
+
+Model configuration and provider construction use a consistent package layout:
+
+```text
+interface.py  # public Protocols and dataclasses
+service.py    # orchestration that depends on interfaces
+impl/         # concrete implementations
+factory.py    # provider/profile/reranker creation
+```
+
+The `model_config`, `provider`, and `knowledge.rag.rerank` packages follow this shape. Provider implementations are grouped by vendor: OpenAI code lives under `contract_agent.provider.impl.openai`, and DashScope/Qwen code lives under `contract_agent.provider.impl.dashscope`. Compatibility shims keep older imports working, but new code should depend on the role-based names: `ModelRole`, `ModelEndpointConfig`, `ModelRuntimeConfig`, `ModelProviderFactory`, and `RerankerFactory`.
 
 ## Audit Logs
 

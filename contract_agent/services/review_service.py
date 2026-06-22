@@ -41,7 +41,7 @@ class ReviewService:
     def health(self) -> HealthResponse:
         return HealthResponse(
             status="ok",
-            llm_configured=bool(settings.qwen_api_key and LLMReviewer),
+            llm_configured=bool(settings.chat_api_key and LLMReviewer),
             knowledge_base_ready=is_knowledge_base_ready(settings.knowledge_vector_store_dir),
         )
 
@@ -129,7 +129,7 @@ class ReviewService:
         return "info"
 
     def _require_llm_reviewer(self):
-        if not settings.qwen_api_key:
+        if not settings.chat_api_key:
             raise RuntimeError("QWEN_API_KEY 未配置，当前交付要求必须启用 LLM。")
         if not LLMReviewer:
             raise RuntimeError("LLM 组件不可用，请检查 langchain/Qwen 相关依赖。")
