@@ -4,8 +4,6 @@ from collections.abc import Callable
 
 from contract_agent.model_config.impl.env_source import EnvironmentModelConfigSource
 from contract_agent.model_config.interface import ModelConfigSource
-from contract_agent.provider.impl.dashscope.provider import DashScopeProvider
-from contract_agent.provider.impl.openai.provider import OpenAIProvider
 from contract_agent.provider.interface import LLMConfig, LLMProvider
 from contract_agent.provider.service import ModelProviderService
 
@@ -16,6 +14,9 @@ ProviderBuilder = Callable[[LLMConfig], LLMProvider]
 class ModelProviderFactory:
     def __init__(self) -> None:
         self._builders: dict[str, ProviderBuilder] = {}
+        from contract_agent.provider.impl.dashscope.provider import DashScopeProvider
+        from contract_agent.provider.impl.openai.provider import OpenAIProvider
+
         self.register("openai", OpenAIProvider)
         self.register("openai_compatible", OpenAIProvider)
         self.register("qwen", DashScopeProvider)

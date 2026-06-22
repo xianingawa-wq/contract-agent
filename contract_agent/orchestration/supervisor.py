@@ -21,10 +21,10 @@ from contract_agent.orchestration.protocol import (
 class SupervisorAgent:
     """ReAct-loop Supervisor that dynamically orchestrates sub-agents."""
 
-    def __init__(self, config: MultiAgentConfig | None = None) -> None:
+    def __init__(self, config: MultiAgentConfig | None = None, llm: Any | None = None) -> None:
         self.config = config or MultiAgentConfig()
         self._agents: dict[str, Callable[[dict[str, Any]], AgentOutput]] = {}
-        self._llm = get_chat_model()
+        self._llm = llm or get_chat_model()
 
     def register_agent(self, agent_id: str, fn: Callable[[dict[str, Any]], AgentOutput]) -> None:
         self._agents[agent_id] = fn

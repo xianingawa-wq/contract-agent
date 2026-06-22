@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import re
 
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import Settings, settings_snapshot
 from contract_agent.provider.client import get_chat_model
-from contract_agent.constants.prompts import contract_redraft_chunk_prompt, contract_redraft_prompt
 
 
 class ContractEditor:
     _CLAUSE_TITLE_RE = re.compile(r"^第[一二三四五六七八九十百零]+条")
 
-    def __init__(self) -> None:
-        self.llm = get_chat_model()
+    def __init__(self, runtime_settings: Settings | None = None, llm=None) -> None:
+        self.settings = runtime_settings or settings_snapshot()
+        self.llm = llm or get_chat_model()
 
     def redraft_contract(
         self,
@@ -22,7 +22,7 @@ class ContractEditor:
         accepted_issues: list[dict[str, str]],
     ) -> str:
         issue_text = self._format_accepted_issues(accepted_issues)
-        max_chunk_chars = max(2000, settings.max_redraft_chunk_chars)
+        max_chunk_chars = max(2000, self.settings.max_redraft_chunk_chars)
 
         if len(contract_text) <= max_chunk_chars:
             revised = self._invoke_full_redraft(
@@ -58,6 +58,8 @@ class ContractEditor:
         return combined
 
     def _invoke_full_redraft(self, *, contract_text: str, contract_type: str, our_side: str, issue_text: str) -> str:
+        from contract_agent.constants.prompts import contract_redraft_prompt
+
         chain = contract_redraft_prompt | self.llm
         result = chain.invoke(
             {
@@ -70,6 +72,8 @@ class ContractEditor:
         return (result.content or "").strip()
 
     def _invoke_segment_redraft(self, *, contract_segment: str, contract_type: str, our_side: str, issue_text: str) -> str:
+        from contract_agent.constants.prompts import contract_redraft_chunk_prompt
+
         chain = contract_redraft_chunk_prompt | self.llm
         result = chain.invoke(
             {

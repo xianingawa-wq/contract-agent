@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from contract_agent.model_config.interface import ModelConfigSource, ModelEndpointConfig, ModelProfileStore, ModelRuntimeConfig
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import update_settings
 
 
 class ModelConfigResolver:
@@ -46,29 +46,32 @@ class ModelProfileService:
 
 
 def apply_model_runtime_config(config: ModelRuntimeConfig) -> None:
-    settings.chat_provider = config.chat.provider
-    settings.chat_base_url = config.chat.base_url
-    settings.chat_api_key = config.chat.api_key or None
-    settings.chat_model = config.chat.model
-    settings.embedding_provider = config.embedding.provider
-    settings.embedding_base_url = config.embedding.base_url
-    settings.embedding_api_key = config.embedding.api_key or None
-    settings.embedding_model = config.embedding.model
-    settings.rerank_provider = config.rerank.provider
-    settings.rerank_base_url = config.rerank.base_url
-    settings.rerank_api_key = config.rerank.api_key or None
-    settings.rerank_model = config.rerank.model
-    settings.rerank_endpoint = rerank_endpoint_from_base_url(config.rerank.base_url)
-
-    settings.llm_provider = config.chat.provider
-    settings.llm_base_url = config.chat.base_url
-    settings.llm_api_key = config.chat.api_key or None
-    settings.llm_chat_model = config.chat.model
-    settings.llm_embedding_model = config.embedding.model
-    settings.qwen_api_key = config.chat.api_key or None
-    settings.qwen_base_url = config.chat.base_url
-    settings.langchain_model = config.chat.model
-    settings.langchain_embedding_model = config.embedding.model
+    update_settings(
+        {
+            "chat_provider": config.chat.provider,
+            "chat_base_url": config.chat.base_url,
+            "chat_api_key": config.chat.api_key or None,
+            "chat_model": config.chat.model,
+            "embedding_provider": config.embedding.provider,
+            "embedding_base_url": config.embedding.base_url,
+            "embedding_api_key": config.embedding.api_key or None,
+            "embedding_model": config.embedding.model,
+            "rerank_provider": config.rerank.provider,
+            "rerank_base_url": config.rerank.base_url,
+            "rerank_api_key": config.rerank.api_key or None,
+            "rerank_model": config.rerank.model,
+            "rerank_endpoint": rerank_endpoint_from_base_url(config.rerank.base_url),
+            "llm_provider": config.chat.provider,
+            "llm_base_url": config.chat.base_url,
+            "llm_api_key": config.chat.api_key or None,
+            "llm_chat_model": config.chat.model,
+            "llm_embedding_model": config.embedding.model,
+            "qwen_api_key": config.chat.api_key or None,
+            "qwen_base_url": config.chat.base_url,
+            "langchain_model": config.chat.model,
+            "langchain_embedding_model": config.embedding.model,
+        }
+    )
 
 
 def rerank_endpoint_from_base_url(base_url: str) -> str | None:

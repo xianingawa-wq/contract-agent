@@ -3,9 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from langchain_core.embeddings import Embeddings
-
 if TYPE_CHECKING:
+    from langchain_core.embeddings import Embeddings
     from langchain_openai import ChatOpenAI
 
 
@@ -40,7 +39,7 @@ class LLMProvider(Protocol):
     def chat_model(self) -> "ChatOpenAI":
         ...
 
-    def embeddings(self) -> Embeddings:
+    def embeddings(self) -> "Embeddings":
         ...
 
     def create_response(

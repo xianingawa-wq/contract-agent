@@ -8,7 +8,7 @@ from typing import TextIO
 from contract_agent.interfaces.console import run_console_demo
 from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
 from contract_agent.model_config.factory import create_model_profile_service
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import settings_snapshot
 from contract_agent.review.reporting import render_json, render_markdown
 from contract_agent.review.service import review_text
 
@@ -92,19 +92,20 @@ def _review_command(args: argparse.Namespace, stdout: TextIO, stderr: TextIO) ->
 
 
 def _config_command(stdout: TextIO) -> int:
-    stdout.write(f"chat.provider={settings.chat_provider}\n")
-    stdout.write(f"chat.base_url={settings.chat_base_url or ''}\n")
-    stdout.write(f"chat.model={settings.chat_model}\n")
-    stdout.write(f"chat.api_key_configured={bool(settings.chat_api_key)}\n")
-    stdout.write(f"embedding.provider={settings.embedding_provider}\n")
-    stdout.write(f"embedding.base_url={settings.embedding_base_url or ''}\n")
-    stdout.write(f"embedding.model={settings.embedding_model}\n")
-    stdout.write(f"embedding.api_key_configured={bool(settings.embedding_api_key)}\n")
-    stdout.write(f"rerank.provider={settings.rerank_provider}\n")
-    stdout.write(f"rerank.base_url={settings.rerank_base_url or ''}\n")
-    stdout.write(f"rerank.model={settings.rerank_model}\n")
-    stdout.write(f"rerank.api_key_configured={bool(settings.rerank_api_key)}\n")
-    stdout.write(f"responses_api={settings.llm_use_responses_api}\n")
+    current = settings_snapshot()
+    stdout.write(f"chat.provider={current.chat_provider}\n")
+    stdout.write(f"chat.base_url={current.chat_base_url or ''}\n")
+    stdout.write(f"chat.model={current.chat_model}\n")
+    stdout.write(f"chat.api_key_configured={bool(current.chat_api_key)}\n")
+    stdout.write(f"embedding.provider={current.embedding_provider}\n")
+    stdout.write(f"embedding.base_url={current.embedding_base_url or ''}\n")
+    stdout.write(f"embedding.model={current.embedding_model}\n")
+    stdout.write(f"embedding.api_key_configured={bool(current.embedding_api_key)}\n")
+    stdout.write(f"rerank.provider={current.rerank_provider}\n")
+    stdout.write(f"rerank.base_url={current.rerank_base_url or ''}\n")
+    stdout.write(f"rerank.model={current.rerank_model}\n")
+    stdout.write(f"rerank.api_key_configured={bool(current.rerank_api_key)}\n")
+    stdout.write(f"responses_api={current.llm_use_responses_api}\n")
     return 0
 
 

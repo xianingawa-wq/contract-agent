@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
 
 from contract_agent.logger.audit import AuditLogger, get_audit_logger
-from contract_agent.runtime.config import settings
-from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
-from contract_agent.knowledge.rag.vector_store import is_knowledge_base_ready, load_vector_store
+from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.knowledge.rag.config import RetrievalConfig
 from contract_agent.schemas.review import (
     HealthResponse,
     KnowledgeReference,
@@ -17,32 +17,36 @@ from contract_agent.schemas.review import (
 from contract_agent.trace.tokens import TokenTrace
 from contract_agent.services.classifier import ContractClassifier
 from contract_agent.services.extractor import ContractExtractor
-from contract_agent.services.parser import ContractParser
 from contract_agent.services.rule_engine import RuleEngine
 
-try:
-    from contract_agent.agents.reviewer import LLMReviewer
-except Exception as exc:
-    import logging
-    logging.getLogger(__name__).warning("Failed to import LLMReviewer: %s", exc)
-    LLMReviewer = None
+if TYPE_CHECKING:
+    from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 
 
 class ReviewService:
-    def __init__(self, audit_logger: AuditLogger | None = None) -> None:
+    def __init__(
+        self,
+        audit_logger: AuditLogger | None = None,
+        runtime_settings: Settings | None = None,
+        parser: Any | None = None,
+    ) -> None:
+        self.settings = runtime_settings or settings_snapshot()
+        self.retrieval_config = RetrievalConfig.from_settings(self.settings)
         self.classifier = ContractClassifier()
         self.extractor = ContractExtractor()
-        self.parser = ContractParser()
+        self._parser = parser
         self.rule_engine = RuleEngine()
         self._llm_reviewer = None
         self._knowledge_retriever = None
         self.audit_logger = audit_logger or get_audit_logger()
 
     def health(self) -> HealthResponse:
+        from contract_agent.knowledge.rag.vector_store import is_knowledge_base_ready
+
         return HealthResponse(
             status="ok",
-            llm_configured=bool(settings.chat_api_key and LLMReviewer),
-            knowledge_base_ready=is_knowledge_base_ready(settings.knowledge_vector_store_dir),
+            llm_configured=bool(self.settings.chat_api_key and self._llm_reviewer_available()),
+            knowledge_base_ready=is_knowledge_base_ready(self.settings.knowledge_vector_store_dir, runtime_settings=self.settings),
         )
 
     def review(self, payload: ReviewRequest) -> ReviewResponse:
@@ -56,12 +60,20 @@ class ReviewService:
     def parse_file(self, file_name: str, content: bytes):
         return self.parser.parse_bytes(file_name, content)
 
+    @property
+    def parser(self):
+        if self._parser is None:
+            from contract_agent.services.parser import ContractParser
+
+            self._parser = ContractParser()
+        return self._parser
+
     def _review_document(self, document, contract_type: str | None, our_side: str) -> ReviewResponse:
         contract_text = document.raw_text
         detected_contract_type = contract_type or self.classifier.classify(contract_text)
         self.audit_logger.emit(
             "review.started",
-            contract_type=detected_contract_type or settings.default_contract_type,
+            contract_type=detected_contract_type or self.settings.default_contract_type,
             our_side=our_side,
             text_length=len(contract_text),
             source_title=document.metadata.title or document.metadata.file_name,
@@ -76,7 +88,7 @@ class ReviewService:
             risks = self.rule_engine.check(detected_contract_type, document)
             self.audit_logger.emit(
                 "review.rules.completed",
-                contract_type=detected_contract_type or settings.default_contract_type,
+                contract_type=detected_contract_type or self.settings.default_contract_type,
                 risk_count=len(risks),
             )
             risks = self._apply_party_context(risks, our_side)
@@ -93,7 +105,7 @@ class ReviewService:
 
             response = ReviewResponse(
                 summary=ReviewSummary(
-                    contract_type=detected_contract_type or settings.default_contract_type,
+                    contract_type=detected_contract_type or self.settings.default_contract_type,
                     overall_risk=self._overall_risk(risks),
                     risk_count=len(risks),
                 ),
@@ -113,7 +125,7 @@ class ReviewService:
         except Exception as exc:
             self.audit_logger.emit(
                 "review.failed",
-                contract_type=detected_contract_type or settings.default_contract_type,
+                contract_type=detected_contract_type or self.settings.default_contract_type,
                 error=str(exc),
             )
             raise
@@ -129,24 +141,35 @@ class ReviewService:
         return "info"
 
     def _require_llm_reviewer(self):
-        if not settings.chat_api_key:
-            raise RuntimeError("QWEN_API_KEY 未配置，当前交付要求必须启用 LLM。")
-        if not LLMReviewer:
-            raise RuntimeError("LLM 组件不可用，请检查 langchain/Qwen 相关依赖。")
+        if not self.settings.chat_api_key:
+            raise RuntimeError("CHAT_API_KEY 或 LLM_API_KEY 未配置，当前交付要求必须启用 LLM。QWEN_API_KEY 仍可作为兼容别名。")
         if self._llm_reviewer is None:
             try:
+                from contract_agent.agents.reviewer import LLMReviewer
+
                 self._llm_reviewer = LLMReviewer()
             except Exception as exc:
                 raise RuntimeError(f"LLM 初始化失败：{exc}") from exc
         return self._llm_reviewer
 
+    def _llm_reviewer_available(self) -> bool:
+        try:
+            from contract_agent.agents.reviewer import LLMReviewer  # noqa: F401
+
+            return True
+        except Exception:
+            return False
+
     def _require_knowledge_retriever(self) -> ContractKnowledgeRetriever:
         if self._knowledge_retriever is None:
             try:
-                vector_store = load_vector_store(settings.knowledge_vector_store_dir)
+                from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
+                from contract_agent.knowledge.rag.vector_store import load_vector_store
+
+                vector_store = load_vector_store(self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
             except Exception as exc:
                 raise RuntimeError(f"法律知识库加载失败：{exc}") from exc
-            self._knowledge_retriever = ContractKnowledgeRetriever(vector_store)
+            self._knowledge_retriever = ContractKnowledgeRetriever(vector_store, retrieval_config=self.retrieval_config)
         return self._knowledge_retriever
 
     def _apply_party_context(self, risks: list, our_side: str) -> list:
@@ -169,7 +192,11 @@ class ReviewService:
         for risk in risks:
             clause_text = self._find_clause_text(document, risk)
             query = f"{contract_type} {risk.title} {risk.risk_domain or ''} {risk.evidence} {clause_text}"
-            retrieved_docs = knowledge_retriever.retrieve_documents_with_rerank(query=query, fetch_k=settings.retrieval_fetch_k, final_k=settings.retrieval_final_k)
+            retrieved_docs = knowledge_retriever.retrieve_documents_with_rerank(
+                query=query,
+                fetch_k=self.retrieval_config.fetch_k,
+                final_k=self.retrieval_config.final_k,
+            )
             retrieved_contexts = [doc.page_content for doc in retrieved_docs]
             if token_trace is not None:
                 token_trace.add_input("risk_enrichment_context", "\n".join([query, clause_text, *retrieved_contexts]))

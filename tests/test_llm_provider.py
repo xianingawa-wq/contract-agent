@@ -6,12 +6,21 @@ from contract_agent.provider.impl.openai.embeddings import OpenAIEmbeddings
 from contract_agent.provider.impl.openai.provider import OpenAIProvider
 from contract_agent.provider.impl.openai_compatible import OpenAICompatibleEmbeddings, OpenAICompatibleProvider
 from contract_agent.provider.interface import LLMConfig
+from contract_agent.model_config.interface import ModelEndpointConfig, ModelRole, ModelRuntimeConfig
+from contract_agent.provider.service import ModelProviderService, ProviderRuntimeOptions
 from contract_agent.provider.providers import (
     _with_strict_objects,
     get_chat_provider,
     get_embedding_provider,
 )
-from contract_agent.runtime.config import settings
+
+
+class StaticModelConfigSource:
+    def __init__(self, config: ModelRuntimeConfig) -> None:
+        self.config = config
+
+    def load(self) -> ModelRuntimeConfig:
+        return self.config
 
 
 class LLMProviderTests(unittest.TestCase):
@@ -50,29 +59,46 @@ class LLMProviderTests(unittest.TestCase):
         self.assertEqual(provider.config.chat_model, "test-chat")
 
     def test_provider_factories_use_separate_chat_and_embedding_configs(self):
-        original = settings.model_dump()
-        try:
-            settings.chat_provider = "openai_compatible"
-            settings.chat_api_key = "chat-key"
-            settings.chat_base_url = "https://chat.example.test/v1"
-            settings.chat_model = "chat-model"
-            settings.embedding_provider = "openai_compatible"
-            settings.embedding_api_key = "embedding-key"
-            settings.embedding_base_url = "https://embedding.example.test/v1"
-            settings.embedding_model = "embedding-model"
+        runtime_config = ModelRuntimeConfig(
+            chat=ModelEndpointConfig(
+                role=ModelRole.CHAT,
+                provider="openai_compatible",
+                api_key="chat-key",
+                base_url="https://chat.example.test/v1",
+                model="chat-model",
+            ),
+            embedding=ModelEndpointConfig(
+                role=ModelRole.EMBEDDING,
+                provider="openai_compatible",
+                api_key="embedding-key",
+                base_url="https://embedding.example.test/v1",
+                model="embedding-model",
+            ),
+            rerank=ModelEndpointConfig(
+                role=ModelRole.RERANK,
+                provider="qwen",
+                api_key="rerank-key",
+                base_url="https://rerank.example.test/v1",
+                model="rerank-model",
+            ),
+        )
+        service = ModelProviderService(
+            StaticModelConfigSource(runtime_config),
+            ModelProviderFactory(),
+            ProviderRuntimeOptions(temperature=0.2, use_responses_api=False),
+        )
 
-            chat_provider = get_chat_provider()
-            embedding_provider = get_embedding_provider()
+        chat_provider = service.create_chat_provider()
+        embedding_provider = service.create_embedding_provider()
 
-            self.assertEqual(chat_provider.config.api_key, "chat-key")
-            self.assertEqual(chat_provider.config.base_url, "https://chat.example.test/v1")
-            self.assertEqual(chat_provider.config.chat_model, "chat-model")
-            self.assertEqual(embedding_provider.config.api_key, "embedding-key")
-            self.assertEqual(embedding_provider.config.base_url, "https://embedding.example.test/v1")
-            self.assertEqual(embedding_provider.config.embedding_model, "embedding-model")
-        finally:
-            for key, value in original.items():
-                setattr(settings, key, value)
+        self.assertEqual(chat_provider.config.api_key, "chat-key")
+        self.assertEqual(chat_provider.config.base_url, "https://chat.example.test/v1")
+        self.assertEqual(chat_provider.config.chat_model, "chat-model")
+        self.assertEqual(chat_provider.config.temperature, 0.2)
+        self.assertFalse(chat_provider.config.use_responses_api)
+        self.assertEqual(embedding_provider.config.api_key, "embedding-key")
+        self.assertEqual(embedding_provider.config.base_url, "https://embedding.example.test/v1")
+        self.assertEqual(embedding_provider.config.embedding_model, "embedding-model")
 
     def test_model_provider_factory_creates_openai_registered_provider(self):
         factory = ModelProviderFactory()

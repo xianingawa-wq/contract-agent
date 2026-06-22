@@ -5,9 +5,17 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.knowledge.rag.config import RetrievalConfig
 from contract_agent.orchestration.protocol import AgentFinding, AgentOutput, AgentStatus
 from contract_agent.services.rule_engine import RuleEngine
+
+
+def _runtime_settings(ctx: dict[str, Any]) -> Settings:
+    value = ctx.get("runtime_settings")
+    if isinstance(value, Settings):
+        return value
+    return settings_snapshot()
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +107,8 @@ def parser_agent(ctx: dict[str, Any]) -> AgentOutput:
 
 def risk_checker_agent(ctx: dict[str, Any]) -> AgentOutput:
     clauses: list[dict] = ctx.get("parsed_clauses", [])
-    contract_type: str = ctx.get("detected_contract_type", settings.default_contract_type)
+    runtime_settings = _runtime_settings(ctx)
+    contract_type: str = ctx.get("detected_contract_type", runtime_settings.default_contract_type)
     our_side: str = ctx.get("our_side", "甲方")
     contract_text: str = ctx.get("contract_text", "")
 
@@ -183,7 +192,9 @@ def risk_checker_agent(ctx: dict[str, Any]) -> AgentOutput:
 
 def legal_ref_agent(ctx: dict[str, Any]) -> AgentOutput:
     findings_data: list[dict] = ctx.get("risk_findings", [])
-    contract_type: str = ctx.get("detected_contract_type", settings.default_contract_type)
+    runtime_settings = _runtime_settings(ctx)
+    retrieval_config = RetrievalConfig.from_settings(runtime_settings)
+    contract_type: str = ctx.get("detected_contract_type", runtime_settings.default_contract_type)
 
     if not findings_data:
         return AgentOutput(
@@ -201,12 +212,14 @@ def legal_ref_agent(ctx: dict[str, Any]) -> AgentOutput:
     # Vector retrieval (kept as LLM input)
     retrieved_docs = []
     try:
-        vector_store = load_vector_store(settings.knowledge_vector_store_dir)
-        retriever = ContractKnowledgeRetriever(vector_store)
+        vector_store = load_vector_store(runtime_settings.knowledge_vector_store_dir, runtime_settings=runtime_settings)
+        retriever = ContractKnowledgeRetriever(vector_store, retrieval_config=retrieval_config)
         for i, fd in enumerate(findings_data[:5]):
             query = f"{contract_type} {fd.get('summary', '')}"
             docs = retriever.retrieve_documents_with_rerank(
-                query=query, fetch_k=settings.retrieval_fetch_k, final_k=2
+                query=query,
+                fetch_k=retrieval_config.fetch_k,
+                final_k=min(retrieval_config.final_k, 2),
             )
             for doc in docs:
                 retrieved_docs.append({

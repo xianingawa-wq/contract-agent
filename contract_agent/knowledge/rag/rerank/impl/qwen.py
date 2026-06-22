@@ -9,7 +9,7 @@ from contract_agent.knowledge.rag.rerank.impl.qwen_endpoint import build_qwen_re
 from contract_agent.knowledge.rag.rerank.impl.qwen_response_parser import parse_qwen_rerank_results
 from contract_agent.knowledge.rag.rerank.impl.qwen_transport import QwenRerankTransport
 from contract_agent.knowledge.rag.rerank.interface import Reranker, RerankResult
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import Settings, settings_snapshot
 
 
 class QwenReranker(Reranker):
@@ -22,13 +22,15 @@ class QwenReranker(Reranker):
         timeout_seconds: int | None = None,
         max_retries: int | None = None,
         endpoint: str | None = None,
+        runtime_settings: Settings | None = None,
     ) -> None:
-        self.model = model or settings.rerank_model
-        self.api_key = api_key if api_key is not None else settings.rerank_api_key
-        self.base_url = base_url if base_url is not None else settings.rerank_base_url
-        self.timeout_seconds = timeout_seconds if timeout_seconds is not None else settings.rerank_timeout_seconds
-        self.max_retries = max_retries if max_retries is not None else settings.rerank_max_retries
-        self.endpoint = endpoint or settings.rerank_endpoint or self._build_default_endpoint()
+        self.settings = runtime_settings or settings_snapshot()
+        self.model = model or self.settings.rerank_model
+        self.api_key = api_key if api_key is not None else self.settings.rerank_api_key
+        self.base_url = base_url if base_url is not None else self.settings.rerank_base_url
+        self.timeout_seconds = timeout_seconds if timeout_seconds is not None else self.settings.rerank_timeout_seconds
+        self.max_retries = max_retries if max_retries is not None else self.settings.rerank_max_retries
+        self.endpoint = endpoint or self.settings.rerank_endpoint or self._build_default_endpoint()
         self.last_profile: dict[str, Any] = {}
         self._last_request_profile: dict[str, Any] = {}
 
@@ -126,7 +128,7 @@ class QwenReranker(Reranker):
         return parse_qwen_rerank_results(payload)
 
     def _build_default_endpoint(self) -> str:
-        base = (self.base_url or settings.qwen_base_url or "").rstrip("/")
+        base = (self.base_url or self.settings.qwen_base_url or "").rstrip("/")
         return build_qwen_rerank_endpoint(base)
 
 

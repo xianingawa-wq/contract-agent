@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Protocol
 
-from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 from contract_agent.schemas.chat import ChatSearchResult
+
+if TYPE_CHECKING:
+    from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 
 
 @dataclass
@@ -83,7 +85,7 @@ class QueryKnowledgeAction:
         "required": ["query"],
     }
 
-    def __init__(self, retriever_provider: Callable[[], ContractKnowledgeRetriever]) -> None:
+    def __init__(self, retriever_provider: Callable[[], "ContractKnowledgeRetriever"]) -> None:
         self._retriever_provider = retriever_provider
 
     def execute(self, context: ActionContext, args: dict[str, Any]) -> ActionResult:

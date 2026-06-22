@@ -14,7 +14,7 @@ from contract_agent.model_config.interface import (
     ModelRole,
     ModelRuntimeConfig,
 )
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import settings_snapshot
 from contract_agent.runtime.database import get_engine
 
 
@@ -145,14 +145,15 @@ def _ask_api_key(stdin: TextIO, stdout: TextIO, label: str, existing: str) -> st
 
 
 def _check_database(*, skip_connect: bool) -> ComponentStatus:
-    if not settings.postgres_dsn:
+    current = settings_snapshot()
+    if not current.postgres_dsn:
         return ComponentStatus("Database", "missing", "POSTGRES_DSN is not configured")
     if skip_connect:
-        return ComponentStatus("Database", "skipped", settings.postgres_dsn)
+        return ComponentStatus("Database", "skipped", current.postgres_dsn)
     try:
-        with get_engine().connect() as connection:
+        with get_engine(current).connect() as connection:
             connection.execute(text("SELECT 1"))
-        return ComponentStatus("Database", "ok", settings.postgres_dsn)
+        return ComponentStatus("Database", "ok", current.postgres_dsn)
     except Exception as exc:
         return ComponentStatus("Database", "failed", str(exc))
 

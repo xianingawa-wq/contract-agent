@@ -6,20 +6,11 @@ import os
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, Iterator
+from typing import Any, Iterator, TYPE_CHECKING
 
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import Settings, settings_snapshot
 from contract_agent.provider.client import get_chat_model
-from contract_agent.constants.prompts import (
-    advice_answer_prompt,
-    chat_answer_prompt,
-    chat_intent_prompt,
-    react_step_prompt,
-    react_synthesis_prompt,
-    search_answer_prompt,
-)
-from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
-from contract_agent.knowledge.rag.vector_store import load_vector_store
+from contract_agent.knowledge.rag.config import RetrievalConfig
 from contract_agent.schemas.chat import ChatRequest, ChatResponse, ChatSearchResult
 from contract_agent.schemas.review import ReviewRequest
 from contract_agent.services.react_runtime import (
@@ -31,6 +22,9 @@ from contract_agent.services.react_runtime import (
     references_to_search_results,
 )
 from contract_agent.services.review_service import ReviewService
+
+if TYPE_CHECKING:
+    from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 
 
 # Dedicated trace logger: writes ReAct reasoning traces to a separate file
@@ -50,8 +44,10 @@ class ChatService:
     STREAM_MAX_SECONDS = 24.0
     STREAM_MAX_CHARS = 900
 
-    def __init__(self) -> None:
-        self.review_service = ReviewService()
+    def __init__(self, runtime_settings: Settings | None = None, review_service: ReviewService | None = None) -> None:
+        self.settings = runtime_settings or settings_snapshot()
+        self.retrieval_config = RetrievalConfig.from_settings(self.settings)
+        self.review_service = review_service or ReviewService(runtime_settings=self.settings)
         self.llm = None
         self._knowledge_retriever = None
         self._action_registry = ActionRegistry()
@@ -114,7 +110,7 @@ class ChatService:
 
     def _handle_react_stream(self, payload: ChatRequest, intent: str, query: str) -> Iterator[dict[str, Any]]:
         llm = self._require_llm()
-        max_steps = max(1, settings.react_max_steps)
+        max_steps = max(1, self.settings.react_max_steps)
         action_context = ActionContext(
             user_message=self._latest_user_message(payload),
             intent=intent,
@@ -242,7 +238,7 @@ class ChatService:
         trace_steps: list[ReactTraceStep],
     ) -> dict[str, Any]:
         raw = self._invoke_chain_once(
-            react_step_prompt | llm,
+            self._prompt("react_step_prompt") | llm,
             {
                 "intent": intent,
                 "user_message": query,
@@ -262,7 +258,7 @@ class ChatService:
         references: list[ActionReference],
     ) -> str:
         return self._invoke_chain_once(
-            react_synthesis_prompt | llm,
+            self._prompt("react_synthesis_prompt") | llm,
             {
                 "intent": intent,
                 "user_message": self._latest_user_message(payload),
@@ -278,7 +274,7 @@ class ChatService:
         docs = retriever.retrieve_documents(query=query, k=3)
         contexts = [doc.page_content for doc in docs]
         answer = self._invoke_chain_once(
-            search_answer_prompt | llm,
+            self._prompt("search_answer_prompt") | llm,
             {
                 "user_message": self._latest_user_message(payload),
                 "retrieved_context": "\n\n".join(contexts) if contexts else "未检索到相关内容",
@@ -298,7 +294,7 @@ class ChatService:
         docs = retriever.retrieve_documents(query=query, k=3)
         contexts = [doc.page_content for doc in docs]
         answer = self._invoke_chain_once(
-            advice_answer_prompt | llm,
+            self._prompt("advice_answer_prompt") | llm,
             {
                 "user_message": self._latest_user_message(payload),
                 "contract_text": payload.contract_text or "无合同上下文",
@@ -316,7 +312,7 @@ class ChatService:
     def _handle_chat(self, payload: ChatRequest) -> ChatResponse:
         llm = self._require_llm()
         answer = self._invoke_chain_once(
-            chat_answer_prompt | llm,
+            self._prompt("chat_answer_prompt") | llm,
             {
                 "conversation": self._conversation_text(payload),
                 "user_message": self._latest_user_message(payload),
@@ -332,7 +328,7 @@ class ChatService:
     def _route_intent(self, payload: ChatRequest) -> dict[str, Any]:
         llm = self._require_llm()
         raw = self._invoke_chain_once(
-            chat_intent_prompt | llm,
+            self._prompt("chat_intent_prompt") | llm,
             {
                 "contract_text": payload.contract_text or "无合同上下文",
                 "conversation": self._conversation_text(payload),
@@ -425,8 +421,8 @@ class ChatService:
                 yield content
 
     def _require_llm(self):
-        if not settings.chat_api_key:
-            raise RuntimeError("QWEN_API_KEY 未配置，无法启用对话功能。")
+        if not self.settings.chat_api_key:
+            raise RuntimeError("CHAT_API_KEY 或 LLM_API_KEY 未配置，无法启用对话功能。QWEN_API_KEY 仍可作为兼容别名。")
         if self.llm is None:
             try:
                 self.llm = get_chat_model()
@@ -437,11 +433,19 @@ class ChatService:
     def _require_knowledge_retriever(self) -> ContractKnowledgeRetriever:
         if self._knowledge_retriever is None:
             try:
-                vector_store = load_vector_store(settings.knowledge_vector_store_dir)
+                from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
+                from contract_agent.knowledge.rag.vector_store import load_vector_store
+
+                vector_store = load_vector_store(self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
             except Exception as exc:
                 raise RuntimeError(f"法律知识库加载失败：{exc}") from exc
-            self._knowledge_retriever = ContractKnowledgeRetriever(vector_store)
+            self._knowledge_retriever = ContractKnowledgeRetriever(vector_store, retrieval_config=self.retrieval_config)
         return self._knowledge_retriever
+
+    def _prompt(self, name: str):
+        from contract_agent.constants import prompts
+
+        return getattr(prompts, name)
 
     def _latest_user_message(self, payload: ChatRequest) -> str:
         for message in reversed(payload.messages):

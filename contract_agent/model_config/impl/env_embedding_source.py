@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from contract_agent.model_config.interface import ModelEndpointConfig, ModelRole
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import Settings, settings
 
 
 class EnvironmentEmbeddingConfigSource:
+    def __init__(self, runtime_settings: Settings = settings) -> None:
+        self.settings = runtime_settings
+
     def load(self) -> ModelEndpointConfig:
         return ModelEndpointConfig(
             role=ModelRole.EMBEDDING,
-            provider=settings.embedding_provider,
-            base_url=settings.embedding_base_url or "",
-            api_key=settings.embedding_api_key or "",
-            model=settings.embedding_model,
+            provider=self.settings.embedding_provider,
+            base_url=self.settings.embedding_base_url or "",
+            api_key=self.settings.embedding_api_key or "",
+            model=self.settings.embedding_model,
         )

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
-from langchain_community.vectorstores import FAISS
-from langchain_core.documents import Document
-
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import Settings, settings, settings_snapshot
 from contract_agent.provider.client import get_embeddings
+
+if TYPE_CHECKING:
+    from langchain_core.documents import Document
 
 
 class VectorStoreLike(Protocol):
@@ -17,12 +17,13 @@ class VectorStoreLike(Protocol):
         ...
 
 
-def _vector_backend() -> str:
-    return (settings.vector_backend or "faiss").strip().lower()
+def _vector_backend(runtime_settings: Settings | None = None) -> str:
+    source = runtime_settings or settings_snapshot()
+    return (source.vector_backend or "faiss").strip().lower()
 
 
-def _is_milvus_backend() -> bool:
-    return _vector_backend() == "milvus"
+def _is_milvus_backend(runtime_settings: Settings | None = None) -> bool:
+    return _vector_backend(runtime_settings) == "milvus"
 
 
 def _ensure_numpy_compat_for_pymilvus() -> None:
@@ -50,7 +51,7 @@ def _sanitize_metadata_for_milvus(metadata: dict) -> dict[str, str]:
     return sanitized
 
 
-def _build_milvus_store(documents: list[Document]):
+def _build_milvus_store(documents: list[Document], runtime_settings: Settings):
     _ensure_numpy_compat_for_pymilvus()
     try:
         from langchain_community.vectorstores import Milvus
@@ -71,41 +72,45 @@ def _build_milvus_store(documents: list[Document]):
     if not texts:
         return Milvus(
             embedding_function=embeddings,
-            connection_args={"uri": settings.milvus_uri},
-            collection_name=settings.milvus_collection_name,
-            consistency_level=settings.milvus_consistency_level,
+            connection_args={"uri": runtime_settings.milvus_uri},
+            collection_name=runtime_settings.milvus_collection_name,
+            consistency_level=runtime_settings.milvus_consistency_level,
         )
 
     return Milvus.from_texts(
         texts=texts,
         embedding=embeddings,
         metadatas=metadatas,
-        collection_name=settings.milvus_collection_name,
-        connection_args={"uri": settings.milvus_uri},
+        collection_name=runtime_settings.milvus_collection_name,
+        connection_args={"uri": runtime_settings.milvus_uri},
         ids=ids,
-        consistency_level=settings.milvus_consistency_level,
+        consistency_level=runtime_settings.milvus_consistency_level,
         drop_old=True,
     )
 
 
-def build_vector_store(documents: list[Document]):
-    if _is_milvus_backend():
-        return _build_milvus_store(documents)
+def build_vector_store(documents: list[Document], runtime_settings: Settings | None = None):
+    source = runtime_settings or settings_snapshot()
+    if _is_milvus_backend(source):
+        return _build_milvus_store(documents, source)
+
+    from langchain_community.vectorstores import FAISS
 
     embeddings = get_embeddings()
     return FAISS.from_documents(documents, embeddings)
 
 
-def save_vector_store(vector_store, target_dir: str) -> None:
-    if _is_milvus_backend():
+def save_vector_store(vector_store, target_dir: str, runtime_settings: Settings | None = None) -> None:
+    if _is_milvus_backend(runtime_settings):
         return
 
     Path(target_dir).mkdir(parents=True, exist_ok=True)
     vector_store.save_local(target_dir)
 
 
-def load_vector_store(target_dir: str):
-    if _is_milvus_backend():
+def load_vector_store(target_dir: str, runtime_settings: Settings | None = None):
+    source = runtime_settings or settings_snapshot()
+    if _is_milvus_backend(source):
         _ensure_numpy_compat_for_pymilvus()
         try:
             from langchain_community.vectorstores import Milvus
@@ -115,10 +120,12 @@ def load_vector_store(target_dir: str):
         embeddings = get_embeddings()
         return Milvus(
             embedding_function=embeddings,
-            connection_args={"uri": settings.milvus_uri},
-            collection_name=settings.milvus_collection_name,
-            consistency_level=settings.milvus_consistency_level,
+            connection_args={"uri": source.milvus_uri},
+            collection_name=source.milvus_collection_name,
+            consistency_level=source.milvus_consistency_level,
         )
+
+    from langchain_community.vectorstores import FAISS
 
     embeddings = get_embeddings()
     return FAISS.load_local(
@@ -128,14 +135,15 @@ def load_vector_store(target_dir: str):
     )
 
 
-def is_knowledge_base_ready(target_dir: str) -> bool:
-    if _is_milvus_backend():
+def is_knowledge_base_ready(target_dir: str, runtime_settings: Settings | None = None) -> bool:
+    source = runtime_settings or settings_snapshot()
+    if _is_milvus_backend(source):
         _ensure_numpy_compat_for_pymilvus()
         try:
             from pymilvus import connections, utility
 
-            connections.connect(alias="default", uri=settings.milvus_uri)
-            return bool(utility.has_collection(settings.milvus_collection_name))
+            connections.connect(alias="default", uri=source.milvus_uri)
+            return bool(utility.has_collection(source.milvus_collection_name))
         except Exception:
             return False
 

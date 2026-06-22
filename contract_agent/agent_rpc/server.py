@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import grpc
 
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import Settings, settings_snapshot
 from contract_agent.schemas.chat import ChatRequest
 from contract_agent.schemas.review import ReviewRequest
 
@@ -27,7 +27,8 @@ except Exception as exc:  # pragma: no cover
 
 
 class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
-    def __init__(self) -> None:
+    def __init__(self, runtime_settings: Settings | None = None) -> None:
+        self.settings = runtime_settings or settings_snapshot()
         self.review_service: "ReviewService | None" = None
         self.chat_service: "ChatService | None" = None
         self.contract_editor: "ContractEditor | None" = None
@@ -37,14 +38,14 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         if self.review_service is None:
             from contract_agent.services.review_service import ReviewService
 
-            self.review_service = ReviewService()
+            self.review_service = ReviewService(runtime_settings=self.settings)
         return self.review_service
 
     def _get_chat_service(self) -> "ChatService":
         if self.chat_service is None:
             from contract_agent.services.chat_service import ChatService
 
-            self.chat_service = ChatService()
+            self.chat_service = ChatService(runtime_settings=self.settings)
         return self.chat_service
 
     def Health(self, request, context):
@@ -135,12 +136,12 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
     def Redraft(self, request, context):
         try:
             accepted_issues = json.loads(request.accepted_issues_json)
-            if not settings.chat_api_key:
-                raise RuntimeError("QWEN_API_KEY 未配置，无法生成合同修订稿。")
+            if not self.settings.chat_api_key:
+                raise RuntimeError("CHAT_API_KEY 或 LLM_API_KEY 未配置，无法生成合同修订稿。QWEN_API_KEY 仍可作为兼容别名。")
             if self.contract_editor is None:
                 from contract_agent.agents.editor import ContractEditor
 
-                self.contract_editor = ContractEditor()
+                self.contract_editor = ContractEditor(runtime_settings=self.settings)
             editor = self.contract_editor
             revised = editor.redraft_contract(
                 contract_text=request.contract_text,
@@ -172,7 +173,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         try:
             config = MultiAgentConfig()
             gateway = GatewayRouter(config)
-            memory = MemoryManager(config)
+            memory = MemoryManager(config, runtime_settings=self.settings)
             publisher = EventPublisher()
 
             contract_text = request.contract_text or ""
@@ -189,7 +190,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                     team="review",
                     status=PipelineStatus.PENDING,
                 )
-                single = SingleAgentHandler()
+                single = SingleAgentHandler(runtime_settings=self.settings)
                 state, result = single.run_review(
                     state,
                     contract_text=contract_text,
@@ -289,7 +290,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             config = MultiAgentConfig()
             gateway = GatewayRouter(config)
             supervisor = SupervisorAgent(config)
-            memory = MemoryManager(config)
+            memory = MemoryManager(config, runtime_settings=self.settings)
 
             for agent_id, agent_fn in [
                 ("parser", parser_agent),
@@ -312,7 +313,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                     team="review",
                     status=PipelineStatus.PENDING,
                 )
-                single = SingleAgentHandler()
+                single = SingleAgentHandler(runtime_settings=self.settings)
                 state, result = single.run_review(state, contract_text=contract_text, contract_type=request.contract_type, our_side=request.our_side)
                 yield agent_pb2.ChatStreamResponse(
                     event="pipeline_completed",
@@ -437,7 +438,6 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             from contract_agent.schemas.knowledge import KnowledgeChunk
             from contract_agent.knowledge.rag.knowledge_documents import build_knowledge_documents
             from contract_agent.knowledge.rag.vector_store import load_vector_store, save_vector_store, build_vector_store
-            from contract_agent.runtime.config import settings
 
             chunk = KnowledgeChunk(
                 chunk_id=request.doc_id,
@@ -447,18 +447,18 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                 text=request.text,
                 source_path=f"template/{request.source_type}",
             )
-            repo = KnowledgeChunkRepository()
+            repo = KnowledgeChunkRepository(runtime_settings=self.settings)
             repo.upsert_chunks([chunk], version="template")
 
             documents = build_knowledge_documents([chunk])
 
             with self._embed_lock:
                 try:
-                    vector_store = load_vector_store(settings.knowledge_vector_store_dir)
+                    vector_store = load_vector_store(self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
                     vector_store.add_documents(documents)
                 except Exception:
-                    vector_store = build_vector_store(documents)
-                save_vector_store(vector_store, settings.knowledge_vector_store_dir)
+                    vector_store = build_vector_store(documents, runtime_settings=self.settings)
+                save_vector_store(vector_store, self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
 
             return agent_pb2.JsonResponse(code=200, json=json.dumps({"status": "ok", "doc_id": request.doc_id}))
         except Exception as exc:

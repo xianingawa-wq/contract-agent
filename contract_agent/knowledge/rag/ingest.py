@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import Settings, settings_snapshot
 from contract_agent.knowledge.repository import KnowledgeChunkRepository
 from contract_agent.knowledge.rag.knowledge_documents import build_knowledge_documents
 from contract_agent.knowledge.rag.legal_chunker import LegalKnowledgeChunker
@@ -14,7 +14,8 @@ from contract_agent.schemas.knowledge import KnowledgeChunk
 
 
 class KnowledgeIngestor:
-    def __init__(self) -> None:
+    def __init__(self, runtime_settings: Settings | None = None) -> None:
+        self.settings = runtime_settings or settings_snapshot()
         self.legal_chunker = LegalKnowledgeChunker()
 
     def ingest_laws(
@@ -40,8 +41,8 @@ class KnowledgeIngestor:
 
         self._write_manifest(chunks, manifest_path)
         documents = build_knowledge_documents(chunks)
-        vector_store = build_vector_store(documents)
-        save_vector_store(vector_store, output_dir)
+        vector_store = build_vector_store(documents, runtime_settings=self.settings)
+        save_vector_store(vector_store, output_dir, runtime_settings=self.settings)
 
         metadata_rows = self._persist_chunk_metadata(chunks)
         return {
@@ -50,7 +51,7 @@ class KnowledgeIngestor:
             "metadata_rows": metadata_rows,
             "manifest_path": manifest_path,
             "vector_store_dir": output_dir,
-            "vector_backend": settings.vector_backend,
+            "vector_backend": self.settings.vector_backend,
         }
 
     def _write_manifest(self, chunks: list[KnowledgeChunk], manifest_path: str) -> None:
@@ -61,10 +62,10 @@ class KnowledgeIngestor:
                 handle.write(json.dumps(chunk.model_dump(), ensure_ascii=False) + "\n")
 
     def _persist_chunk_metadata(self, chunks: list[KnowledgeChunk]) -> int:
-        if not settings.postgres_dsn:
+        if not self.settings.postgres_dsn:
             return 0
         version = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        repository = KnowledgeChunkRepository()
+        repository = KnowledgeChunkRepository(runtime_settings=self.settings)
         return repository.upsert_chunks(chunks, version=version)
 
 
