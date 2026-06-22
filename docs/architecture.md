@@ -104,6 +104,7 @@ gRPC 协议定义位于 `contract_agent/agent_rpc/proto/agent.proto`，生成代
 | | uvicorn | 0.35.0 | ASGI 服务器 | 🟡 辅助 |
 | | grpcio / grpcio-tools | 1.66.2 | gRPC 服务端和代码生成 | 🔴 核心 |
 | **数据** | sqlalchemy | 2.0.43 | ORM | 🔴 核心 |
+| | pydantic | 2.11.7 | Schema、配置与接口模型 | 🔴 核心 |
 | | alembic | 1.16.5 | 数据库迁移（未启用） | 🟢 预留 |
 | | psycopg[binary] | 3.2.9 | PostgreSQL 驱动 | 🔴 核心 |
 | | pymilvus | 2.5.8 | Milvus 向量数据库客户端 | 🟡 可选 |
@@ -1531,13 +1532,20 @@ $env:VECTOR_BACKEND = "faiss"  # 不需要 Milvus
 
 ### 15.3 Docker 部署
 
-当前 Dockerfile (`agent_rpc/Dockerfile`) 的改进建议：
+当前 Dockerfile (`agent_rpc/Dockerfile`) 已按 gRPC 服务运行时整理：
 
-- 添加 `.dockerignore`（排除 `__pycache__`, `.git`, `tests/`）
-- 使用 multi-stage build 减少镜像体积
-- 添加 `HEALTHCHECK` 指令
-- 使用非 root 用户运行
-- 不在镜像中生成 protobuf（应预生成并提交）
+- 使用 Python 3.12 slim 作为 builder/runtime 基础镜像
+- builder 阶段基于 `pyproject.toml` 构建 wheel，runtime 阶段安装 wheel
+- `.dockerignore` 排除缓存、虚拟环境、Git 元数据和本地索引二进制
+- runtime 使用非 root 用户 `app`
+- `HEALTHCHECK` 检查 gRPC 端口连通性
+- 镜像不再生成 protobuf，依赖仓库中已提交的 `agent_pb2.py` / `agent_pb2_grpc.py`
+
+本地验证命令：
+
+```bash
+docker build -f contract_agent/agent_rpc/Dockerfile .
+```
 
 ### 15.4 数据库初始化
 
@@ -1559,58 +1567,57 @@ python -m contract_agent.knowledge.rag.ingest
 
 ### 16.1 全局可变 Settings 单例
 
-**位置**: `runtime/config.py:77`
+**位置**: `runtime/config.py`
 
 ```python
-settings = Settings()  # 模块级全局可变
+settings = load_settings_from_env()  # 模块级全局对象，保持导入绑定稳定
 ```
 
-**影响**: 测试必须手动保存/恢复状态（如 `test_llm_provider.py:53-75`），多租户场景不可行。
+**现状**: 已增加 `settings_snapshot()`、`update_settings()`、`temporary_settings()`，并将 profile 应用改为锁内批量更新，降低并发读到半更新配置的风险。`EnvironmentModelConfigSource`、`ModelProviderService`、`ReviewService`、`ChatService`、`ContractKnowledgeRetriever`、`QwenReranker`、RAG ingest/eval 脚本、runtime database/schema 和 repository 层已优先读取快照或构造注入配置。
 
-**建议**: 迁移到依赖注入（如通过 `ModelProviderService` 的 `config_source` 参数模式）。
+**剩余影响**: `settings` 仍作为模块级全局兼容对象保留，以维持旧调用方导入绑定稳定。新增扩展应优先使用 `Settings` 构造注入、`settings_snapshot()` 入口快照或显式 `dsn` 参数；多租户场景不应直接依赖模块级对象。
 
-### 16.2 测试覆盖率 ~5%
+### 16.2 测试覆盖率与范围
 
-**现状**: 20 个测试文件，约 400 行测试代码，覆盖约 8000 行业务代码。缺少：
-- `ReviewService` 集成测试
-- `ChatService` 流程测试
-- `GatewayRouter` 路由逻辑测试
-- `SupervisorAgent` ReAct 循环测试
-- RAG 检索端到端测试
+**现状**: 当前测试套件包含 69 个 unittest 用例，覆盖规则审查、CLI、配置、Provider、Rerank、持久化边界、schema 初始化、审计日志、服务配置注入、RAG eval 配置注入、Gateway 路由、Supervisor ReAct 循环、RAG 检索链路、gRPC servicer 直接调用和包结构约束。
+
+**剩余缺口**:
+- 依赖真实 Milvus/DashScope/PostgreSQL/Redis 的跨服务集成测试
+- gRPC 网络端口级启动、健康检查和流式 RPC 冒烟测试
 
 ### 16.3 空的 `__init__.py`
 
-几乎所有 `__init__.py` 为空（或极简），缺乏显式 re-export：
-- 用户被迫写 `from contract_agent.provider.interface import LLMProvider` 而非 `from contract_agent.provider import LLMProvider`
-- 内部包的重构不影响外部用户
+已为 `provider`、`model_config`、`runtime`、`memory`、`knowledge`、`review`、`services`、`agents`、`schemas`、`knowledge.rag.rerank` 等关键扩展包补充显式 re-export；其中重依赖包使用懒导出，避免导入公共 API 时拉起 LangChain、Redis、SQLAlchemy 等重依赖。
+
+**剩余建议**: 后续新增模块时继续维护稳定公共入口，不暴露 `impl` 私有实现。
 
 ### 16.4 重复依赖声明
 
-`requirements.txt` 和 `pyproject.toml` 存在重复，且不一致（`requirements.txt` 缺少 `redis`）。
+`requirements.txt` 和 `pyproject.toml` 存在重复声明。`redis==5.0.8` 已补齐到 `requirements.txt`，并增加依赖一致性测试防止再次遗漏。
 
-### 16.5 缺少 CI/CD
+### 16.5 CI/CD
 
-无 lint、type check、自动化测试流水线。
+已新增 `.github/workflows/ci.yml`，包含 Python 3.12 下的依赖安装、unittest 全量测试、compileall 编译检查和 gRPC Docker 镜像构建。
 
-### 16.6 Dockerfile 改进空间
+### 16.6 Dockerfile
 
-无 `.dockerignore`，无 multi-stage build，无健康检查。
+已新增 `.dockerignore`，Dockerfile 已改为 multi-stage build，runtime 使用非 root 用户并包含 gRPC 端口健康检查。
 
 ### 16.7 缺少 `.env.example`
 
-新开发者没有配置模板，只能从 `runtime/config.py` 的默认值反推。
+已新增根目录 `.env.example`，覆盖 `LLM_*`、`CHAT_*`、`EMBEDDING_*`、`RERANK_*`、检索、数据库和 gRPC 端口配置。
 
 ### 16.8 错误消息中的旧引用
 
-部分错误消息仍引用 `QWEN_API_KEY`（`review_service.py:133`），而实际配置键已改为 `LLM_API_KEY` / `CHAT_API_KEY`。
+已将用户可见的缺 key 错误消息改为优先提示 `CHAT_API_KEY` / `LLM_API_KEY`，并说明 `QWEN_API_KEY` 仅作为兼容别名。
 
 ### 16.9 Repository 层不一致
 
-`KnowledgeChunkRepository` 存在但 `AgentOutputRecord` 没有对应的 repository（直接在 `WarmLayer` 中使用 session）。
+已新增 `AgentOutputRepository`，`WarmLayer` 改为业务语义薄封装，事务、查询和 ORM 细节集中在 repository。
 
 ### 16.10 线程安全
 
-全局 `settings` 单例在多线程环境（如 gRPC server + ThreadPoolExecutor）中可能产生竞态条件。
+已通过 `RLock`、快照读取、锁内批量更新、服务/RAG 构造注入和 runtime database/schema 显式配置参数缓解 profile 应用期间的半更新风险。剩余风险主要来自旧代码仍可直接修改模块级 `settings` 兼容对象，后续应在新增公共 API 和测试中继续优先使用 `temporary_settings()`、入口级快照或构造注入。
 
 ---
 
