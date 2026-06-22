@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import Settings, settings_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -11,10 +11,13 @@ logger = logging.getLogger(__name__)
 class ColdLayer:
     """Milvus-backed cold layer: historical data for semantic retrieval."""
 
+    def __init__(self, runtime_settings: Settings | None = None) -> None:
+        self.settings = runtime_settings or settings_snapshot()
+
     def is_available(self) -> bool:
         try:
             from contract_agent.knowledge.rag.vector_store import is_knowledge_base_ready
-            return is_knowledge_base_ready(settings.knowledge_vector_store_dir)
+            return is_knowledge_base_ready(self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
         except Exception:
             return False
 
@@ -24,7 +27,7 @@ class ColdLayer:
         try:
             from contract_agent.knowledge.rag.vector_store import load_vector_store
             from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
-            store = load_vector_store(settings.knowledge_vector_store_dir)
+            store = load_vector_store(self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
             retriever = ContractKnowledgeRetriever(store)
             docs = retriever.retrieve_documents(query=query, k=top_k)
             return [

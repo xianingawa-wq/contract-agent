@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-import redis
+from typing import TYPE_CHECKING
 
 from contract_agent.orchestration.config import MultiAgentConfig
 from contract_agent.orchestration.protocol import AgentOutput, PipelineState
+
+if TYPE_CHECKING:
+    import redis
 
 
 class HotLayer:
@@ -15,6 +18,8 @@ class HotLayer:
 
     @property
     def client(self) -> redis.Redis:
+        import redis
+
         if self._client is None:
             self._client = redis.from_url(self.config.redis_url, decode_responses=True)
         return self._client
