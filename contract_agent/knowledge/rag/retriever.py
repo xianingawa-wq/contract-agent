@@ -11,6 +11,7 @@ from langchain_core.documents import Document
 from contract_agent.knowledge.rag.config import RetrievalConfig
 from contract_agent.knowledge.rag.rerank.interface import Reranker
 from contract_agent.knowledge.rag.rerank.factory import create_reranker_service
+from contract_agent.logger.audit import AuditLogger, get_audit_logger
 from contract_agent.runtime.config import Settings
 
 
@@ -26,10 +27,12 @@ class ContractKnowledgeRetriever:
         reranker: Reranker | None = None,
         retrieval_config: RetrievalConfig | None = None,
         runtime_settings: Settings | None = None,
+        audit_logger: AuditLogger | None = None,
     ) -> None:
         self.vector_store = vector_store
         self.retrieval_config = retrieval_config or RetrievalConfig.from_settings(runtime_settings)
         self.reranker = reranker or create_reranker_service().create_reranker()
+        self.audit_logger = (audit_logger or get_audit_logger()).with_prefix("[Knowledge][RAG]", scope="rag")
         self.last_rerank_meta: dict[str, object] = {
             "attempted": False,
             "success": False,
@@ -39,9 +42,10 @@ class ContractKnowledgeRetriever:
         }
 
     def retrieve_documents(self, query: str, k: int = 3) -> list[Document]:
-        target_k = max(1, int(k))
-        candidates, _, _ = self._retrieve_candidates(query=query, target_k=target_k)
-        return candidates
+        with self.audit_logger.span("rag.retrieve", mode="dense", query_length=len(query), k=k):
+            target_k = max(1, int(k))
+            candidates, _, _ = self._retrieve_candidates(query=query, target_k=target_k)
+            return candidates
 
     def retrieve_documents_with_rerank(
         self,
@@ -51,9 +55,10 @@ class ContractKnowledgeRetriever:
         final_k: int | None = None,
         use_rerank: bool | None = None,
     ) -> list[Document]:
-        candidate_k = max(1, int(fetch_k or self.retrieval_config.fetch_k))
-        output_k = max(1, int(final_k or self.retrieval_config.final_k))
-        candidates, top1_agree, candidate_profile = self._retrieve_candidates(query=query, target_k=candidate_k)
+        with self.audit_logger.span("rag.retrieve", mode="rerank", query_length=len(query), fetch_k=fetch_k, final_k=final_k):
+            candidate_k = max(1, int(fetch_k or self.retrieval_config.fetch_k))
+            output_k = max(1, int(final_k or self.retrieval_config.final_k))
+            candidates, top1_agree, candidate_profile = self._retrieve_candidates(query=query, target_k=candidate_k)
 
         base_profile = {
             "dense_retrieval_seconds": candidate_profile.get("dense_retrieval_seconds", 0.0),
@@ -93,7 +98,8 @@ class ContractKnowledgeRetriever:
             return candidates[:output_k]
 
         try:
-            ranked = self.reranker.rerank(query=query, documents=candidates, top_k=output_k)
+            with self.audit_logger.span("rag.rerank", candidate_count=len(candidates), top_k=output_k):
+                ranked = self.reranker.rerank(query=query, documents=candidates, top_k=output_k)
             rerank_profile = _extract_rerank_profile(self.reranker)
             order_changed = _docs_signature(candidates[: len(ranked)]) != _docs_signature(ranked)
             self.last_rerank_meta = {

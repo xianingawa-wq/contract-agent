@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from contract_agent.constants.agent_prompts import supervisor_prompt
+from contract_agent.logger.audit import AuditLogger, get_audit_logger
 from contract_agent.provider.client import get_chat_model
 from contract_agent.orchestration.config import MultiAgentConfig
 from contract_agent.orchestration.protocol import (
@@ -21,15 +22,34 @@ from contract_agent.orchestration.protocol import (
 class SupervisorAgent:
     """ReAct-loop Supervisor that dynamically orchestrates sub-agents."""
 
-    def __init__(self, config: MultiAgentConfig | None = None, llm: Any | None = None) -> None:
+    def __init__(
+        self,
+        config: MultiAgentConfig | None = None,
+        llm: Any | None = None,
+        audit_logger: AuditLogger | None = None,
+    ) -> None:
         self.config = config or MultiAgentConfig()
         self._agents: dict[str, Callable[[dict[str, Any]], AgentOutput]] = {}
         self._llm = llm or get_chat_model()
+        self.audit_logger = (audit_logger or get_audit_logger()).with_prefix(
+            "[Orchestration][Supervisor]",
+            scope="orchestration",
+        )
 
     def register_agent(self, agent_id: str, fn: Callable[[dict[str, Any]], AgentOutput]) -> None:
         self._agents[agent_id] = fn
 
     def run(
+        self,
+        state: PipelineState,
+        initial_input: dict[str, Any],
+        on_event: Callable[[PipelineEvent], None] | None = None,
+    ) -> PipelineState:
+        with self.audit_logger.trace("supervisor", trace_id=state.pipeline_id, pipeline_id=state.pipeline_id):
+            with self.audit_logger.span("supervisor.run", mode=state.mode.value, team=state.team):
+                return self._run_traced(state, initial_input, on_event)
+
+    def _run_traced(
         self,
         state: PipelineState,
         initial_input: dict[str, Any],
@@ -44,20 +64,21 @@ class SupervisorAgent:
             if state.status == PipelineStatus.CANCELLED:
                 break
 
-            accumulated = self._build_accumulated(state.agent_outputs)
+            with self.audit_logger.span("supervisor.round", round=round_num):
+                accumulated = self._build_accumulated(state.agent_outputs)
 
-            decision_prompt = supervisor_prompt.format(
-                contract_type=ctx.get("contract_type", ""),
-                our_side=ctx.get("our_side", "甲方"),
-                contract_text=self._truncate_text(ctx.get("contract_text", "")),
-                accumulated_results=accumulated,
-                round=round_num,
-                max_rounds=self.config.supervisor_max_rounds,
-            )
+                decision_prompt = supervisor_prompt.format(
+                    contract_type=ctx.get("contract_type", ""),
+                    our_side=ctx.get("our_side", "甲方"),
+                    contract_text=self._truncate_text(ctx.get("contract_text", "")),
+                    accumulated_results=accumulated,
+                    round=round_num,
+                    max_rounds=self.config.supervisor_max_rounds,
+                )
 
-            llm_result = self._llm.invoke(decision_prompt)
-            decision = self._parse_supervisor_json(llm_result.content)
-            total_tokens += self._estimate_tokens(llm_result.content)
+                llm_result = self._llm.invoke(decision_prompt)
+                decision = self._parse_supervisor_json(llm_result.content)
+                total_tokens += self._estimate_tokens(llm_result.content)
 
             self._emit(on_event, PipelineEvent(
                 pipeline_id=state.pipeline_id,
@@ -161,7 +182,8 @@ class SupervisorAgent:
 
             for aid, future in futures.items():
                 try:
-                    output = future.result(timeout=timeout)
+                    with self.audit_logger.span("supervisor.agent", agent_id=aid, round=round_num):
+                        output = future.result(timeout=timeout)
                     results[aid] = output
                     self._emit(on_event, PipelineEvent(
                         pipeline_id=state.pipeline_id,

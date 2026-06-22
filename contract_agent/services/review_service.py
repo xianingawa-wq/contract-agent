@@ -38,7 +38,7 @@ class ReviewService:
         self.rule_engine = RuleEngine()
         self._llm_reviewer = None
         self._knowledge_retriever = None
-        self.audit_logger = audit_logger or get_audit_logger()
+        self.audit_logger = (audit_logger or get_audit_logger()).with_prefix("[Service][Review]", scope="review")
 
     def health(self) -> HealthResponse:
         from contract_agent.knowledge.rag.vector_store import is_knowledge_base_ready
@@ -50,12 +50,29 @@ class ReviewService:
         )
 
     def review(self, payload: ReviewRequest) -> ReviewResponse:
-        document = self.parser.parse_text(payload.contract_text)
-        return self._review_document(document=document, contract_type=payload.contract_type, our_side=payload.our_side)
+        with self.audit_logger.trace(
+            "review",
+            entrypoint="text",
+            contract_type=payload.contract_type,
+            our_side=payload.our_side,
+            text_length=len(payload.contract_text),
+        ):
+            with self.audit_logger.span("review.parse", parser="text"):
+                document = self.parser.parse_text(payload.contract_text)
+            return self._review_document(document=document, contract_type=payload.contract_type, our_side=payload.our_side)
 
     def review_file(self, file_name: str, content: bytes, contract_type: str | None, our_side: str) -> ReviewResponse:
-        document = self.parser.parse_bytes(file_name, content)
-        return self._review_document(document=document, contract_type=contract_type, our_side=our_side)
+        with self.audit_logger.trace(
+            "review",
+            entrypoint="file",
+            contract_type=contract_type,
+            our_side=our_side,
+            file_name=file_name,
+            content_bytes=len(content),
+        ):
+            with self.audit_logger.span("review.parse", parser="file", file_name=file_name):
+                document = self.parser.parse_bytes(file_name, content)
+            return self._review_document(document=document, contract_type=contract_type, our_side=our_side)
 
     def parse_file(self, file_name: str, content: bytes):
         return self.parser.parse_bytes(file_name, content)
@@ -70,7 +87,8 @@ class ReviewService:
 
     def _review_document(self, document, contract_type: str | None, our_side: str) -> ReviewResponse:
         contract_text = document.raw_text
-        detected_contract_type = contract_type or self.classifier.classify(contract_text)
+        with self.audit_logger.span("review.classify"):
+            detected_contract_type = contract_type or self.classifier.classify(contract_text)
         self.audit_logger.emit(
             "review.started",
             contract_type=detected_contract_type or self.settings.default_contract_type,
@@ -82,25 +100,30 @@ class ReviewService:
         try:
             trace = TokenTrace()
             trace.add_input("contract_text", contract_text)
-            llm_reviewer = self._require_llm_reviewer()
-            knowledge_retriever = self._require_knowledge_retriever()
-            extracted_fields = self.extractor.extract(contract_text)
-            risks = self.rule_engine.check(detected_contract_type, document)
+            with self.audit_logger.span("review.dependencies"):
+                llm_reviewer = self._require_llm_reviewer()
+                knowledge_retriever = self._require_knowledge_retriever()
+            with self.audit_logger.span("review.extract"):
+                extracted_fields = self.extractor.extract(contract_text)
+            with self.audit_logger.span("review.rules"):
+                risks = self.rule_engine.check(detected_contract_type, document)
             self.audit_logger.emit(
                 "review.rules.completed",
                 contract_type=detected_contract_type or self.settings.default_contract_type,
                 risk_count=len(risks),
             )
             risks = self._apply_party_context(risks, our_side)
-            risks = self._enrich_risks(
-                risks,
-                document,
-                detected_contract_type,
-                llm_reviewer,
-                knowledge_retriever,
-                token_trace=trace,
-            )
-            report = self._build_report(risks, detected_contract_type, document.metadata.title or document.metadata.file_name)
+            with self.audit_logger.span("review.enrich", risk_count=len(risks)):
+                risks = self._enrich_risks(
+                    risks,
+                    document,
+                    detected_contract_type,
+                    llm_reviewer,
+                    knowledge_retriever,
+                    token_trace=trace,
+                )
+            with self.audit_logger.span("review.report", risk_count=len(risks)):
+                report = self._build_report(risks, detected_contract_type, document.metadata.title or document.metadata.file_name)
             trace_summary = trace.summary()
 
             response = ReviewResponse(
@@ -169,7 +192,11 @@ class ReviewService:
                 vector_store = load_vector_store(self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
             except Exception as exc:
                 raise RuntimeError(f"法律知识库加载失败：{exc}") from exc
-            self._knowledge_retriever = ContractKnowledgeRetriever(vector_store, retrieval_config=self.retrieval_config)
+            self._knowledge_retriever = ContractKnowledgeRetriever(
+                vector_store,
+                retrieval_config=self.retrieval_config,
+                audit_logger=self.audit_logger,
+            )
         return self._knowledge_retriever
 
     def _apply_party_context(self, risks: list, our_side: str) -> list:

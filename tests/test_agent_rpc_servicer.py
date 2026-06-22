@@ -1,7 +1,11 @@
 import unittest
+import json
+import tempfile
+from pathlib import Path
 
 from contract_agent.agent_rpc import agent_pb2
 from contract_agent.agent_rpc.server import AgentRpcServicer
+from contract_agent.logger.audit import AuditLogger
 from contract_agent.runtime.config import Settings
 from contract_agent.schemas.review import HealthResponse
 
@@ -37,6 +41,21 @@ class AgentRpcServicerTests(unittest.TestCase):
 
         self.assertEqual(response.code, 503)
         self.assertIn("CHAT_API_KEY 或 LLM_API_KEY 未配置", response.error)
+
+    def test_health_writes_rpc_trace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            logger = AuditLogger(Path(tmp) / "trace.jsonl")
+            servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"), audit_logger=logger)
+            servicer.review_service = FakeReviewService()  # type: ignore[assignment]
+
+            servicer.Health(agent_pb2.HealthRequest(), None)
+            records = [json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()]
+
+        self.assertEqual(records[0]["event"], "trace.started")
+        self.assertEqual(records[0]["operation"], "grpc.Health")
+        self.assertEqual(records[0]["prefix"], "[RPC]")
+        self.assertEqual(records[-1]["event"], "trace.completed")
+        self.assertEqual(len({record.get("trace_id") for record in records}), 1)
 
 
 if __name__ == "__main__":

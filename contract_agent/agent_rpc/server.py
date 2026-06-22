@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import grpc
 
+from contract_agent.logger.audit import AuditLogger, get_audit_logger
 from contract_agent.runtime.config import Settings, settings_snapshot
 from contract_agent.schemas.chat import ChatRequest
 from contract_agent.schemas.review import ReviewRequest
@@ -27,8 +28,10 @@ except Exception as exc:  # pragma: no cover
 
 
 class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
-    def __init__(self, runtime_settings: Settings | None = None) -> None:
+    def __init__(self, runtime_settings: Settings | None = None, audit_logger: AuditLogger | None = None) -> None:
         self.settings = runtime_settings or settings_snapshot()
+        self.base_audit_logger = audit_logger or get_audit_logger()
+        self.audit_logger = self.base_audit_logger.with_prefix("[RPC]", scope="rpc")
         self.review_service: "ReviewService | None" = None
         self.chat_service: "ChatService | None" = None
         self.contract_editor: "ContractEditor | None" = None
@@ -38,75 +41,88 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         if self.review_service is None:
             from contract_agent.services.review_service import ReviewService
 
-            self.review_service = ReviewService(runtime_settings=self.settings)
+            self.review_service = ReviewService(runtime_settings=self.settings, audit_logger=self.base_audit_logger)
         return self.review_service
 
     def _get_chat_service(self) -> "ChatService":
         if self.chat_service is None:
             from contract_agent.services.chat_service import ChatService
 
-            self.chat_service = ChatService(runtime_settings=self.settings)
+            self.chat_service = ChatService(runtime_settings=self.settings, audit_logger=self.base_audit_logger)
         return self.chat_service
 
     def Health(self, request, context):
-        health = self._get_review_service().health()
-        return agent_pb2.HealthResponse(
-            status=health.status,
-            llm_configured=health.llm_configured,
-            knowledge_base_ready=health.knowledge_base_ready,
-            version="agent-python-1.0",
-            capabilities=["health", "parse", "review", "chat", "redraft", "embed"],
-        )
+        with self.audit_logger.trace("grpc.Health"):
+            health = self._get_review_service().health()
+            return agent_pb2.HealthResponse(
+                status=health.status,
+                llm_configured=health.llm_configured,
+                knowledge_base_ready=health.knowledge_base_ready,
+                version="agent-python-1.0",
+                capabilities=["health", "parse", "review", "chat", "redraft", "embed"],
+            )
 
     def ParseFile(self, request, context):
-        try:
-            doc = self._get_review_service().parse_file(request.file_name, request.content)
-            payload = {"document": doc.model_dump(mode="json")}
-            return agent_pb2.JsonResponse(code=200, json=json.dumps(payload, ensure_ascii=False))
-        except ValueError as exc:
-            return agent_pb2.JsonResponse(code=400, error=str(exc))
-        except RuntimeError as exc:
-            return agent_pb2.JsonResponse(code=503, error=str(exc))
-        except Exception as exc:
-            return agent_pb2.JsonResponse(code=500, error=f"unexpected error: {exc}")
+        with self.audit_logger.trace("grpc.ParseFile", file_name=request.file_name, content_bytes=len(request.content)):
+            try:
+                doc = self._get_review_service().parse_file(request.file_name, request.content)
+                payload = {"document": doc.model_dump(mode="json")}
+                return agent_pb2.JsonResponse(code=200, json=json.dumps(payload, ensure_ascii=False))
+            except ValueError as exc:
+                self._emit_rpc_error("ParseFile", 400, exc)
+                return agent_pb2.JsonResponse(code=400, error=str(exc))
+            except RuntimeError as exc:
+                self._emit_rpc_error("ParseFile", 503, exc)
+                return agent_pb2.JsonResponse(code=503, error=str(exc))
+            except Exception as exc:
+                self._emit_rpc_error("ParseFile", 500, exc)
+                return agent_pb2.JsonResponse(code=500, error=f"unexpected error: {exc}")
 
     def Review(self, request, context):
-        try:
-            if request.HasField("contract_text"):
-                result = self._get_review_service().review(
-                    ReviewRequest(
-                        contract_text=request.contract_text,
+        with self.audit_logger.trace("grpc.Review", contract_type=request.contract_type or None):
+            try:
+                if request.HasField("contract_text"):
+                    result = self._get_review_service().review(
+                        ReviewRequest(
+                            contract_text=request.contract_text,
+                            contract_type=request.contract_type or None,
+                            our_side=request.our_side or "甲方",
+                        )
+                    )
+                else:
+                    result = self._get_review_service().review_file(
+                        file_name=request.file.file_name,
+                        content=request.file.content,
                         contract_type=request.contract_type or None,
                         our_side=request.our_side or "甲方",
                     )
-                )
-            else:
-                result = self._get_review_service().review_file(
-                    file_name=request.file.file_name,
-                    content=request.file.content,
-                    contract_type=request.contract_type or None,
-                    our_side=request.our_side or "甲方",
-                )
-            return agent_pb2.JsonResponse(code=200, json=result.model_dump_json())
-        except ValueError as exc:
-            return agent_pb2.JsonResponse(code=400, error=str(exc))
-        except RuntimeError as exc:
-            return agent_pb2.JsonResponse(code=503, error=str(exc))
-        except Exception as exc:
-            return agent_pb2.JsonResponse(code=500, error=f"unexpected error: {exc}")
+                return agent_pb2.JsonResponse(code=200, json=result.model_dump_json())
+            except ValueError as exc:
+                self._emit_rpc_error("Review", 400, exc)
+                return agent_pb2.JsonResponse(code=400, error=str(exc))
+            except RuntimeError as exc:
+                self._emit_rpc_error("Review", 503, exc)
+                return agent_pb2.JsonResponse(code=503, error=str(exc))
+            except Exception as exc:
+                self._emit_rpc_error("Review", 500, exc)
+                return agent_pb2.JsonResponse(code=500, error=f"unexpected error: {exc}")
 
     def Chat(self, request, context):
-        try:
-            payload = json.loads(request.payload_json)
-            chat_request = ChatRequest.model_validate(payload)
-            result = self._get_chat_service().chat(chat_request)
-            return agent_pb2.JsonResponse(code=200, json=result.model_dump_json())
-        except ValueError as exc:
-            return agent_pb2.JsonResponse(code=400, error=str(exc))
-        except RuntimeError as exc:
-            return agent_pb2.JsonResponse(code=503, error=str(exc))
-        except Exception as exc:
-            return agent_pb2.JsonResponse(code=500, error=f"unexpected error: {exc}")
+        with self.audit_logger.trace("grpc.Chat", payload_bytes=len(request.payload_json)):
+            try:
+                payload = json.loads(request.payload_json)
+                chat_request = ChatRequest.model_validate(payload)
+                result = self._get_chat_service().chat(chat_request)
+                return agent_pb2.JsonResponse(code=200, json=result.model_dump_json())
+            except ValueError as exc:
+                self._emit_rpc_error("Chat", 400, exc)
+                return agent_pb2.JsonResponse(code=400, error=str(exc))
+            except RuntimeError as exc:
+                self._emit_rpc_error("Chat", 503, exc)
+                return agent_pb2.JsonResponse(code=503, error=str(exc))
+            except Exception as exc:
+                self._emit_rpc_error("Chat", 500, exc)
+                return agent_pb2.JsonResponse(code=500, error=f"unexpected error: {exc}")
 
     def ChatStream(self, request, context):
         try:
@@ -134,28 +150,32 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             )
 
     def Redraft(self, request, context):
-        try:
-            accepted_issues = json.loads(request.accepted_issues_json)
-            if not self.settings.chat_api_key:
-                raise RuntimeError("CHAT_API_KEY 或 LLM_API_KEY 未配置，无法生成合同修订稿。QWEN_API_KEY 仍可作为兼容别名。")
-            if self.contract_editor is None:
-                from contract_agent.agents.editor import ContractEditor
+        with self.audit_logger.trace("grpc.Redraft", contract_type=request.contract_type):
+            try:
+                accepted_issues = json.loads(request.accepted_issues_json)
+                if not self.settings.chat_api_key:
+                    raise RuntimeError("CHAT_API_KEY 或 LLM_API_KEY 未配置，无法生成合同修订稿。QWEN_API_KEY 仍可作为兼容别名。")
+                if self.contract_editor is None:
+                    from contract_agent.agents.editor import ContractEditor
 
-                self.contract_editor = ContractEditor(runtime_settings=self.settings)
-            editor = self.contract_editor
-            revised = editor.redraft_contract(
-                contract_text=request.contract_text,
-                contract_type=request.contract_type,
-                our_side=request.our_side,
-                accepted_issues=accepted_issues,
-            )
-            return agent_pb2.JsonResponse(code=200, json=json.dumps({"revised_text": revised}, ensure_ascii=False))
-        except ValueError as exc:
-            return agent_pb2.JsonResponse(code=400, error=str(exc))
-        except RuntimeError as exc:
-            return agent_pb2.JsonResponse(code=503, error=str(exc))
-        except Exception as exc:
-            return agent_pb2.JsonResponse(code=500, error=f"unexpected error: {exc}")
+                    self.contract_editor = ContractEditor(runtime_settings=self.settings)
+                editor = self.contract_editor
+                revised = editor.redraft_contract(
+                    contract_text=request.contract_text,
+                    contract_type=request.contract_type,
+                    our_side=request.our_side,
+                    accepted_issues=accepted_issues,
+                )
+                return agent_pb2.JsonResponse(code=200, json=json.dumps({"revised_text": revised}, ensure_ascii=False))
+            except ValueError as exc:
+                self._emit_rpc_error("Redraft", 400, exc)
+                return agent_pb2.JsonResponse(code=400, error=str(exc))
+            except RuntimeError as exc:
+                self._emit_rpc_error("Redraft", 503, exc)
+                return agent_pb2.JsonResponse(code=503, error=str(exc))
+            except Exception as exc:
+                self._emit_rpc_error("Redraft", 500, exc)
+                return agent_pb2.JsonResponse(code=500, error=f"unexpected error: {exc}")
 
     def ReviewMultiAgent(self, request, context):
         """Multi-agent review with pipeline orchestration."""
@@ -209,7 +229,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             state = gateway.create_pipeline_state(route_resp, contract_id=contract_text[:64] or "unknown")
 
             from contract_agent.orchestration.supervisor import SupervisorAgent
-            supervisor = SupervisorAgent(config)
+            supervisor = SupervisorAgent(config, audit_logger=self.audit_logger)
             for agent_id, agent_fn in [
                 ("parser", parser_agent),
                 ("risk_checker", risk_checker_agent),
@@ -289,7 +309,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         try:
             config = MultiAgentConfig()
             gateway = GatewayRouter(config)
-            supervisor = SupervisorAgent(config)
+            supervisor = SupervisorAgent(config, audit_logger=self.audit_logger)
             memory = MemoryManager(config, runtime_settings=self.settings)
 
             for agent_id, agent_fn in [
@@ -433,36 +453,50 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             )
 
     def EmbedDocument(self, request, context):
-        try:
-            from contract_agent.knowledge.repository import KnowledgeChunkRepository
-            from contract_agent.schemas.knowledge import KnowledgeChunk
-            from contract_agent.knowledge.rag.knowledge_documents import build_knowledge_documents
-            from contract_agent.knowledge.rag.vector_store import load_vector_store, save_vector_store, build_vector_store
+        with self.audit_logger.trace("grpc.EmbedDocument", doc_id=request.doc_id, source_type=request.source_type):
+            try:
+                from contract_agent.knowledge.repository import KnowledgeChunkRepository
+                from contract_agent.schemas.knowledge import KnowledgeChunk
+                from contract_agent.knowledge.rag.knowledge_documents import build_knowledge_documents
+                from contract_agent.knowledge.rag.vector_store import load_vector_store, save_vector_store, build_vector_store
 
-            chunk = KnowledgeChunk(
-                chunk_id=request.doc_id,
-                doc_name=request.title or "template",
-                doc_type="template",
-                title=request.title or "template",
-                text=request.text,
-                source_path=f"template/{request.source_type}",
-            )
-            repo = KnowledgeChunkRepository(runtime_settings=self.settings)
-            repo.upsert_chunks([chunk], version="template")
+                chunk = KnowledgeChunk(
+                    chunk_id=request.doc_id,
+                    doc_name=request.title or "template",
+                    doc_type="template",
+                    title=request.title or "template",
+                    text=request.text,
+                    source_path=f"template/{request.source_type}",
+                )
+                repo = KnowledgeChunkRepository(runtime_settings=self.settings)
+                repo.upsert_chunks([chunk], version="template")
 
-            documents = build_knowledge_documents([chunk])
+                documents = build_knowledge_documents([chunk])
 
-            with self._embed_lock:
-                try:
-                    vector_store = load_vector_store(self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
-                    vector_store.add_documents(documents)
-                except Exception:
-                    vector_store = build_vector_store(documents, runtime_settings=self.settings)
-                save_vector_store(vector_store, self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
+                with self._embed_lock:
+                    try:
+                        vector_store = load_vector_store(
+                            self.settings.knowledge_vector_store_dir,
+                            runtime_settings=self.settings,
+                        )
+                        vector_store.add_documents(documents)
+                    except Exception:
+                        vector_store = build_vector_store(documents, runtime_settings=self.settings)
+                    save_vector_store(vector_store, self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
 
-            return agent_pb2.JsonResponse(code=200, json=json.dumps({"status": "ok", "doc_id": request.doc_id}))
-        except Exception as exc:
-            return agent_pb2.JsonResponse(code=500, error=f"embed failed: {exc}")
+                return agent_pb2.JsonResponse(code=200, json=json.dumps({"status": "ok", "doc_id": request.doc_id}))
+            except Exception as exc:
+                self._emit_rpc_error("EmbedDocument", 500, exc)
+                return agent_pb2.JsonResponse(code=500, error=f"embed failed: {exc}")
+
+    def _emit_rpc_error(self, method: str, code: int, exc: Exception) -> None:
+        self.audit_logger.emit(
+            "grpc.error",
+            method=method,
+            code=code,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
 
 
 def serve() -> None:

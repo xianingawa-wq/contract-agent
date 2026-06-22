@@ -1,5 +1,9 @@
 import unittest
+import json
+import tempfile
+from pathlib import Path
 
+from contract_agent.logger.audit import AuditLogger
 from contract_agent.orchestration.config import MultiAgentConfig
 from contract_agent.orchestration.protocol import AgentMode, AgentOutput, AgentStatus, PipelineState, PipelineStatus
 from contract_agent.orchestration.supervisor import SupervisorAgent
@@ -98,6 +102,38 @@ class SupervisorAgentTests(unittest.TestCase):
         self.assertEqual(result.agent_outputs["missing"].status, AgentStatus.FAILED)
         self.assertEqual(result.agent_outputs["missing"].error_message, "未知 Agent: missing")
         self.assertEqual(result.agent_outputs["supervisor"].status, AgentStatus.COMPLETED)
+
+    def test_supervisor_writes_trace_spans_for_rounds_and_agents(self):
+        llm = FakeSupervisorLlm(
+            [
+                '{"thought":"调用parser","action":"call_agents","agents":["parser"]}',
+                '{"thought":"收尾","action":"finish","final_report":{"summary":"完成","key_findings":[]}}',
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            logger = AuditLogger(Path(tmp) / "trace.jsonl")
+            supervisor = SupervisorAgent(MultiAgentConfig(supervisor_max_rounds=2), llm=llm, audit_logger=logger)
+            supervisor.register_agent(
+                "parser",
+                lambda ctx: AgentOutput(agent_id="parser", status=AgentStatus.COMPLETED, input_summary="parsed"),
+            )
+            state = PipelineState(
+                pipeline_id="pipeline-3",
+                contract_id="contract-3",
+                mode=AgentMode.MULTI_AUTO,
+                team="review",
+                status=PipelineStatus.PENDING,
+            )
+
+            supervisor.run(state, {"contract_text": "合同正文"})
+            records = [json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()]
+
+        span_names = {record.get("span_name") for record in records if record["event"] == "span.completed"}
+        self.assertIn("supervisor.run", span_names)
+        self.assertIn("supervisor.round", span_names)
+        self.assertIn("supervisor.agent", span_names)
+        self.assertIn("[Orchestration][Supervisor]", {record.get("prefix") for record in records})
 
 
 if __name__ == "__main__":
