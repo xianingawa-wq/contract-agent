@@ -1,8 +1,7 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any, Callable
 
 from contract_agent.orchestration.protocol import PipelineEvent
@@ -18,8 +17,8 @@ class EventPublisher:
     - In-memory callback (for testing/orchestrator)
     """
 
-    def __init__(self, redis_url: str | None = None) -> None:
-        self._redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    def __init__(self, redis_url: str = "redis://localhost:6379/0") -> None:
+        self._redis_url = redis_url
         self._redis = None
         self._callbacks: list[Callable[[PipelineEvent], None]] = []
 
@@ -37,6 +36,7 @@ class EventPublisher:
     def _publish_redis(self, event: PipelineEvent) -> None:
         try:
             import redis as rd
+
             if self._redis is None:
                 self._redis = rd.from_url(self._redis_url)
             channel = f"pipeline:{event.pipeline_id}:events"

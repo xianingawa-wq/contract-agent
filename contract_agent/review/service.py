@@ -7,8 +7,7 @@ from contract_agent.review.rules import normalize_side, run_rules
 
 
 class LLMEnricher(Protocol):
-    def enrich(self, request: ReviewRequest, findings: list[Finding]) -> list[Finding] | None:
-        ...
+    def enrich(self, request: ReviewRequest, findings: list[Finding]) -> list[Finding] | None: ...
 
 
 def review_text(
@@ -18,7 +17,9 @@ def review_text(
     our_side: str = "甲方",
     llm_client: LLMEnricher | None = None,
 ) -> ReviewReport:
-    request = ReviewRequest(text=text, contract_type=contract_type, our_side=normalize_side(our_side))
+    request = ReviewRequest(
+        text=text, contract_type=contract_type, our_side=normalize_side(our_side)
+    )
     findings = run_rules(request)
     warnings: list[str] = []
     llm_used = False

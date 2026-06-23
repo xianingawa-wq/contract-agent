@@ -5,10 +5,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
-from contract_agent.config import PROJECT_ROOT
+from contract_agent.config.config_runtime import PROJECT_ROOT
 
 
-DEFAULT_MODEL_PROFILE_PATH = PROJECT_ROOT / ".run" / "cli_profile.json"
+DEFAULT_MODEL_PROFILE_PATH = PROJECT_ROOT / ".run" / "cli_profile.yaml"
 
 
 class ModelRole(StrEnum):
@@ -24,6 +24,7 @@ class ModelEndpointConfig:
     base_url: str
     api_key: str
     model: str
+    endpoint: str | None = None
 
     @property
     def api_key_configured(self) -> bool:
@@ -36,6 +37,7 @@ class ModelEndpointConfig:
             base_url=self.base_url,
             api_key=self.api_key,
             model=self.model,
+            endpoint=self.endpoint,
         )
 
 
@@ -65,24 +67,22 @@ class ModelProviderOption:
 
 DEFAULT_PROVIDER_OPTIONS = (
     ModelProviderOption("1", "OpenAI", "openai", "https://api.openai.com/v1"),
-    ModelProviderOption("2", "DashScope / Qwen", "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+    ModelProviderOption(
+        "2", "DashScope / Qwen", "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    ),
     ModelProviderOption("3", "Custom OpenAI-compatible URL", "openai_compatible", ""),
 )
 
 
 class ModelConfigSource(Protocol):
-    def load(self) -> ModelRuntimeConfig:
-        ...
+    def load(self) -> ModelRuntimeConfig: ...
 
 
 class ModelProfileStore(Protocol):
     path: Path
 
-    def exists(self) -> bool:
-        ...
+    def exists(self) -> bool: ...
 
-    def load(self) -> ModelRuntimeConfig:
-        ...
+    def load(self) -> ModelRuntimeConfig: ...
 
-    def save(self, config: ModelRuntimeConfig) -> None:
-        ...
+    def save(self, config: ModelRuntimeConfig) -> None: ...

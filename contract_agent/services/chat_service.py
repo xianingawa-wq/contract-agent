@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterator, TYPE_CHECKING
 
 from contract_agent.logger.audit import AuditLogger, get_audit_logger
-from contract_agent.config import Settings, settings_snapshot
+from contract_agent.config import ModelRuntimeConfig, Settings, settings_snapshot
 from contract_agent.provider.client import get_chat_model
 from contract_agent.config import RetrievalConfig
 from contract_agent.schemas.chat import ChatRequest, ChatResponse, ChatSearchResult
@@ -33,13 +33,23 @@ class ChatService:
     def __init__(
         self,
         runtime_settings: Settings | None = None,
+        model_config: ModelRuntimeConfig | None = None,
         review_service: ReviewService | None = None,
         audit_logger: AuditLogger | None = None,
     ) -> None:
         self.settings = runtime_settings or settings_snapshot()
+        self.model_config = model_config
+        self.stream_max_seconds = self.settings.stream_max_seconds
+        self.stream_max_chars = self.settings.stream_max_chars
         self.retrieval_config = RetrievalConfig.from_settings(self.settings)
-        self.audit_logger = (audit_logger or get_audit_logger()).with_prefix("[Service][Chat]", scope="chat")
-        self.review_service = review_service or ReviewService(runtime_settings=self.settings, audit_logger=self.audit_logger)
+        self.audit_logger = (audit_logger or get_audit_logger()).with_prefix(
+            "[Service][Chat]", scope="chat"
+        )
+        self.review_service = review_service or ReviewService(
+            runtime_settings=self.settings,
+            model_config=self.model_config,
+            audit_logger=self.audit_logger,
+        )
         self.llm = None
         self._knowledge_retriever = None
         self._action_registry = ActionRegistry()
@@ -55,7 +65,9 @@ class ChatService:
         return ChatResponse.model_validate(final_payload)
 
     def chat_stream(self, payload: ChatRequest) -> Iterator[dict[str, Any]]:
-        with self.audit_logger.trace("chat", message_count=len(payload.messages), has_contract=bool(payload.contract_text)):
+        with self.audit_logger.trace(
+            "chat", message_count=len(payload.messages), has_contract=bool(payload.contract_text)
+        ):
             with self.audit_logger.span("chat.route"):
                 intent_payload = self._route_intent(payload)
                 intent = intent_payload.get("intent", "chat")
@@ -64,7 +76,10 @@ class ChatService:
             if intent == "review":
                 with self.audit_logger.span("chat.review", query_length=len(query)):
                     response = self._handle_review(payload, query)
-                yield {"event": "start", "data": {"intent": response.intent, "tool_used": response.tool_used}}
+                yield {
+                    "event": "start",
+                    "data": {"intent": response.intent, "tool_used": response.tool_used},
+                }
                 for delta in self._chunk_text(response.answer):
                     yield {"event": "delta", "data": {"delta": delta}}
                 yield {"event": "done", "data": response.model_dump(mode="json")}
@@ -104,7 +119,9 @@ class ChatService:
             review_result=review_result,
         )
 
-    def _handle_react_stream(self, payload: ChatRequest, intent: str, query: str) -> Iterator[dict[str, Any]]:
+    def _handle_react_stream(
+        self, payload: ChatRequest, intent: str, query: str
+    ) -> Iterator[dict[str, Any]]:
         llm = self._require_llm()
         max_steps = max(1, self.settings.react_max_steps)
         action_context = ActionContext(
@@ -140,7 +157,9 @@ class ChatService:
 
             thought = str(plan.get("thought_summary") or "").strip() or f"继续分析第 {step} 步。"
             action = str(plan.get("action") or "").strip() or "finish"
-            action_input = plan.get("action_input") if isinstance(plan.get("action_input"), dict) else {}
+            action_input = (
+                plan.get("action_input") if isinstance(plan.get("action_input"), dict) else {}
+            )
             if action == "query_knowledge" and not action_input.get("query"):
                 action_input = {"query": query}
             final_answer_candidate = str(plan.get("final_answer") or "").strip()
@@ -156,7 +175,11 @@ class ChatService:
 
             if action == "finish":
                 observation = "规划器判断信息已充分，进入最终回答。"
-                trace_steps.append(ReactTraceStep(step=step, thought=thought, action="finish", observation=observation))
+                trace_steps.append(
+                    ReactTraceStep(
+                        step=step, thought=thought, action="finish", observation=observation
+                    )
+                )
                 final_answer = final_answer_candidate
                 break
 
@@ -174,7 +197,11 @@ class ChatService:
                 result = self._action_registry.execute(action, action_context, action_input)
             collected_references.extend(result.references)
             latest_observation = result.summary
-            trace_steps.append(ReactTraceStep(step=step, thought=thought, action=action, observation=result.summary))
+            trace_steps.append(
+                ReactTraceStep(
+                    step=step, thought=thought, action=action, observation=result.summary
+                )
+            )
             yield {
                 "event": "observation",
                 "data": {
@@ -182,7 +209,10 @@ class ChatService:
                     "action": action,
                     "success": result.success,
                     "summary": result.summary,
-                    "refs": [item.model_dump(mode="json") for item in references_to_search_results(result.references)],
+                    "refs": [
+                        item.model_dump(mode="json")
+                        for item in references_to_search_results(result.references)
+                    ],
                     "error_code": result.error_code,
                     "retryable": result.retryable,
                     "failure_type": result.metadata.get("failure_type"),
@@ -190,7 +220,9 @@ class ChatService:
             }
 
         if not final_answer:
-            with self.audit_logger.span("chat.react.synthesize", intent=intent, reference_count=len(collected_references)):
+            with self.audit_logger.span(
+                "chat.react.synthesize", intent=intent, reference_count=len(collected_references)
+            ):
                 final_answer = self._synthesize_react_answer(
                     llm=llm,
                     payload=payload,
@@ -210,7 +242,10 @@ class ChatService:
         stream_started_at = time.monotonic()
         hit_limit = False
         for delta in self._chunk_text(final_answer):
-            if time.monotonic() - stream_started_at >= self.STREAM_MAX_SECONDS or len(answer) >= self.STREAM_MAX_CHARS:
+            if (
+                time.monotonic() - stream_started_at >= self.stream_max_seconds
+                or len(answer) >= self.stream_max_chars
+            ):
                 hit_limit = True
                 break
             answer += delta
@@ -226,7 +261,9 @@ class ChatService:
             tool_used="react_query_knowledge" if used_action else "react",
             answer=answer,
             generated_at=datetime.now(timezone.utc),
-            search_results=references_to_search_results(self._dedupe_references(collected_references)),
+            search_results=references_to_search_results(
+                self._dedupe_references(collected_references)
+            ),
             trace_summary=[step.to_summary_dict() for step in trace_steps],
         )
         yield {"event": "done", "data": response.model_dump(mode="json")}
@@ -356,26 +393,39 @@ class ChatService:
                     return data
             except json.JSONDecodeError:
                 import logging
+
                 logging.getLogger(__name__).warning(
-                    "LLM router returned malformed JSON, falling back to keyword routing. Raw output: %s", raw
+                    "LLM router returned malformed JSON, falling back to keyword routing. Raw output: %s",
+                    raw,
                 )
 
         if self._is_explicit_review_request(latest):
             return {"intent": "review", "query": latest, "reason": "fallback-review"}
         if any(keyword in latest for keyword in ("法条", "依据", "搜索", "检索", "查询")):
             return {"intent": "search", "query": latest, "reason": "fallback-search"}
-        if any(keyword in latest for keyword in ("建议", "怎么改", "如何写", "怎么写", "风险", "解释", "说明")):
+        if any(
+            keyword in latest
+            for keyword in ("建议", "怎么改", "如何写", "怎么写", "风险", "解释", "说明")
+        ):
             return {"intent": "advice", "query": latest, "reason": "fallback-advice"}
         return {"intent": "chat", "query": latest, "reason": "fallback-chat"}
 
     def _parse_react_step_output(self, raw: str, default_query: str) -> dict[str, Any]:
         match = re.search(r"\{.*\}", raw, re.S)
         if not match:
-            return {"thought_summary": "无法解析规划输出，直接给出结论。", "action": "finish", "final_answer": ""}
+            return {
+                "thought_summary": "无法解析规划输出，直接给出结论。",
+                "action": "finish",
+                "final_answer": "",
+            }
         try:
             data = json.loads(match.group(0))
         except json.JSONDecodeError:
-            return {"thought_summary": "规划输出非 JSON，直接给出结论。", "action": "finish", "final_answer": ""}
+            return {
+                "thought_summary": "规划输出非 JSON，直接给出结论。",
+                "action": "finish",
+                "final_answer": "",
+            }
 
         action = str(data.get("action") or "").strip()
         if action not in {"query_knowledge", "finish"}:
@@ -425,10 +475,14 @@ class ChatService:
 
     def _require_llm(self):
         if not self.settings.chat_api_key:
-            raise RuntimeError("CHAT_API_KEY 或 LLM_API_KEY 未配置，无法启用对话功能。QWEN_API_KEY 仍可作为兼容别名。")
+            raise RuntimeError(
+                "CHAT_API_KEY 或 LLM_API_KEY 未配置，无法启用对话功能。QWEN_API_KEY 仍可作为兼容别名。"
+            )
         if self.llm is None:
             try:
-                self.llm = get_chat_model()
+                self.llm = get_chat_model(
+                    model_config=self.model_config, runtime_settings=self.settings
+                )
             except Exception as exc:
                 raise RuntimeError(f"聊天模型初始化失败：{exc}") from exc
         return self.llm
@@ -439,12 +493,18 @@ class ChatService:
                 from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
                 from contract_agent.knowledge.rag.vector_store import load_vector_store
 
-                vector_store = load_vector_store(self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
+                vector_store = load_vector_store(
+                    self.settings.knowledge_vector_store_dir,
+                    runtime_settings=self.settings,
+                    model_config=self.model_config,
+                )
             except Exception as exc:
                 raise RuntimeError(f"法律知识库加载失败：{exc}") from exc
             self._knowledge_retriever = ContractKnowledgeRetriever(
                 vector_store,
                 retrieval_config=self.retrieval_config,
+                runtime_settings=self.settings,
+                model_config=self.model_config,
                 audit_logger=self.audit_logger,
             )
         return self._knowledge_retriever
@@ -467,14 +527,18 @@ class ChatService:
         if payload.contract_text:
             return payload.contract_text
         latest = self._latest_user_message(payload)
-        if len(latest) > 100 and any(keyword in latest for keyword in ("甲方", "乙方", "第一条", "合同")):
+        if len(latest) > 100 and any(
+            keyword in latest for keyword in ("甲方", "乙方", "第一条", "合同")
+        ):
             return latest
         return None
 
     def _to_search_results(self, docs: list[Any]) -> list[ChatSearchResult]:
         return [
             ChatSearchResult(
-                source_title=doc.metadata.get("title") or doc.metadata.get("doc_name") or "未命名知识片段",
+                source_title=doc.metadata.get("title")
+                or doc.metadata.get("doc_name")
+                or "未命名知识片段",
                 article_label=doc.metadata.get("article_label"),
                 snippet=(doc.page_content or "")[:240],
                 source_path=doc.metadata.get("source_path"),

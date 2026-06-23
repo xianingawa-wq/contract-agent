@@ -8,8 +8,8 @@ The project contains the Python agent capabilities for parsing contracts, runnin
 
 - `contract_agent/`: Python package for agent runtime.
 - `contract_agent/interfaces/`: CLI and minimal HTTP/FastAPI entrypoints.
-- `contract_agent/runtime/`: environment-backed settings, database sessions, and schema initialization.
-- `contract_agent/model_config/`: role-based model configuration using `interface -> service -> impl -> factory`.
+- `contract_agent/config/`: YAML runtime configuration, role-based model profiles, and AppContext injection.
+- `contract_agent/runtime/`: database sessions and schema initialization.
 - `contract_agent/agent_rpc/`: gRPC service entrypoint.
 - `contract_agent/review/`: local rule-review facade used by the CLI.
 - `contract_agent/rulesets/`: built-in rule definitions consumed by the rule engine.
@@ -33,7 +33,7 @@ pip install -e .
 contract-agent-grpc
 ```
 
-The default gRPC port is `50051`; override it with `AGENT_GRPC_PORT`.
+The default gRPC port is `50051`; override it in `.run/config.yaml` or, for deployment overlays, with `AGENT_GRPC_PORT`.
 
 Run a local rule-based review without external services:
 
@@ -49,9 +49,9 @@ Open the interactive CLI demo:
 contract-agent demo
 ```
 
-The demo shows a welcome banner, checks whether a local profile exists at `.run/cli_profile.json`, guides first-time setup for separate chat, embedding, and rerank model endpoints, checks the database component, verifies the configured model providers, then opens a small agent console. The setup wizard offers provider presets for OpenAI, DashScope/Qwen, and a custom OpenAI-compatible URL. API keys are saved into the local profile for later CLI runs, while `/config` only reports whether each key is configured. The console currently supports `/help`, `/status`, `/config`, and `/exit`, plus a demo agent reply for normal chat messages.
+The demo shows a welcome banner, checks whether a local profile exists at `.run/cli_profile.yaml`, guides first-time setup for separate chat, embedding, and rerank model endpoints, checks the database component, verifies the configured model providers, then opens a small agent console. The setup wizard offers provider presets for OpenAI, DashScope/Qwen, and a custom OpenAI-compatible URL. API keys are saved into the local YAML profile for later CLI runs, while `/config` only reports whether each key is configured. The console currently supports `/help`, `/status`, `/config`, and `/exit`, plus a demo agent reply for normal chat messages.
 
-Model configuration and provider construction use a consistent package layout:
+Provider and reranker construction use a consistent package layout:
 
 ```text
 interface.py  # public Protocols and dataclasses
@@ -60,7 +60,7 @@ impl/         # concrete implementations
 factory.py    # provider/profile/reranker creation
 ```
 
-The `model_config`, `provider`, and `knowledge.rag.rerank` packages follow this shape. Provider implementations are grouped by vendor: OpenAI code lives under `contract_agent.provider.impl.openai`, and DashScope/Qwen code lives under `contract_agent.provider.impl.dashscope`. Compatibility shims keep older imports working, but new code should depend on the role-based names: `ModelRole`, `ModelEndpointConfig`, `ModelRuntimeConfig`, `ModelProviderFactory`, and `RerankerFactory`.
+The `provider` and `knowledge.rag.rerank` packages follow this shape. Role-based model configuration now lives in `contract_agent.config` as `ModelRole`, `ModelEndpointConfig`, `ModelRuntimeConfig`, YAML profile stores, and `configure_runtime()`. Provider implementations are grouped by vendor: OpenAI code lives under `contract_agent.provider.impl.openai`, and DashScope/Qwen code lives under `contract_agent.provider.impl.dashscope`.
 
 ## Audit Logs
 
@@ -72,7 +72,7 @@ Service-backed review responses include a `trace` object with estimated input, o
 
 ## LLM Configuration
 
-`contract-agent` uses a provider abstraction with an OpenAI-compatible default. Official OpenAI and compatible services can be selected by environment variables:
+`contract-agent` uses a provider abstraction with an OpenAI-compatible default. File-based runtime configuration is YAML, with `.run/config.yaml` as the primary runtime file and `.run/cli_profile.yaml` for CLI model profile overrides. Environment variables are deployment overlays and are read only by `contract_agent.config`.
 
 ```powershell
 $env:LLM_PROVIDER = "openai_compatible"

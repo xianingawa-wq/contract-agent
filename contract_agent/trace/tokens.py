@@ -40,8 +40,12 @@ class TokenTrace:
         return self._add(label=label, direction="output", text=text)
 
     def summary(self) -> TraceSummary:
-        input_tokens = sum(record.estimated_tokens for record in self._records if record.direction == "input")
-        output_tokens = sum(record.estimated_tokens for record in self._records if record.direction == "output")
+        input_tokens = sum(
+            record.estimated_tokens for record in self._records if record.direction == "input"
+        )
+        output_tokens = sum(
+            record.estimated_tokens for record in self._records if record.direction == "output"
+        )
         return TraceSummary(
             estimated_input_tokens=input_tokens,
             estimated_output_tokens=output_tokens,

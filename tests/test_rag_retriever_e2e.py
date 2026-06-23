@@ -82,9 +82,13 @@ class RagRetrieverE2ETests(unittest.TestCase):
             with logger.trace("test.rag"):
                 retriever.retrieve_documents_with_rerank("付款风险")
 
-            records = [json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()]
+            records = [
+                json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()
+            ]
 
-        span_names = {record.get("span_name") for record in records if record["event"] == "span.completed"}
+        span_names = {
+            record.get("span_name") for record in records if record["event"] == "span.completed"
+        }
         self.assertIn("rag.retrieve", span_names)
         self.assertIn("rag.rerank", span_names)
         self.assertEqual(len({record.get("trace_id") for record in records}), 1)

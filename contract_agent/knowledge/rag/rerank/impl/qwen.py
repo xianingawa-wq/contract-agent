@@ -28,8 +28,12 @@ class QwenReranker(Reranker):
         self.model = model or self.settings.rerank_model
         self.api_key = api_key if api_key is not None else self.settings.rerank_api_key
         self.base_url = base_url if base_url is not None else self.settings.rerank_base_url
-        self.timeout_seconds = timeout_seconds if timeout_seconds is not None else self.settings.rerank_timeout_seconds
-        self.max_retries = max_retries if max_retries is not None else self.settings.rerank_max_retries
+        self.timeout_seconds = (
+            timeout_seconds if timeout_seconds is not None else self.settings.rerank_timeout_seconds
+        )
+        self.max_retries = (
+            max_retries if max_retries is not None else self.settings.rerank_max_retries
+        )
         self.endpoint = endpoint or self.settings.rerank_endpoint or self._build_default_endpoint()
         self.last_profile: dict[str, Any] = {}
         self._last_request_profile: dict[str, Any] = {}
@@ -53,7 +57,9 @@ class QwenReranker(Reranker):
 
         request_profile = dict(self._last_request_profile or {})
         request_profile.setdefault("request_seconds", request_elapsed)
-        request_profile.setdefault("model_inference_seconds", _extract_model_inference_seconds(response))
+        request_profile.setdefault(
+            "model_inference_seconds", _extract_model_inference_seconds(response)
+        )
         self.last_profile = request_profile
 
         ranked = self._parse_results(response)
@@ -96,9 +102,15 @@ class QwenReranker(Reranker):
             try:
                 response = self._request(payload)
                 profile["attempts"] = i + 1
-                profile["json_serialize_seconds"] += float(self._last_request_profile.get("json_serialize_seconds", 0.0) or 0.0)
-                profile["network_seconds"] += float(self._last_request_profile.get("network_seconds", 0.0) or 0.0)
-                profile["response_json_parse_seconds"] += float(self._last_request_profile.get("response_json_parse_seconds", 0.0) or 0.0)
+                profile["json_serialize_seconds"] += float(
+                    self._last_request_profile.get("json_serialize_seconds", 0.0) or 0.0
+                )
+                profile["network_seconds"] += float(
+                    self._last_request_profile.get("network_seconds", 0.0) or 0.0
+                )
+                profile["response_json_parse_seconds"] += float(
+                    self._last_request_profile.get("response_json_parse_seconds", 0.0) or 0.0
+                )
                 profile["request_seconds"] = time.perf_counter() - started
                 profile["model_inference_seconds"] = _extract_model_inference_seconds(response)
                 self._last_request_profile = profile
@@ -106,13 +118,21 @@ class QwenReranker(Reranker):
             except Exception as exc:
                 last_error = exc
                 profile["attempts"] = i + 1
-                profile["json_serialize_seconds"] += float(self._last_request_profile.get("json_serialize_seconds", 0.0) or 0.0)
-                profile["network_seconds"] += float(self._last_request_profile.get("network_seconds", 0.0) or 0.0)
-                profile["response_json_parse_seconds"] += float(self._last_request_profile.get("response_json_parse_seconds", 0.0) or 0.0)
+                profile["json_serialize_seconds"] += float(
+                    self._last_request_profile.get("json_serialize_seconds", 0.0) or 0.0
+                )
+                profile["network_seconds"] += float(
+                    self._last_request_profile.get("network_seconds", 0.0) or 0.0
+                )
+                profile["response_json_parse_seconds"] += float(
+                    self._last_request_profile.get("response_json_parse_seconds", 0.0) or 0.0
+                )
 
         profile["request_seconds"] = time.perf_counter() - started
         self._last_request_profile = profile
-        raise RuntimeError(f"qwen rerank request failed after retries: {last_error}") from last_error
+        raise RuntimeError(
+            f"qwen rerank request failed after retries: {last_error}"
+        ) from last_error
 
     def _request(self, payload: dict[str, Any]) -> dict[str, Any]:
         transport = QwenRerankTransport(
@@ -135,7 +155,11 @@ class QwenReranker(Reranker):
 def _extract_model_inference_seconds(payload: dict[str, Any]) -> float | None:
     candidates = [
         (payload.get("usage") if isinstance(payload.get("usage"), dict) else None),
-        (payload.get("output", {}).get("usage") if isinstance(payload.get("output"), dict) else None),
+        (
+            payload.get("output", {}).get("usage")
+            if isinstance(payload.get("output"), dict)
+            else None
+        ),
         (payload.get("meta") if isinstance(payload.get("meta"), dict) else None),
     ]
 

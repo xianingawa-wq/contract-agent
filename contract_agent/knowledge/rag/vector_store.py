@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
-from contract_agent.config import Settings, settings, settings_snapshot
+from contract_agent.config import ModelRuntimeConfig, Settings, settings_snapshot
 from contract_agent.provider.client import get_embeddings
 
 if TYPE_CHECKING:
@@ -13,8 +13,7 @@ if TYPE_CHECKING:
 
 
 class VectorStoreLike(Protocol):
-    def similarity_search(self, query: str, k: int = 3) -> list[Document]:
-        ...
+    def similarity_search(self, query: str, k: int = 3) -> list[Document]: ...
 
 
 def _vector_backend(runtime_settings: Settings | None = None) -> str:
@@ -51,14 +50,20 @@ def _sanitize_metadata_for_milvus(metadata: dict) -> dict[str, str]:
     return sanitized
 
 
-def _build_milvus_store(documents: list[Document], runtime_settings: Settings):
+def _build_milvus_store(
+    documents: list[Document],
+    runtime_settings: Settings,
+    model_config: ModelRuntimeConfig | None = None,
+):
     _ensure_numpy_compat_for_pymilvus()
     try:
         from langchain_community.vectorstores import Milvus
     except Exception as exc:
-        raise RuntimeError("Milvus backend requested but langchain/pymilvus is not available.") from exc
+        raise RuntimeError(
+            "Milvus backend requested but langchain/pymilvus is not available."
+        ) from exc
 
-    embeddings = get_embeddings()
+    embeddings = get_embeddings(model_config=model_config, runtime_settings=runtime_settings)
     texts: list[str] = []
     metadatas: list[dict[str, str]] = []
     ids: list[str] = []
@@ -89,18 +94,24 @@ def _build_milvus_store(documents: list[Document], runtime_settings: Settings):
     )
 
 
-def build_vector_store(documents: list[Document], runtime_settings: Settings | None = None):
+def build_vector_store(
+    documents: list[Document],
+    runtime_settings: Settings | None = None,
+    model_config: ModelRuntimeConfig | None = None,
+):
     source = runtime_settings or settings_snapshot()
     if _is_milvus_backend(source):
-        return _build_milvus_store(documents, source)
+        return _build_milvus_store(documents, source, model_config=model_config)
 
     from langchain_community.vectorstores import FAISS
 
-    embeddings = get_embeddings()
+    embeddings = get_embeddings(model_config=model_config, runtime_settings=source)
     return FAISS.from_documents(documents, embeddings)
 
 
-def save_vector_store(vector_store, target_dir: str, runtime_settings: Settings | None = None) -> None:
+def save_vector_store(
+    vector_store, target_dir: str, runtime_settings: Settings | None = None
+) -> None:
     if _is_milvus_backend(runtime_settings):
         return
 
@@ -108,16 +119,22 @@ def save_vector_store(vector_store, target_dir: str, runtime_settings: Settings 
     vector_store.save_local(target_dir)
 
 
-def load_vector_store(target_dir: str, runtime_settings: Settings | None = None):
+def load_vector_store(
+    target_dir: str,
+    runtime_settings: Settings | None = None,
+    model_config: ModelRuntimeConfig | None = None,
+):
     source = runtime_settings or settings_snapshot()
     if _is_milvus_backend(source):
         _ensure_numpy_compat_for_pymilvus()
         try:
             from langchain_community.vectorstores import Milvus
         except Exception as exc:
-            raise RuntimeError("Milvus backend requested but langchain/pymilvus is not available.") from exc
+            raise RuntimeError(
+                "Milvus backend requested but langchain/pymilvus is not available."
+            ) from exc
 
-        embeddings = get_embeddings()
+        embeddings = get_embeddings(model_config=model_config, runtime_settings=source)
         return Milvus(
             embedding_function=embeddings,
             connection_args={"uri": source.milvus_uri},
@@ -127,7 +144,7 @@ def load_vector_store(target_dir: str, runtime_settings: Settings | None = None)
 
     from langchain_community.vectorstores import FAISS
 
-    embeddings = get_embeddings()
+    embeddings = get_embeddings(model_config=model_config, runtime_settings=source)
     return FAISS.load_local(
         target_dir,
         embeddings,

@@ -52,7 +52,9 @@ class AuditLogger:
         )
 
     @contextmanager
-    def trace(self, operation: str, *, trace_id: str | None = None, **payload: Any) -> Iterator[str]:
+    def trace(
+        self, operation: str, *, trace_id: str | None = None, **payload: Any
+    ) -> Iterator[str]:
         active_trace_id = _trace_id_var.get() or trace_id or uuid.uuid4().hex
         trace_token = _trace_id_var.set(active_trace_id)
         stack_token = _span_stack_var.set(())

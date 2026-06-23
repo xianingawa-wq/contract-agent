@@ -1,7 +1,7 @@
 import unittest
 
-from contract_agent.model_config.interface import ModelEndpointConfig, ModelRole, ModelRuntimeConfig
-from contract_agent.model_config.service import apply_model_runtime_config
+from contract_agent.config import ModelEndpointConfig, ModelRole, ModelRuntimeConfig
+from contract_agent.config import apply_model_runtime_config
 from contract_agent.config import (
     Settings,
     load_settings_from_env,

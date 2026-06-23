@@ -55,9 +55,21 @@ class ProjectScaffoldingTests(unittest.TestCase):
         import contract_agent.services as services
 
         for package, names in {
-            services: ["ChatService", "ReviewService", "GatewayRouter", "ContractParser", "RuleEngine"],
+            services: [
+                "ChatService",
+                "ReviewService",
+                "GatewayRouter",
+                "ContractParser",
+                "RuleEngine",
+            ],
             agents: ["ContractEditor", "LLMReviewer", "parser_agent", "risk_checker_agent"],
-            schemas: ["ReviewRequest", "ReviewResponse", "ChatRequest", "ParsedDocument", "KnowledgeChunk"],
+            schemas: [
+                "ReviewRequest",
+                "ReviewResponse",
+                "ChatRequest",
+                "ParsedDocument",
+                "KnowledgeChunk",
+            ],
         }.items():
             for name in names:
                 with self.subTest(package=package.__name__, name=name):

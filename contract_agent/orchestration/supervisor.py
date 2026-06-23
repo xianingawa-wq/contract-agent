@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import re
@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from contract_agent.logger.audit import AuditLogger, get_audit_logger
 from contract_agent.provider.client import get_chat_model
-from contract_agent.config import MultiAgentConfig
+from contract_agent.config import AppContext, ModelRuntimeConfig, MultiAgentConfig, Settings
 from contract_agent.orchestration.protocol import (
     AgentOutput,
     AgentStatus,
@@ -55,11 +55,25 @@ class SupervisorAgent:
         config: MultiAgentConfig | None = None,
         llm: Any | None = None,
         audit_logger: AuditLogger | None = None,
+        app_context: AppContext | None = None,
+        model_config: ModelRuntimeConfig | None = None,
+        runtime_settings: Settings | None = None,
     ) -> None:
-        self.config = config or MultiAgentConfig()
+        self.app_context = app_context
+        self.config = config or (
+            app_context.multiagent_config if app_context is not None else MultiAgentConfig()
+        )
+        self.model_config = model_config or (
+            app_context.model_config if app_context is not None else None
+        )
+        self.runtime_settings = runtime_settings or (
+            app_context.settings if app_context is not None else None
+        )
         self._agents: dict[str, Callable[[dict[str, Any]], AgentOutput]] = {}
         self.runtime = AgentRuntime(self.config)
-        self._llm = llm or get_chat_model()
+        self._llm = llm or get_chat_model(
+            model_config=self.model_config, runtime_settings=self.runtime_settings
+        )
         self.audit_logger = (audit_logger or get_audit_logger()).with_prefix(
             "[Orchestration][Supervisor]",
             scope="orchestration",
@@ -75,7 +89,9 @@ class SupervisorAgent:
         initial_input: dict[str, Any],
         on_event: Callable[[PipelineEvent], None] | None = None,
     ) -> PipelineState:
-        with self.audit_logger.trace("supervisor", trace_id=state.pipeline_id, pipeline_id=state.pipeline_id):
+        with self.audit_logger.trace(
+            "supervisor", trace_id=state.pipeline_id, pipeline_id=state.pipeline_id
+        ):
             with self.audit_logger.span("supervisor.run", mode=state.mode.value, team=state.team):
                 return self._run_traced(state, initial_input, on_event)
 
@@ -110,17 +126,20 @@ class SupervisorAgent:
                 decision = self._parse_supervisor_json(llm_result.content)
                 total_tokens += self._estimate_tokens(llm_result.content)
 
-            self._emit(on_event, PipelineEvent(
-                pipeline_id=state.pipeline_id,
-                event_type="supervisor_thinking",
-                agent_id=None,
-                data={
-                    "thought": decision.get("thought", ""),
-                    "action": decision.get("action", ""),
-                    "agents": decision.get("agents", []),
-                },
-                round=round_num,
-            ))
+            self._emit(
+                on_event,
+                PipelineEvent(
+                    pipeline_id=state.pipeline_id,
+                    event_type="supervisor_thinking",
+                    agent_id=None,
+                    data={
+                        "thought": decision.get("thought", ""),
+                        "action": decision.get("action", ""),
+                        "agents": decision.get("agents", []),
+                    },
+                    round=round_num,
+                ),
+            )
 
             if decision.get("action") == "finish" or round_num == self.config.supervisor_max_rounds:
                 final_report = decision.get("final_report", {})
@@ -144,20 +163,26 @@ class SupervisorAgent:
                 state.status = PipelineStatus.COMPLETED
                 state.completed_at = datetime.now(timezone.utc)
                 state.token_used_total = total_tokens
-                self._emit(on_event, PipelineEvent(
-                    pipeline_id=state.pipeline_id,
-                    event_type="supervisor_finished",
-                    data={"report": final_report},
-                ))
+                self._emit(
+                    on_event,
+                    PipelineEvent(
+                        pipeline_id=state.pipeline_id,
+                        event_type="supervisor_finished",
+                        data={"report": final_report},
+                    ),
+                )
                 return state
 
             agent_ids = decision.get("agents", [])
-            self._emit(on_event, PipelineEvent(
-                pipeline_id=state.pipeline_id,
-                event_type="agent_called",
-                data={"agents": agent_ids},
-                round=round_num,
-            ))
+            self._emit(
+                on_event,
+                PipelineEvent(
+                    pipeline_id=state.pipeline_id,
+                    event_type="agent_called",
+                    data={"agents": agent_ids},
+                    round=round_num,
+                ),
+            )
 
             results = self._parallel_execute(agent_ids, ctx, state, on_event, round_num)
             for agent_id, output in results.items():
@@ -165,27 +190,37 @@ class SupervisorAgent:
                 ctx.update(output.structured_data)
                 total_tokens += output.token_used
 
-            self._emit(on_event, PipelineEvent(
-                pipeline_id=state.pipeline_id,
-                event_type="round_complete",
-                data={"round": round_num, "completed_agents": list(results.keys())},
-                round=round_num,
-            ))
+            self._emit(
+                on_event,
+                PipelineEvent(
+                    pipeline_id=state.pipeline_id,
+                    event_type="round_complete",
+                    data={"round": round_num, "completed_agents": list(results.keys())},
+                    round=round_num,
+                ),
+            )
 
         # Force finish if loop exhausted
         state.status = PipelineStatus.COMPLETED
         state.completed_at = datetime.now(timezone.utc)
         state.token_used_total = total_tokens
-        self._emit(on_event, PipelineEvent(
-            pipeline_id=state.pipeline_id,
-            event_type="supervisor_finished",
-            data={"forced": True},
-        ))
+        self._emit(
+            on_event,
+            PipelineEvent(
+                pipeline_id=state.pipeline_id,
+                event_type="supervisor_finished",
+                data={"forced": True},
+            ),
+        )
         return state
 
     def _parallel_execute(
-        self, agent_ids: list[str], ctx: dict, state: PipelineState,
-        on_event: Callable | None, round_num: int = 0,
+        self,
+        agent_ids: list[str],
+        ctx: dict,
+        state: PipelineState,
+        on_event: Callable | None,
+        round_num: int = 0,
     ) -> dict[str, AgentOutput]:
         results: dict[str, AgentOutput] = {}
         timeout = self.config.agent_timeout_seconds
@@ -207,13 +242,16 @@ class SupervisorAgent:
             for aid, output in skipped.items():
                 results[aid] = output
                 failed.add(aid)
-                self._emit(on_event, PipelineEvent(
-                    pipeline_id=state.pipeline_id,
-                    event_type="agent_skipped",
-                    agent_id=aid,
-                    round=round_num,
-                    data={"error": output.error_message},
-                ))
+                self._emit(
+                    on_event,
+                    PipelineEvent(
+                        pipeline_id=state.pipeline_id,
+                        event_type="agent_skipped",
+                        agent_id=aid,
+                        round=round_num,
+                        data={"error": output.error_message},
+                    ),
+                )
             pending = [aid for aid in pending if aid not in skipped]
 
             if not batch:
@@ -225,13 +263,16 @@ class SupervisorAgent:
                         error_message=f"依赖未满足: {', '.join(unmet) if unmet else '无可执行批次'}",
                     )
                     results[aid] = output
-                    self._emit(on_event, PipelineEvent(
-                        pipeline_id=state.pipeline_id,
-                        event_type="agent_skipped",
-                        agent_id=aid,
-                        round=round_num,
-                        data={"error": output.error_message},
-                    ))
+                    self._emit(
+                        on_event,
+                        PipelineEvent(
+                            pipeline_id=state.pipeline_id,
+                            event_type="agent_skipped",
+                            agent_id=aid,
+                            round=round_num,
+                            data={"error": output.error_message},
+                        ),
+                    )
                 break
 
             pending = [aid for aid in pending if aid not in batch]
@@ -254,7 +295,9 @@ class SupervisorAgent:
                 round_num=round_num,
             )
             for notification in notifications:
-                with self.audit_logger.span("supervisor.agent", agent_id=notification.agent_id, round=round_num):
+                with self.audit_logger.span(
+                    "supervisor.agent", agent_id=notification.agent_id, round=round_num
+                ):
                     output = self._notification_to_output(notification)
                 results[notification.agent_id] = output
                 if output.status == AgentStatus.COMPLETED:
@@ -332,10 +375,10 @@ class SupervisorAgent:
 
     def _parse_supervisor_json(self, raw: str) -> dict[str, Any]:
         text = raw.strip()
-        m = re.search(r'\{[\s\S]*\}', text)
+        m = re.search(r"\{[\s\S]*\}", text)
         if m:
             text = m.group(0)
-        text = re.sub(r',(\s*[}\]])', r'\1', text)
+        text = re.sub(r",(\s*[}\]])", r"\1", text)
         try:
             return json.loads(text)
         except json.JSONDecodeError:

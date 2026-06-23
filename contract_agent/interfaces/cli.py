@@ -7,7 +7,7 @@ from typing import TextIO
 
 from contract_agent.interfaces.console import run_console_demo
 from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
-from contract_agent.model_config.factory import create_model_profile_service
+from contract_agent.config import configure_runtime, create_model_profile_service
 from contract_agent.config import settings_snapshot
 from contract_agent.review.reporting import render_json, render_markdown
 from contract_agent.review.service import review_text
@@ -27,6 +27,7 @@ def main(
     _prefer_utf8(stderr)
     parser = _build_parser()
     args = parser.parse_args(argv)
+    configure_runtime(config_path=getattr(args, "config", None))
 
     if args.command not in {None, "demo"}:
         _load_default_profile_if_present()
@@ -44,16 +45,29 @@ def main(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="contract-agent")
+    parser.add_argument("--config", default=None, help="path to runtime YAML config")
     subcommands = parser.add_subparsers(dest="command")
 
     demo = subcommands.add_parser("demo", help="open the interactive local agent console demo")
-    demo.add_argument("--profile", default=str(DEFAULT_PROFILE_PATH), help="path to local CLI initialization profile")
-    demo.add_argument("--skip-db-connect", action="store_true", help="show database configuration without opening a connection")
+    demo.add_argument(
+        "--profile",
+        default=str(DEFAULT_PROFILE_PATH),
+        help="path to local CLI initialization profile",
+    )
+    demo.add_argument(
+        "--skip-db-connect",
+        action="store_true",
+        help="show database configuration without opening a connection",
+    )
 
     review = subcommands.add_parser("review", help="review a plain text contract")
     review.add_argument("path", help="path to a UTF-8 text contract")
-    review.add_argument("--type", dest="contract_type", default=None, help="contract type, e.g. purchase")
-    review.add_argument("--side", dest="our_side", default="甲方", help="our side, e.g. buyer, seller, 甲方")
+    review.add_argument(
+        "--type", dest="contract_type", default=None, help="contract type, e.g. purchase"
+    )
+    review.add_argument(
+        "--side", dest="our_side", default="鐢叉柟", help="our side, e.g. buyer, seller, 鐢叉柟"
+    )
     review.add_argument("--format", choices=("markdown", "json"), default="markdown")
 
     subcommands.add_parser("config", help="print active model configuration")

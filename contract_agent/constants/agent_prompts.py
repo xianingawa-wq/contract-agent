@@ -1,4 +1,4 @@
-﻿from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
 supervisor_prompt = ChatPromptTemplate.from_template("""\
 你是合同审查协调员(Supervisor)。你可以调用子Agent来完成任务。

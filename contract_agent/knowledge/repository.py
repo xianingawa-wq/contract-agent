@@ -27,7 +27,9 @@ class KnowledgeChunkRepository:
         with session_scope(self.settings) as session:
             for chunk in chunks:
                 row = session.scalar(
-                    select(KnowledgeChunkModel).where(KnowledgeChunkModel.chunk_id == chunk.chunk_id)
+                    select(KnowledgeChunkModel).where(
+                        KnowledgeChunkModel.chunk_id == chunk.chunk_id
+                    )
                 )
                 if row is None:
                     row = KnowledgeChunkModel(chunk_id=chunk.chunk_id)

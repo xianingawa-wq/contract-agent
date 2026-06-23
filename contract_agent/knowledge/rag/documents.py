@@ -1,4 +1,4 @@
-﻿from langchain_core.documents import Document
+from langchain_core.documents import Document
 
 from contract_agent.schemas.document import ParsedDocument
 

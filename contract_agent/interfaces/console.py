@@ -6,8 +6,8 @@ from typing import TextIO
 from sqlalchemy import text
 
 from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
-from contract_agent.model_config.factory import create_model_profile_service
-from contract_agent.model_config.interface import (
+from contract_agent.config import create_model_profile_service
+from contract_agent.config import (
     DEFAULT_PROVIDER_OPTIONS,
     ModelEndpointConfig,
     ModelProviderOption,
@@ -65,7 +65,9 @@ def _write_welcome(stdout: TextIO) -> None:
     stdout.write("Welcome to the local agent console.\n\n")
 
 
-def _run_initialization_wizard(stdin: TextIO, stdout: TextIO, defaults: ModelRuntimeConfig) -> ModelRuntimeConfig:
+def _run_initialization_wizard(
+    stdin: TextIO, stdout: TextIO, defaults: ModelRuntimeConfig
+) -> ModelRuntimeConfig:
     stdout.write("Initialization wizard\n")
     stdout.write("Configure chat, embedding, and rerank models separately.\n")
     return ModelRuntimeConfig(
@@ -86,7 +88,9 @@ def _run_endpoint_wizard(
         detail = option.base_url or "enter your own URL"
         stdout.write(f"  {option.key}. {option.label} ({detail})\n")
     selected = _ask(stdin, stdout, "Select provider", _default_provider_key(defaults))
-    option = _find_provider_option(selected) or ModelProviderOption(selected, selected, selected, defaults.base_url)
+    option = _find_provider_option(selected) or ModelProviderOption(
+        selected, selected, selected, defaults.base_url
+    )
 
     base_url = option.base_url
     if option.key == "3":

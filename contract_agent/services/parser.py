@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import re
@@ -30,7 +30,9 @@ class ContractParser:
 
         return self.parse_bytes(path.name, path.read_bytes(), source_path=str(path))
 
-    def parse_bytes(self, file_name: str, content: bytes, source_path: str | None = None) -> ParsedDocument:
+    def parse_bytes(
+        self, file_name: str, content: bytes, source_path: str | None = None
+    ) -> ParsedDocument:
         suffix = Path(file_name).suffix.lower()
         if suffix not in self.SUPPORTED_SUFFIXES:
             raise ValueError(f"Unsupported file type: {suffix}")
@@ -42,7 +44,9 @@ class ContractParser:
         else:
             raw_text, spans = self._parse_pdf_bytes(content)
 
-        document = self._build_document(file_name, source_path or file_name, suffix, raw_text, spans)
+        document = self._build_document(
+            file_name, source_path or file_name, suffix, raw_text, spans
+        )
 
         # Generate rich HTML for .docx files (headings, bold, tables, lists, etc.)
         if suffix == ".docx":

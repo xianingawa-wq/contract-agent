@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from contract_agent.model_config.impl.env_source import EnvironmentModelConfigSource
-from contract_agent.model_config.interface import ModelConfigSource
+from contract_agent.config import EnvironmentModelConfigSource
+from contract_agent.config import (
+    ModelConfigSource,
+    ModelRuntimeConfig,
+    Settings,
+    StaticModelConfigSource,
+)
 from contract_agent.provider.interface import LLMConfig, LLMProvider
-from contract_agent.provider.service import ModelProviderService
+from contract_agent.provider.service import ModelProviderService, ProviderRuntimeOptions
 
 
 ProviderBuilder = Callable[[LLMConfig], LLMProvider]
@@ -34,5 +39,20 @@ class ModelProviderFactory:
         return builder(config)
 
 
-def create_model_provider_service(config_source: ModelConfigSource | None = None) -> ModelProviderService:
-    return ModelProviderService(config_source or EnvironmentModelConfigSource(), ModelProviderFactory())
+def create_model_provider_service(
+    config_source: ModelConfigSource | None = None,
+    *,
+    model_config: ModelRuntimeConfig | None = None,
+    runtime_settings: Settings | None = None,
+) -> ModelProviderService:
+    source = config_source
+    if source is None and model_config is not None:
+        source = StaticModelConfigSource(model_config)
+    if source is None:
+        source = EnvironmentModelConfigSource(runtime_settings)
+    options = (
+        ProviderRuntimeOptions.from_settings(runtime_settings)
+        if runtime_settings is not None
+        else None
+    )
+    return ModelProviderService(source, ModelProviderFactory(), options)

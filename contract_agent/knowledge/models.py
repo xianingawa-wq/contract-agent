@@ -22,4 +22,6 @@ class KnowledgeChunkModel(Base):
     source_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )

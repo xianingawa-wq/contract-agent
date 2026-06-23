@@ -6,7 +6,9 @@ from typing import Any
 from contract_agent.provider.interface import ToolCall
 
 
-def input_to_messages(input: str | list[dict[str, Any]], instructions: str | None) -> list[dict[str, Any]]:
+def input_to_messages(
+    input: str | list[dict[str, Any]], instructions: str | None
+) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     if instructions:
         messages.append({"role": "system", "content": instructions})
@@ -70,6 +72,7 @@ def with_strict_objects(schema: dict[str, Any]) -> dict[str, Any]:
 
     visit(copied)
     return copied
+
 
 __all__ = [
     "extract_output_text",

@@ -57,7 +57,9 @@ class AgentRuntime:
         on_event: EventCallback | None = None,
         round_num: int | None = None,
     ) -> AgentTask:
-        timeout = timeout_seconds if timeout_seconds is not None else self.config.agent_timeout_seconds
+        timeout = (
+            timeout_seconds if timeout_seconds is not None else self.config.agent_timeout_seconds
+        )
         task = self.registry.create_task(
             pipeline_id=pipeline_id,
             agent_id=agent_id,
@@ -125,7 +127,9 @@ class AgentRuntime:
         on_event: EventCallback | None = None,
         round_num: int | None = None,
     ) -> list[TaskNotification]:
-        timeout = timeout_seconds if timeout_seconds is not None else self.config.agent_timeout_seconds
+        timeout = (
+            timeout_seconds if timeout_seconds is not None else self.config.agent_timeout_seconds
+        )
         deadline = time.monotonic() + timeout
         pending = set(task_ids)
         notifications: list[TaskNotification] = []
@@ -221,7 +225,9 @@ class AgentRuntime:
             commands = self.queue.drain_commands(task_id, self.registry)
             if not commands:
                 continue
-            cancel_requested = any(command.command_type == TaskCommandType.CANCEL for command in commands)
+            cancel_requested = any(
+                command.command_type == TaskCommandType.CANCEL for command in commands
+            )
             if not cancel_requested:
                 continue
 
@@ -231,7 +237,9 @@ class AgentRuntime:
                 future.cancel()
 
             try:
-                updated = self.registry.request_cancel(task.task_id, task.run_id, "任务取消请求已接收")
+                updated = self.registry.request_cancel(
+                    task.task_id, task.run_id, "任务取消请求已接收"
+                )
             except ValueError:
                 continue
 
@@ -322,28 +330,36 @@ class AgentRuntime:
             "transcript_path": task.transcript_path,
         }
         if notification is not None:
-            data.update({
-                "duration_ms": notification.duration_ms,
-                "token_used": notification.token_used,
-                "llm_calls": notification.llm_calls,
-                "error": notification.error_message,
-            })
+            data.update(
+                {
+                    "duration_ms": notification.duration_ms,
+                    "token_used": notification.token_used,
+                    "llm_calls": notification.llm_calls,
+                    "error": notification.error_message,
+                }
+            )
             if notification.output is not None:
-                data.update({
-                    "input_summary": notification.output.input_summary,
-                    "findings_count": len(notification.output.findings),
-                })
-        on_event(PipelineEvent(
-            pipeline_id=task.pipeline_id,
-            event_type=event_type,  # type: ignore[arg-type]
-            agent_id=task.agent_id,
-            round=round_num,
-            data=data,
-        ))
+                data.update(
+                    {
+                        "input_summary": notification.output.input_summary,
+                        "findings_count": len(notification.output.findings),
+                    }
+                )
+        on_event(
+            PipelineEvent(
+                pipeline_id=task.pipeline_id,
+                event_type=event_type,  # type: ignore[arg-type]
+                agent_id=task.agent_id,
+                round=round_num,
+                data=data,
+            )
+        )
 
     def _elapsed_ms(self, started: float) -> int:
         return max(0, int((time.monotonic() - started) * 1000))
 
     def _prune_timed_out_futures(self) -> None:
         with self._lock:
-            self._timed_out_futures = {future for future in self._timed_out_futures if not future.done()}
+            self._timed_out_futures = {
+                future for future in self._timed_out_futures if not future.done()
+            }

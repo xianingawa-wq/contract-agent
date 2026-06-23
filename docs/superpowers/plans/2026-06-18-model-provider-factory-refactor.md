@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> Superseded for config implementation details by `docs/config-yaml-unification-design.md` and `docs/superpowers/plans/2026-06-23-config-yaml-unification.md`. The old `contract_agent/config/interface.py`, `service.py`, `factory.py`, and `impl/*` targets below are historical and have been replaced by `contract_agent/config/config_model.py`, `config_model_store.py`, `config_loader.py`, and related `config_*.py` modules.
+
 **Goal:** Refactor model configuration and model creation into a clean `interface -> service -> impl -> factory` structure with role-specific chat, embedding, and rerank configuration.
 
-**Architecture:** Add `model_config`, restructure `provider`, and add `knowledge.rag.rerank` packages. Each package exposes interfaces, service orchestration, concrete implementations, and factory creation points. Existing public imports remain available through compatibility shims while internal code moves to the new naming.
+**Architecture:** Add `config`, restructure `provider`, and add `knowledge.rag.rerank` packages. Each package exposes interfaces, service orchestration, concrete implementations, and factory creation points. Existing public imports remain available through compatibility shims while internal code moves to the new naming.
 
 **Tech Stack:** Python 3.11+, dataclasses, Protocols, unittest, OpenAI-compatible client wrappers.
 
@@ -13,18 +15,18 @@
 ### Task 1: Model Configuration Package
 
 **Files:**
-- Create: `contract_agent/model_config/interface.py`
-- Create: `contract_agent/model_config/service.py`
-- Create: `contract_agent/model_config/impl/env_source.py`
-- Create: `contract_agent/model_config/impl/json_profile_store.py`
-- Create: `contract_agent/model_config/factory.py`
+- Create: `contract_agent/config/interface.py`
+- Create: `contract_agent/config/service.py`
+- Create: `contract_agent/config/impl/env_source.py`
+- Create: `contract_agent/config/impl/yaml_profile_store.py`
+- Create: `contract_agent/config/factory.py`
 - Modify: `contract_agent/interfaces/console.py`
 - Modify: `contract_agent/interfaces/cli.py`
-- Test: `tests/test_model_config.py`
+- Test: `tests/test_config_model.py`
 
 - [x] Write tests for role-based config resolution and profile persistence.
 - [x] Implement model config interfaces and normalized names.
-- [x] Implement env source and JSON profile store.
+- [x] Implement env source and YAML profile store.
 - [x] Implement resolver and profile service.
 - [x] Update CLI and console to use the service instead of local config dataclasses.
 

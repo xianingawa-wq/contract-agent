@@ -11,12 +11,14 @@ from contract_agent.orchestration.protocol import (
 )
 
 
-TERMINAL_TASK_STATUSES = frozenset({
-    AgentTaskStatus.COMPLETED,
-    AgentTaskStatus.FAILED,
-    AgentTaskStatus.KILLED,
-    AgentTaskStatus.CANCELLED,
-})
+TERMINAL_TASK_STATUSES = frozenset(
+    {
+        AgentTaskStatus.COMPLETED,
+        AgentTaskStatus.FAILED,
+        AgentTaskStatus.KILLED,
+        AgentTaskStatus.CANCELLED,
+    }
+)
 
 
 class TaskRegistry:
@@ -101,7 +103,9 @@ class TaskRegistry:
             task = self._require_task(task_id, run_id)
             if task.status == AgentTaskStatus.PENDING:
                 return self.mark_cancelled(task_id, run_id, message)
-            self._ensure_transition(task, AgentTaskStatus.CANCEL_REQUESTED, {AgentTaskStatus.RUNNING})
+            self._ensure_transition(
+                task, AgentTaskStatus.CANCEL_REQUESTED, {AgentTaskStatus.RUNNING}
+            )
             task.status = AgentTaskStatus.CANCEL_REQUESTED
             task.error_message = message
             return self._copy_task(task)
@@ -121,7 +125,9 @@ class TaskRegistry:
             task.progress = 1.0
             return self._copy_task(task)
 
-    def try_mark_completed(self, task_id: str, run_id: str, output: AgentOutput) -> AgentTask | None:
+    def try_mark_completed(
+        self, task_id: str, run_id: str, output: AgentOutput
+    ) -> AgentTask | None:
         with self._lock:
             task = self._require_task(task_id, run_id)
             if task.status in TERMINAL_TASK_STATUSES:
@@ -134,7 +140,11 @@ class TaskRegistry:
             self._ensure_transition(
                 task,
                 AgentTaskStatus.FAILED,
-                {AgentTaskStatus.PENDING, AgentTaskStatus.RUNNING, AgentTaskStatus.CANCEL_REQUESTED},
+                {
+                    AgentTaskStatus.PENDING,
+                    AgentTaskStatus.RUNNING,
+                    AgentTaskStatus.CANCEL_REQUESTED,
+                },
             )
             task.status = AgentTaskStatus.FAILED
             task.error_message = message
@@ -154,7 +164,11 @@ class TaskRegistry:
             self._ensure_transition(
                 task,
                 AgentTaskStatus.KILLED,
-                {AgentTaskStatus.PENDING, AgentTaskStatus.RUNNING, AgentTaskStatus.CANCEL_REQUESTED},
+                {
+                    AgentTaskStatus.PENDING,
+                    AgentTaskStatus.RUNNING,
+                    AgentTaskStatus.CANCEL_REQUESTED,
+                },
             )
             task.status = AgentTaskStatus.KILLED
             task.error_message = message

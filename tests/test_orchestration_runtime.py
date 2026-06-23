@@ -39,7 +39,9 @@ class RuntimeProtocolTests(unittest.TestCase):
         )
 
         self.assertEqual(task.status, AgentTaskStatus.PENDING)
-        self.assertEqual(notification.idempotency_key, ("task-1", "run-1", AgentTaskStatus.COMPLETED))
+        self.assertEqual(
+            notification.idempotency_key, ("task-1", "run-1", AgentTaskStatus.COMPLETED)
+        )
         self.assertEqual(notification.token_used, 0)
 
 
@@ -49,7 +51,11 @@ class TaskRegistryTests(unittest.TestCase):
         task = registry.create_task("pipeline-1", "parser")
 
         with self.assertRaises(ValueError):
-            registry.mark_completed(task.task_id, task.run_id, AgentOutput(agent_id="parser", status=AgentStatus.COMPLETED))
+            registry.mark_completed(
+                task.task_id,
+                task.run_id,
+                AgentOutput(agent_id="parser", status=AgentStatus.COMPLETED),
+            )
 
         registry.mark_running(task.task_id, task.run_id)
         killed = registry.mark_killed(task.task_id, task.run_id, "Agent 超时（1s）")
@@ -67,7 +73,9 @@ class TaskRegistryTests(unittest.TestCase):
         registry = TaskRegistry()
         task = registry.create_task("pipeline-1", "parser")
         registry.mark_running(task.task_id, task.run_id)
-        registry.mark_completed(task.task_id, task.run_id, AgentOutput(agent_id="parser", status=AgentStatus.COMPLETED))
+        registry.mark_completed(
+            task.task_id, task.run_id, AgentOutput(agent_id="parser", status=AgentStatus.COMPLETED)
+        )
         notification = TaskNotification.from_task(
             registry.get_task(task.task_id),
             status=AgentTaskStatus.COMPLETED,
@@ -101,15 +109,22 @@ class TaskMessageQueueTests(unittest.TestCase):
         self.assertEqual(queue.enqueue_command(by_agent, registry), task.task_id)
         self.assertEqual(queue.enqueue_command(by_agent, registry), task.task_id)
         self.assertEqual(queue.pending_command_count(task.task_id), 2)
-        self.assertEqual([cmd.command_type for cmd in queue.drain_commands(task.task_id)], [
-            TaskCommandType.FOLLOW_UP,
-            TaskCommandType.HEARTBEAT,
-        ])
-        registry.mark_completed(task.task_id, task.run_id, AgentOutput(agent_id="parser", status=AgentStatus.COMPLETED))
+        self.assertEqual(
+            [cmd.command_type for cmd in queue.drain_commands(task.task_id)],
+            [
+                TaskCommandType.FOLLOW_UP,
+                TaskCommandType.HEARTBEAT,
+            ],
+        )
+        registry.mark_completed(
+            task.task_id, task.run_id, AgentOutput(agent_id="parser", status=AgentStatus.COMPLETED)
+        )
         self.assertEqual(queue.enqueue_command(by_agent, registry), task.task_id)
         self.assertEqual(queue.pending_command_count(task.task_id), 0)
 
-        notification = TaskNotification.from_task(task, status=AgentTaskStatus.KILLED, summary="timeout")
+        notification = TaskNotification.from_task(
+            task, status=AgentTaskStatus.KILLED, summary="timeout"
+        )
         self.assertTrue(queue.enqueue_notification(notification))
         self.assertFalse(queue.enqueue_notification(notification))
         self.assertEqual(queue.drain_notifications("pipeline-1"), [notification])
@@ -168,7 +183,9 @@ class AgentRuntimeTests(unittest.TestCase):
         def blocking_agent(ctx):
             started.set()
             release.wait(1)
-            return AgentOutput(agent_id="parser", status=AgentStatus.COMPLETED, input_summary="done")
+            return AgentOutput(
+                agent_id="parser", status=AgentStatus.COMPLETED, input_summary="done"
+            )
 
         runtime.register_agent("parser", blocking_agent)
         task = runtime.spawn("pipeline-1", "parser", {}, timeout_seconds=1)
@@ -196,7 +213,9 @@ class AgentRuntimeTests(unittest.TestCase):
                 break
             time.sleep(0.01)
 
-        self.assertEqual(runtime.registry.get_task(task.task_id).status, AgentTaskStatus.CANCEL_REQUESTED)
+        self.assertEqual(
+            runtime.registry.get_task(task.task_id).status, AgentTaskStatus.CANCEL_REQUESTED
+        )
         self.assertEqual(runtime.queue.pending_command_count(task.task_id), 0)
         release.set()
         collector.join(1)

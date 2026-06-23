@@ -4,7 +4,9 @@ from contract_agent.provider.factory import ModelProviderFactory, create_model_p
 from contract_agent.provider.impl.dashscope.embeddings import DashScopeEmbeddings
 from contract_agent.provider.impl.dashscope.provider import DashScopeProvider
 from contract_agent.provider.impl.openai.embeddings import OpenAIEmbeddings
-from contract_agent.provider.impl.openai.message_codec import with_strict_objects as _with_strict_objects
+from contract_agent.provider.impl.openai.message_codec import (
+    with_strict_objects as _with_strict_objects,
+)
 from contract_agent.provider.impl.openai.provider import OpenAIProvider
 from contract_agent.provider.interface import LLMConfig, LLMProvider, ModelResponse, ToolCall
 

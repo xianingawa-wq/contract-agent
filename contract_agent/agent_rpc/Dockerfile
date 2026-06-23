@@ -31,6 +31,6 @@ USER app
 EXPOSE 50051
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import os, socket; s=socket.create_connection(('127.0.0.1', int(os.getenv('AGENT_GRPC_PORT', '50051'))), timeout=3); s.close()"
+    CMD python -c "import socket; s=socket.create_connection(('127.0.0.1', 50051), timeout=3); s.close()"
 
 CMD ["python", "-m", "contract_agent.agent_rpc.server"]

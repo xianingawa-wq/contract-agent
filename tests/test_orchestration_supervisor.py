@@ -5,7 +5,13 @@ from pathlib import Path
 
 from contract_agent.logger.audit import AuditLogger
 from contract_agent.config import MultiAgentConfig
-from contract_agent.orchestration.protocol import AgentMode, AgentOutput, AgentStatus, PipelineState, PipelineStatus
+from contract_agent.orchestration.protocol import (
+    AgentMode,
+    AgentOutput,
+    AgentStatus,
+    PipelineState,
+    PipelineStatus,
+)
 from contract_agent.orchestration.supervisor import SupervisorAgent
 
 
@@ -33,7 +39,9 @@ class SupervisorAgentTests(unittest.TestCase):
             ]
         )
         supervisor = SupervisorAgent(
-            MultiAgentConfig(supervisor_max_rounds=3, max_parallel_agents=1, agent_timeout_seconds=2),
+            MultiAgentConfig(
+                supervisor_max_rounds=3, max_parallel_agents=1, agent_timeout_seconds=2
+            ),
             llm=llm,
         )
         events = []
@@ -65,7 +73,9 @@ class SupervisorAgentTests(unittest.TestCase):
         self.assertEqual(result.status, PipelineStatus.COMPLETED)
         self.assertIn("parser", result.agent_outputs)
         self.assertIn("supervisor", result.agent_outputs)
-        self.assertEqual(result.agent_outputs["supervisor"].structured_data["review_report"]["summary"], "完成")
+        self.assertEqual(
+            result.agent_outputs["supervisor"].structured_data["review_report"]["summary"], "完成"
+        )
         self.assertGreater(result.token_used_total, 6)
         self.assertEqual(
             [event.event_type for event in events],
@@ -111,7 +121,9 @@ class SupervisorAgentTests(unittest.TestCase):
             ]
         )
         supervisor = SupervisorAgent(
-            MultiAgentConfig(supervisor_max_rounds=2, max_parallel_agents=5, agent_timeout_seconds=2),
+            MultiAgentConfig(
+                supervisor_max_rounds=2, max_parallel_agents=5, agent_timeout_seconds=2
+            ),
             llm=llm,
         )
         execution_order = []
@@ -181,7 +193,9 @@ class SupervisorAgentTests(unittest.TestCase):
         result = supervisor.run(state, {"contract_text": "contract body"})
 
         self.assertEqual(result.status, PipelineStatus.COMPLETED)
-        self.assertEqual(execution_order, ["parser", "risk_checker", "legal_ref", "redrafter", "summarizer"])
+        self.assertEqual(
+            execution_order, ["parser", "risk_checker", "legal_ref", "redrafter", "summarizer"]
+        )
 
     def test_supervisor_writes_trace_spans_for_rounds_and_agents(self):
         llm = FakeSupervisorLlm(
@@ -193,10 +207,14 @@ class SupervisorAgentTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             logger = AuditLogger(Path(tmp) / "trace.jsonl")
-            supervisor = SupervisorAgent(MultiAgentConfig(supervisor_max_rounds=2), llm=llm, audit_logger=logger)
+            supervisor = SupervisorAgent(
+                MultiAgentConfig(supervisor_max_rounds=2), llm=llm, audit_logger=logger
+            )
             supervisor.register_agent(
                 "parser",
-                lambda ctx: AgentOutput(agent_id="parser", status=AgentStatus.COMPLETED, input_summary="parsed"),
+                lambda ctx: AgentOutput(
+                    agent_id="parser", status=AgentStatus.COMPLETED, input_summary="parsed"
+                ),
             )
             state = PipelineState(
                 pipeline_id="pipeline-3",
@@ -207,9 +225,13 @@ class SupervisorAgentTests(unittest.TestCase):
             )
 
             supervisor.run(state, {"contract_text": "合同正文"})
-            records = [json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()]
+            records = [
+                json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()
+            ]
 
-        span_names = {record.get("span_name") for record in records if record["event"] == "span.completed"}
+        span_names = {
+            record.get("span_name") for record in records if record["event"] == "span.completed"
+        }
         self.assertIn("supervisor.run", span_names)
         self.assertIn("supervisor.round", span_names)
         self.assertIn("supervisor.agent", span_names)

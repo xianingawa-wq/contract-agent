@@ -1,8 +1,9 @@
 import io
-import json
 import tempfile
 import unittest
 from pathlib import Path
+
+import yaml
 
 from contract_agent.interfaces.cli import main
 from contract_agent.interfaces.console import _ask
@@ -29,7 +30,7 @@ class CliDemoTests(unittest.TestCase):
 
     def test_demo_guides_first_time_model_configuration_and_enters_chat(self):
         with tempfile.TemporaryDirectory() as tmp:
-            profile_path = Path(tmp) / "profile.json"
+            profile_path = Path(tmp) / "profile.yaml"
             stdin = io.StringIO(
                 "\n".join(
                     [
@@ -76,7 +77,7 @@ class CliDemoTests(unittest.TestCase):
             self.assertIn("Agent console", output)
             self.assertIn("Initialized: yes", output)
 
-            profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
             self.assertEqual(profile["chat"]["provider"], "openai_compatible")
             self.assertEqual(profile["chat"]["base_url"], "https://chat.example.test/v1")
             self.assertEqual(profile["chat"]["api_key"], "chat-secret")
@@ -90,30 +91,25 @@ class CliDemoTests(unittest.TestCase):
 
     def test_demo_reuses_existing_profile_and_handles_chat_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
-            profile_path = Path(tmp) / "profile.json"
+            profile_path = Path(tmp) / "profile.yaml"
             profile_path.write_text(
-                json.dumps(
-                    {
-                        "chat": {
-                            "provider": "openai_compatible",
-                            "base_url": "https://chat.example.test/v1",
-                            "api_key": "saved-chat-key",
-                            "model": "saved-chat",
-                        },
-                        "embedding": {
-                            "provider": "openai_compatible",
-                            "base_url": "https://embedding.example.test/v1",
-                            "api_key": "saved-embedding-key",
-                            "model": "saved-embedding",
-                        },
-                        "rerank": {
-                            "provider": "openai_compatible",
-                            "base_url": "https://rerank.example.test/v1",
-                            "api_key": "saved-rerank-key",
-                            "model": "saved-rerank",
-                        },
-                    }
-                ),
+                """
+chat:
+  provider: openai_compatible
+  base_url: https://chat.example.test/v1
+  api_key: saved-chat-key
+  model: saved-chat
+embedding:
+  provider: openai_compatible
+  base_url: https://embedding.example.test/v1
+  api_key: saved-embedding-key
+  model: saved-embedding
+rerank:
+  provider: openai_compatible
+  base_url: https://rerank.example.test/v1
+  api_key: saved-rerank-key
+  model: saved-rerank
+""",
                 encoding="utf-8",
             )
             stdin = io.StringIO("hello agent\n/config\n/exit\n")

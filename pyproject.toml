@@ -23,6 +23,12 @@ dependencies = [
   "mammoth==1.12.0",
   "redis==5.0.8",
   "pydantic==2.11.7",
+  "PyYAML==6.0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff==0.15.18",
 ]
 
 [project.scripts]
@@ -31,3 +37,10 @@ contract-agent-grpc = "contract_agent.agent_rpc.server:serve"
 
 [tool.setuptools.packages.find]
 include = ["contract_agent*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.format]
+line-ending = "auto"

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import re
@@ -18,7 +18,9 @@ class LegalKnowledgeChunker:
         text = path.read_text(encoding="utf-8")
         return self.chunk_text(text=text, doc_name=path.name, source_path=str(path))
 
-    def chunk_text(self, text: str, doc_name: str, source_path: str | None = None) -> list[KnowledgeChunk]:
+    def chunk_text(
+        self, text: str, doc_name: str, source_path: str | None = None
+    ) -> list[KnowledgeChunk]:
         lines = [self._normalize_line(line) for line in text.splitlines()]
         chunks: list[KnowledgeChunk] = []
         context = {"part_title": None, "chapter_title": None, "section_title": None}
@@ -30,20 +32,26 @@ class LegalKnowledgeChunker:
 
             part_match = self.PART_PATTERN.match(line)
             if part_match:
-                context["part_title"] = self._build_heading("编", part_match.group(1), part_match.group(2))
+                context["part_title"] = self._build_heading(
+                    "编", part_match.group(1), part_match.group(2)
+                )
                 context["chapter_title"] = None
                 context["section_title"] = None
                 continue
 
             chapter_match = self.CHAPTER_PATTERN.match(line)
             if chapter_match:
-                context["chapter_title"] = self._build_heading("章", chapter_match.group(1), chapter_match.group(2))
+                context["chapter_title"] = self._build_heading(
+                    "章", chapter_match.group(1), chapter_match.group(2)
+                )
                 context["section_title"] = None
                 continue
 
             section_match = self.SECTION_PATTERN.match(line)
             if section_match:
-                context["section_title"] = self._build_heading("节", section_match.group(1), section_match.group(2))
+                context["section_title"] = self._build_heading(
+                    "节", section_match.group(1), section_match.group(2)
+                )
                 continue
 
             article_match = self.ARTICLE_PATTERN.match(line)

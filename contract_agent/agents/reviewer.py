@@ -1,14 +1,24 @@
-﻿import re
+import re
 
 from contract_agent.schemas.review import RiskItem
 
 from contract_agent.provider.client import get_chat_model
 from contract_agent.constants.prompts import risk_explain_prompt
+from contract_agent.config import ModelRuntimeConfig, Settings
 
 
 class LLMReviewer:
-    def __init__(self) -> None:
-        self.llm = get_chat_model()
+    def __init__(
+        self,
+        runtime_settings: Settings | None = None,
+        model_config: ModelRuntimeConfig | None = None,
+        llm=None,
+    ) -> None:
+        self.runtime_settings = runtime_settings
+        self.model_config = model_config
+        self.llm = llm or get_chat_model(
+            model_config=model_config, runtime_settings=runtime_settings
+        )
 
     def enrich_risk(
         self,

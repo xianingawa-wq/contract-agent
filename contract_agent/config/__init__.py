@@ -11,10 +11,68 @@ from contract_agent.config.config_runtime import (
 )
 from contract_agent.config.config_multiagent import MultiAgentConfig
 from contract_agent.config.config_retrieval import RetrievalConfig
+from contract_agent.config.config_model import (
+    DEFAULT_MODEL_PROFILE_PATH,
+    DEFAULT_PROVIDER_OPTIONS,
+    ModelConfigSource,
+    ModelEndpointConfig,
+    ModelProfileStore,
+    ModelProviderOption,
+    ModelRole,
+    ModelRuntimeConfig,
+)
+from contract_agent.config.config_app import AppConfig, AppContext
+from contract_agent.config.config_loader import (
+    DEFAULT_APP_CONFIG_PATH,
+    configure_runtime,
+    load_app_config,
+)
+from contract_agent.config.config_model_store import (
+    AppModelConfigSource,
+    EnvironmentChatConfigSource,
+    EnvironmentEmbeddingConfigSource,
+    EnvironmentModelConfigSource,
+    EnvironmentRerankConfigSource,
+    ModelConfigResolver,
+    ModelProfileService,
+    StaticModelConfigSource,
+    YamlModelProfileCodec,
+    YamlModelProfileStore,
+    apply_model_runtime_config,
+    create_model_config_resolver,
+    create_model_profile_service,
+    rerank_endpoint_from_base_url,
+)
 
 __all__ = [
+    "AppConfig",
+    "AppContext",
+    "DEFAULT_APP_CONFIG_PATH",
+    "DEFAULT_MODEL_PROFILE_PATH",
+    "DEFAULT_PROVIDER_OPTIONS",
+    "AppModelConfigSource",
+    "EnvironmentChatConfigSource",
+    "EnvironmentEmbeddingConfigSource",
+    "EnvironmentModelConfigSource",
+    "EnvironmentRerankConfigSource",
     "PROJECT_ROOT",
     "Settings",
+    "ModelConfigSource",
+    "ModelEndpointConfig",
+    "ModelProfileStore",
+    "ModelConfigResolver",
+    "ModelProfileService",
+    "StaticModelConfigSource",
+    "ModelProviderOption",
+    "ModelRole",
+    "ModelRuntimeConfig",
+    "YamlModelProfileCodec",
+    "YamlModelProfileStore",
+    "apply_model_runtime_config",
+    "configure_runtime",
+    "create_model_config_resolver",
+    "create_model_profile_service",
+    "load_app_config",
     "load_settings_from_env",
     "MultiAgentConfig",
     "refresh_settings_from_env",
@@ -24,4 +82,5 @@ __all__ = [
     "settings_to_dict",
     "temporary_settings",
     "update_settings",
+    "rerank_endpoint_from_base_url",
 ]

@@ -17,6 +17,7 @@ class LLMConfig:
     embedding_model: str
     temperature: float = 0
     use_responses_api: bool = True
+    embedding_batch_size: int = 10
 
 
 @dataclass(frozen=True)
@@ -36,11 +37,9 @@ class ModelResponse:
 class LLMProvider(Protocol):
     config: LLMConfig
 
-    def chat_model(self) -> "ChatOpenAI":
-        ...
+    def chat_model(self) -> "ChatOpenAI": ...
 
-    def embeddings(self) -> "Embeddings":
-        ...
+    def embeddings(self) -> "Embeddings": ...
 
     def create_response(
         self,
@@ -50,8 +49,7 @@ class LLMProvider(Protocol):
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         previous_response_id: str | None = None,
-    ) -> ModelResponse:
-        ...
+    ) -> ModelResponse: ...
 
     def structured_output(
         self,
@@ -61,5 +59,4 @@ class LLMProvider(Protocol):
         schema: dict[str, Any],
         instructions: str | None = None,
         model: str | None = None,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...

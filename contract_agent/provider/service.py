@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from contract_agent.model_config.interface import ModelConfigSource
+from contract_agent.config import ModelConfigSource
 from contract_agent.provider.interface import LLMConfig, LLMProvider
 from contract_agent.config import Settings, settings_snapshot
 
@@ -12,18 +12,19 @@ from contract_agent.config import Settings, settings_snapshot
 class ProviderRuntimeOptions:
     temperature: float
     use_responses_api: bool
+    embedding_batch_size: int = 10
 
     @classmethod
     def from_settings(cls, runtime_settings: Settings) -> "ProviderRuntimeOptions":
         return cls(
             temperature=runtime_settings.llm_temperature,
             use_responses_api=runtime_settings.llm_use_responses_api,
+            embedding_batch_size=getattr(runtime_settings, "embedding_batch_size", 10),
         )
 
 
 class ProviderFactory(Protocol):
-    def create(self, config: LLMConfig) -> LLMProvider:
-        ...
+    def create(self, config: LLMConfig) -> LLMProvider: ...
 
 
 class ModelProviderService:
@@ -39,7 +40,9 @@ class ModelProviderService:
 
     def create_chat_provider(self) -> LLMProvider:
         model_config = self.config_source.load()
-        runtime_options = self.runtime_options or ProviderRuntimeOptions.from_settings(settings_snapshot())
+        runtime_options = self.runtime_options or ProviderRuntimeOptions.from_settings(
+            settings_snapshot()
+        )
         return self.provider_factory.create(
             LLMConfig(
                 provider=model_config.chat.provider,
@@ -49,12 +52,15 @@ class ModelProviderService:
                 embedding_model=model_config.embedding.model,
                 temperature=runtime_options.temperature,
                 use_responses_api=runtime_options.use_responses_api,
+                embedding_batch_size=getattr(runtime_options, "embedding_batch_size", 10),
             )
         )
 
     def create_embedding_provider(self) -> LLMProvider:
         model_config = self.config_source.load()
-        runtime_options = self.runtime_options or ProviderRuntimeOptions.from_settings(settings_snapshot())
+        runtime_options = self.runtime_options or ProviderRuntimeOptions.from_settings(
+            settings_snapshot()
+        )
         return self.provider_factory.create(
             LLMConfig(
                 provider=model_config.embedding.provider,
@@ -64,5 +70,6 @@ class ModelProviderService:
                 embedding_model=model_config.embedding.model,
                 temperature=runtime_options.temperature,
                 use_responses_api=runtime_options.use_responses_api,
+                embedding_batch_size=getattr(runtime_options, "embedding_batch_size", 10),
             )
         )

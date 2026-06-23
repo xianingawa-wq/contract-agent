@@ -38,7 +38,9 @@ class RuntimeDatabaseTests(unittest.TestCase):
     def test_session_factory_cache_is_partitioned_by_dsn(self):
         with TemporaryDirectory() as tmpdir:
             first = database.get_session_factory(dsn="sqlite+pysqlite:///:memory:")
-            second = database.get_session_factory(dsn=f"sqlite+pysqlite:///{tmpdir}/database-test-cache.db")
+            second = database.get_session_factory(
+                dsn=f"sqlite+pysqlite:///{tmpdir}/database-test-cache.db"
+            )
 
             self.assertIsNot(first, second)
 

@@ -39,8 +39,7 @@ class ActionHandler(Protocol):
     description: str
     input_schema: dict[str, Any]
 
-    def execute(self, context: ActionContext, args: dict[str, Any]) -> ActionResult:
-        ...
+    def execute(self, context: ActionContext, args: dict[str, Any]) -> ActionResult: ...
 
 
 class ActionRegistry:
@@ -110,7 +109,9 @@ class QueryKnowledgeAction:
 
         references = [
             ActionReference(
-                source_title=doc.metadata.get("title") or doc.metadata.get("doc_name") or "未命名知识片段",
+                source_title=doc.metadata.get("title")
+                or doc.metadata.get("doc_name")
+                or "未命名知识片段",
                 article_label=doc.metadata.get("article_label"),
                 snippet=(doc.page_content or "")[:240],
                 source_path=doc.metadata.get("source_path"),

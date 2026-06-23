@@ -5,8 +5,14 @@ from collections.abc import Callable
 from contract_agent.knowledge.rag.rerank.impl.qwen import QwenReranker
 from contract_agent.knowledge.rag.rerank.interface import Reranker
 from contract_agent.knowledge.rag.rerank.service import RerankerService
-from contract_agent.model_config.impl.env_source import EnvironmentModelConfigSource
-from contract_agent.model_config.interface import ModelConfigSource, ModelEndpointConfig
+from contract_agent.config import EnvironmentModelConfigSource
+from contract_agent.config import (
+    ModelConfigSource,
+    ModelEndpointConfig,
+    ModelRuntimeConfig,
+    Settings,
+    StaticModelConfigSource,
+)
 
 
 RerankerBuilder = Callable[[ModelEndpointConfig], Reranker]
@@ -36,8 +42,28 @@ def _create_qwen_reranker(endpoint: ModelEndpointConfig) -> QwenReranker:
         model=endpoint.model,
         api_key=endpoint.api_key,
         base_url=endpoint.base_url,
+        endpoint=endpoint.endpoint,
     )
 
 
-def create_reranker_service(config_source: ModelConfigSource | None = None) -> RerankerService:
-    return RerankerService(config_source or EnvironmentModelConfigSource(), RerankerFactory())
+def create_reranker_service(
+    config_source: ModelConfigSource | None = None,
+    *,
+    endpoint: ModelEndpointConfig | None = None,
+    model_config: ModelRuntimeConfig | None = None,
+    runtime_settings: Settings | None = None,
+) -> RerankerService:
+    source = config_source
+    if source is None and endpoint is not None:
+        source = StaticModelConfigSource(
+            ModelRuntimeConfig(
+                chat=endpoint.with_role(endpoint.role),
+                embedding=endpoint.with_role(endpoint.role),
+                rerank=endpoint,
+            )
+        )
+    if source is None and model_config is not None:
+        source = StaticModelConfigSource(model_config)
+    if source is None:
+        source = EnvironmentModelConfigSource(runtime_settings)
+    return RerankerService(source, RerankerFactory())

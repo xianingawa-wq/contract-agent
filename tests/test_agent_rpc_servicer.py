@@ -27,7 +27,9 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertIn("review", response.capabilities)
 
     def test_redraft_missing_chat_key_returns_service_unavailable(self):
-        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key=None, llm_api_key=None, qwen_api_key=None))
+        servicer = AgentRpcServicer(
+            runtime_settings=Settings(chat_api_key=None, llm_api_key=None, qwen_api_key=None)
+        )
 
         response = servicer.Redraft(
             agent_pb2.RedraftRequest(
@@ -45,11 +47,15 @@ class AgentRpcServicerTests(unittest.TestCase):
     def test_health_writes_rpc_trace(self):
         with tempfile.TemporaryDirectory() as tmp:
             logger = AuditLogger(Path(tmp) / "trace.jsonl")
-            servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"), audit_logger=logger)
+            servicer = AgentRpcServicer(
+                runtime_settings=Settings(chat_api_key="chat-key"), audit_logger=logger
+            )
             servicer.review_service = FakeReviewService()  # type: ignore[assignment]
 
             servicer.Health(agent_pb2.HealthRequest(), None)
-            records = [json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()]
+            records = [
+                json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()
+            ]
 
         self.assertEqual(records[0]["event"], "trace.started")
         self.assertEqual(records[0]["operation"], "grpc.Health")

@@ -53,7 +53,9 @@ def run_rules(request: ReviewRequest) -> list[Finding]:
     return _with_cli_compatibility_findings(request, findings)
 
 
-def _with_cli_compatibility_findings(request: ReviewRequest, findings: list[Finding]) -> list[Finding]:
+def _with_cli_compatibility_findings(
+    request: ReviewRequest, findings: list[Finding]
+) -> list[Finding]:
     text = request.text
     titles = {finding.title for finding in findings}
 

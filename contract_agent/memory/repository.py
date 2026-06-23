@@ -19,7 +19,9 @@ def _agent_output_to_dict(output: AgentOutput) -> dict[str, Any]:
 class AgentOutputRepository:
     """Repository for persisted multi-agent outputs."""
 
-    def __init__(self, runtime_settings: Settings | None = None, ensure_schema: bool = True) -> None:
+    def __init__(
+        self, runtime_settings: Settings | None = None, ensure_schema: bool = True
+    ) -> None:
         self.settings = runtime_settings or settings_snapshot()
         if ensure_schema:
             ensure_runtime_schema(self.settings)

@@ -3,16 +3,17 @@ from __future__ import annotations
 from typing import Protocol
 
 from contract_agent.knowledge.rag.rerank.interface import Reranker
-from contract_agent.model_config.interface import ModelConfigSource, ModelEndpointConfig
+from contract_agent.config import ModelConfigSource, ModelEndpointConfig
 
 
 class RerankerProviderFactory(Protocol):
-    def create(self, endpoint: ModelEndpointConfig) -> Reranker:
-        ...
+    def create(self, endpoint: ModelEndpointConfig) -> Reranker: ...
 
 
 class RerankerService:
-    def __init__(self, config_source: ModelConfigSource, reranker_factory: RerankerProviderFactory) -> None:
+    def __init__(
+        self, config_source: ModelConfigSource, reranker_factory: RerankerProviderFactory
+    ) -> None:
         self.config_source = config_source
         self.reranker_factory = reranker_factory
 

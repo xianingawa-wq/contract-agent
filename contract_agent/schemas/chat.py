@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -17,7 +17,9 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(..., min_length=1)
-    contract_text: str | None = Field(default=None, description="可选的合同全文，用于审查或上下文理解")
+    contract_text: str | None = Field(
+        default=None, description="可选的合同全文，用于审查或上下文理解"
+    )
     contract_type: str | None = None
     our_side: str = Field(default="甲方")
 

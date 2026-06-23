@@ -1,4 +1,4 @@
-﻿class ContractClassifier:
+class ContractClassifier:
     def classify(self, text: str) -> str:
         if any(keyword in text for keyword in ("采购", "买卖", "供货")):
             return "采购合同"

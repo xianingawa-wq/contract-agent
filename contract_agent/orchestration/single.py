@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
@@ -12,7 +12,9 @@ from contract_agent.schemas.review import ReviewRequest
 class SingleAgentHandler:
     """Handles single-agent mode: direct LLM call, no pipeline overhead."""
 
-    def __init__(self, runtime_settings: Settings | None = None, review_service: ReviewService | None = None) -> None:
+    def __init__(
+        self, runtime_settings: Settings | None = None, review_service: ReviewService | None = None
+    ) -> None:
         self.review_service = review_service or ReviewService(runtime_settings=runtime_settings)
 
     def run_review(

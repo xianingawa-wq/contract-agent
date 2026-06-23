@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
@@ -182,11 +182,19 @@ class GatewayResponse(BaseModel):
 class PipelineEvent(BaseModel):
     pipeline_id: str
     event_type: Literal[
-        "pipeline_started", "pipeline_completed", "pipeline_failed",
-        "agent_started", "agent_completed", "agent_failed", "agent_skipped",
-        "pipeline_cancelled", "compression_triggered",
-        "supervisor_thinking", "supervisor_finished",
-        "agent_called", "round_complete",
+        "pipeline_started",
+        "pipeline_completed",
+        "pipeline_failed",
+        "agent_started",
+        "agent_completed",
+        "agent_failed",
+        "agent_skipped",
+        "pipeline_cancelled",
+        "compression_triggered",
+        "supervisor_thinking",
+        "supervisor_finished",
+        "agent_called",
+        "round_complete",
     ]
     agent_id: str | None = None
     round: int | None = None

@@ -16,16 +16,37 @@ from contract_agent.orchestration.protocol import (
 class GatewayRouter:
     """Application-layer router for contract review entrypoints."""
 
-    _REVIEW_KEYWORDS: frozenset[str] = frozenset({
-        "审查", "校审", "审阅", "重新扫描", "扫描合同",
-        "复核", "检查合同", "跑一遍审查", "全面审查", "详细审查",
-    })
-    _SIMPLE_KEYWORDS: frozenset[str] = frozenset({
-        "简单看看", "快速", "大概", "简单看一下",
-    })
-    _DEEP_KEYWORDS: frozenset[str] = frozenset({
-        "深度", "全面", "详细", "彻底", "逐条",
-    })
+    _REVIEW_KEYWORDS: frozenset[str] = frozenset(
+        {
+            "审查",
+            "校审",
+            "审阅",
+            "重新扫描",
+            "扫描合同",
+            "复核",
+            "检查合同",
+            "跑一遍审查",
+            "全面审查",
+            "详细审查",
+        }
+    )
+    _SIMPLE_KEYWORDS: frozenset[str] = frozenset(
+        {
+            "简单看看",
+            "快速",
+            "大概",
+            "简单看一下",
+        }
+    )
+    _DEEP_KEYWORDS: frozenset[str] = frozenset(
+        {
+            "深度",
+            "全面",
+            "详细",
+            "彻底",
+            "逐条",
+        }
+    )
 
     def __init__(self, config: MultiAgentConfig | None = None) -> None:
         self.config = config or MultiAgentConfig()

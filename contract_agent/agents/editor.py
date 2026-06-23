@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import re
 
-from contract_agent.config import Settings, settings_snapshot
+from contract_agent.config import ModelRuntimeConfig, Settings, settings_snapshot
 from contract_agent.provider.client import get_chat_model
 
 
 class ContractEditor:
     _CLAUSE_TITLE_RE = re.compile(r"^第[一二三四五六七八九十百零]+条")
 
-    def __init__(self, runtime_settings: Settings | None = None, llm=None) -> None:
+    def __init__(
+        self,
+        runtime_settings: Settings | None = None,
+        model_config: ModelRuntimeConfig | None = None,
+        llm=None,
+    ) -> None:
         self.settings = runtime_settings or settings_snapshot()
-        self.llm = llm or get_chat_model()
+        self.model_config = model_config
+        self.llm = llm or get_chat_model(model_config=model_config, runtime_settings=self.settings)
 
     def redraft_contract(
         self,
@@ -52,12 +58,16 @@ class ContractEditor:
             )
             revised_segments.append(revised or segment)
 
-        combined = "\n".join(part.strip("\n") for part in revised_segments if part is not None).strip()
+        combined = "\n".join(
+            part.strip("\n") for part in revised_segments if part is not None
+        ).strip()
         if not combined:
             raise RuntimeError("LLM 未返回可用的合同修订稿。")
         return combined
 
-    def _invoke_full_redraft(self, *, contract_text: str, contract_type: str, our_side: str, issue_text: str) -> str:
+    def _invoke_full_redraft(
+        self, *, contract_text: str, contract_type: str, our_side: str, issue_text: str
+    ) -> str:
         from contract_agent.constants.prompts import contract_redraft_prompt
 
         chain = contract_redraft_prompt | self.llm
@@ -71,7 +81,9 @@ class ContractEditor:
         )
         return (result.content or "").strip()
 
-    def _invoke_segment_redraft(self, *, contract_segment: str, contract_type: str, our_side: str, issue_text: str) -> str:
+    def _invoke_segment_redraft(
+        self, *, contract_segment: str, contract_type: str, our_side: str, issue_text: str
+    ) -> str:
         from contract_agent.constants.prompts import contract_redraft_chunk_prompt
 
         chain = contract_redraft_chunk_prompt | self.llm
@@ -163,7 +175,10 @@ class ContractEditor:
                 if current:
                     chunks.append(current)
                     current = ""
-                chunks.extend(paragraph[i : i + max_chunk_chars] for i in range(0, len(paragraph), max_chunk_chars))
+                chunks.extend(
+                    paragraph[i : i + max_chunk_chars]
+                    for i in range(0, len(paragraph), max_chunk_chars)
+                )
                 continue
 
             candidate = paragraph if not current else f"{current}\n\n{paragraph}"
@@ -178,7 +193,9 @@ class ContractEditor:
 
         return chunks or [block]
 
-    def _select_relevant_issues(self, segment: str, accepted_issues: list[dict[str, str]]) -> list[dict[str, str]]:
+    def _select_relevant_issues(
+        self, segment: str, accepted_issues: list[dict[str, str]]
+    ) -> list[dict[str, str]]:
         related: list[dict[str, str]] = []
         for issue in accepted_issues:
             location = (issue.get("location") or "").strip()

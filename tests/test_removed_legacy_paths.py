@@ -1,4 +1,6 @@
-﻿import importlib
+import importlib
+from pathlib import Path
+import re
 import unittest
 
 
@@ -27,12 +29,31 @@ class RemovedLegacyPathTests(unittest.TestCase):
             "contract_agent.orchestration.config",
             "contract_agent.knowledge.rag.config",
             "contract_agent.runtime.config",
+            "contract_agent.model_config",
+            "contract_agent.model_config.interface",
+            "contract_agent.model_config.factory",
+            "contract_agent.model_config.service",
         ]
 
         for path in removed_paths:
             with self.subTest(path=path):
                 with self.assertRaises(ModuleNotFoundError):
                     importlib.import_module(path)
+
+    def test_runtime_environment_reads_stay_inside_config_package(self):
+        root = Path(__file__).resolve().parents[1]
+        env_call_pattern = re.compile(r"os\.(?:getenv|environ)")
+        offenders: list[str] = []
+
+        for path in (root / "contract_agent").rglob("*.py"):
+            relative = path.relative_to(root)
+            if relative.parts[:2] == ("contract_agent", "config"):
+                continue
+            text = path.read_text(encoding="utf-8")
+            if env_call_pattern.search(text):
+                offenders.append(str(relative))
+
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":

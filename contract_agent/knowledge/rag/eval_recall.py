@@ -10,7 +10,13 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from contract_agent.config import Settings, settings_snapshot
+from contract_agent.config import (
+    AppContext,
+    ModelRuntimeConfig,
+    Settings,
+    configure_runtime,
+    settings_snapshot,
+)
 from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 from contract_agent.knowledge.rag.vector_store import load_vector_store
 
@@ -84,7 +90,9 @@ def evaluate_samples(
                 final_k=rerank_final_k,
                 use_rerank=True,
             )
-            rerank_order_changed = _docs_signature(baseline_docs[:rerank_final_k]) != _docs_signature(docs)
+            rerank_order_changed = _docs_signature(
+                baseline_docs[:rerank_final_k]
+            ) != _docs_signature(docs)
             rerank_meta = dict(getattr(retriever, "last_rerank_meta", {}) or {})
         else:
             docs = retriever.retrieve_documents(query=sample.query, k=max_k)
@@ -119,14 +127,20 @@ def build_summary(
         "retrieval_config": retrieval_config or {},
         "timing": timing or {},
         "overall": _recall_stats(details=details, k_values=k_values),
-        "by_contract_type": _grouped_recall_stats(details=details, k_values=k_values, key_name="contract_type"),
-        "by_severity": _grouped_recall_stats(details=details, k_values=k_values, key_name="severity"),
+        "by_contract_type": _grouped_recall_stats(
+            details=details, k_values=k_values, key_name="contract_type"
+        ),
+        "by_severity": _grouped_recall_stats(
+            details=details, k_values=k_values, key_name="severity"
+        ),
         "rerank_diagnostics": _rerank_diagnostics(details),
     }
     return summary
 
 
-def compare_with_baseline(current_summary: dict[str, Any], baseline_summary: dict[str, Any]) -> dict[str, Any]:
+def compare_with_baseline(
+    current_summary: dict[str, Any], baseline_summary: dict[str, Any]
+) -> dict[str, Any]:
     k_values = [int(k) for k in current_summary.get("k_values", [])]
     comparison: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -159,20 +173,33 @@ def run_evaluation(
     severities: set[str] | None = None,
     retriever: ContractKnowledgeRetriever | None = None,
     runtime_settings: Settings | None = None,
+    model_config: ModelRuntimeConfig | None = None,
+    app_context: AppContext | None = None,
     use_rerank: bool | None = None,
     fetch_k: int | None = None,
     final_k: int | None = None,
 ) -> dict[str, Any]:
     started_at_dt = datetime.now(timezone.utc)
-    active_settings = runtime_settings or settings_snapshot()
+    active_settings = runtime_settings or (
+        app_context.settings if app_context is not None else settings_snapshot()
+    )
+    active_model_config = model_config or (
+        app_context.model_config if app_context is not None else None
+    )
 
     all_samples = load_recall_dataset(dataset_path)
-    selected_samples = filter_samples(all_samples, contract_types=contract_types, severities=severities)
+    selected_samples = filter_samples(
+        all_samples, contract_types=contract_types, severities=severities
+    )
     if not selected_samples:
         raise ValueError("No samples left after applying filters.")
 
-    active_retriever = retriever or _build_retriever(active_settings)
-    use_rerank_value = active_settings.retrieval_enable_rerank if use_rerank is None else bool(use_rerank)
+    active_retriever = retriever or _build_retriever(
+        active_settings, model_config=active_model_config
+    )
+    use_rerank_value = (
+        active_settings.retrieval_enable_rerank if use_rerank is None else bool(use_rerank)
+    )
     fetch_k_value = max(1, int(fetch_k or active_settings.retrieval_fetch_k))
     final_k_value = max(1, int(final_k or active_settings.retrieval_final_k))
 
@@ -247,10 +274,19 @@ def run_evaluation(
     }
 
 
-def _build_retriever(runtime_settings: Settings | None = None) -> ContractKnowledgeRetriever:
+def _build_retriever(
+    runtime_settings: Settings | None = None,
+    model_config: ModelRuntimeConfig | None = None,
+) -> ContractKnowledgeRetriever:
     active_settings = runtime_settings or settings_snapshot()
-    vector_store = load_vector_store(active_settings.knowledge_vector_store_dir, runtime_settings=active_settings)
-    return ContractKnowledgeRetriever(vector_store, runtime_settings=active_settings)
+    vector_store = load_vector_store(
+        active_settings.knowledge_vector_store_dir,
+        runtime_settings=active_settings,
+        model_config=model_config,
+    )
+    return ContractKnowledgeRetriever(
+        vector_store, runtime_settings=active_settings, model_config=model_config
+    )
 
 
 def _parse_sample(payload: dict[str, Any], line_no: int) -> RecallSample:
@@ -318,7 +354,9 @@ def _evaluate_single_sample(
         matched = sorted(top_labels.intersection(gold_set))
         hits_by_k[f"hit_at_{k}"] = bool(matched)
         matched_labels_by_k[f"matched_labels_at_{k}"] = matched
-        ndcg_by_k[f"ndcg_at_{k}"] = _ndcg_at_k(retrieved_labels=retrieved_labels, gold_set=gold_set, k=k)
+        ndcg_by_k[f"ndcg_at_{k}"] = _ndcg_at_k(
+            retrieved_labels=retrieved_labels, gold_set=gold_set, k=k
+        )
 
     return {
         "risk_id": sample.risk_id,
@@ -339,10 +377,16 @@ def _evaluate_single_sample(
     }
 
 
-def _grouped_recall_stats(details: list[dict[str, Any]], *, k_values: list[int], key_name: str) -> dict[str, Any]:
+def _grouped_recall_stats(
+    details: list[dict[str, Any]], *, k_values: list[int], key_name: str
+) -> dict[str, Any]:
     groups: dict[str, list[dict[str, Any]]] = {}
     for item in details:
-        key = (item.get(key_name) or "unknown").strip() if isinstance(item.get(key_name), str) else "unknown"
+        key = (
+            (item.get(key_name) or "unknown").strip()
+            if isinstance(item.get(key_name), str)
+            else "unknown"
+        )
         groups.setdefault(key, []).append(item)
 
     grouped: dict[str, Any] = {}
@@ -358,7 +402,15 @@ def _recall_stats(details: list[dict[str, Any]], k_values: list[int]) -> dict[st
         hit_key = f"hit_at_{k}"
         hits = sum(1 for row in details if row["hits_by_k"].get(hit_key))
         recall = round(hits / total, 6) if total else 0.0
-        avg_ndcg = round(sum(float(row.get("ndcg_by_k", {}).get(f"ndcg_at_{k}", 0.0)) for row in details) / total, 6) if total else 0.0
+        avg_ndcg = (
+            round(
+                sum(float(row.get("ndcg_by_k", {}).get(f"ndcg_at_{k}", 0.0)) for row in details)
+                / total,
+                6,
+            )
+            if total
+            else 0.0
+        )
         stats[f"hits_at_{k}"] = hits
         stats[f"recall_at_{k}"] = recall
         stats[f"ndcg_at_{k}"] = avg_ndcg
@@ -366,7 +418,9 @@ def _recall_stats(details: list[dict[str, Any]], k_values: list[int]) -> dict[st
     reciprocal_sum = sum(float(row.get("reciprocal_rank", 0.0)) for row in details)
     stats["mrr"] = round(reciprocal_sum / total, 6) if total else 0.0
 
-    hit_ranks = [int(row["first_hit_rank"]) for row in details if row.get("first_hit_rank") is not None]
+    hit_ranks = [
+        int(row["first_hit_rank"]) for row in details if row.get("first_hit_rank") is not None
+    ]
     stats["avg_first_hit_rank"] = round(sum(hit_ranks) / len(hit_ranks), 6) if hit_ranks else None
     stats["hit_sample_count"] = len(hit_ranks)
     return stats
@@ -407,14 +461,21 @@ def _rerank_diagnostics(details: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _delta_group_stats(current: dict[str, Any], baseline: dict[str, Any], k_values: list[int]) -> dict[str, Any]:
+def _delta_group_stats(
+    current: dict[str, Any], baseline: dict[str, Any], k_values: list[int]
+) -> dict[str, Any]:
     keys = sorted(set(current.keys()).union(set(baseline.keys())))
     return {
-        key: _delta_stats(current=current.get(key, {}), baseline=baseline.get(key, {}), k_values=k_values) for key in keys
+        key: _delta_stats(
+            current=current.get(key, {}), baseline=baseline.get(key, {}), k_values=k_values
+        )
+        for key in keys
     }
 
 
-def _delta_stats(current: dict[str, Any], baseline: dict[str, Any], k_values: list[int]) -> dict[str, Any]:
+def _delta_stats(
+    current: dict[str, Any], baseline: dict[str, Any], k_values: list[int]
+) -> dict[str, Any]:
     data: dict[str, Any] = {}
     for k in k_values:
         for metric in ("recall", "ndcg"):
@@ -512,10 +573,16 @@ def _parse_bool(value: str) -> bool:
 
 
 def _parse_args() -> argparse.Namespace:
-    current = settings_snapshot()
-    parser = argparse.ArgumentParser(description="Evaluate RAG retrieval recall with gold-labeled legal article IDs.")
-    parser.add_argument("--dataset", required=True, help="Path to recall evaluation dataset in JSONL format.")
-    parser.add_argument("--k", nargs="*", type=int, default=[1, 3, 5], help="K values for Recall@k.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate RAG retrieval recall with gold-labeled legal article IDs."
+    )
+    parser.add_argument("--config", default=None, help="Path to runtime YAML config")
+    parser.add_argument(
+        "--dataset", required=True, help="Path to recall evaluation dataset in JSONL format."
+    )
+    parser.add_argument(
+        "--k", nargs="*", type=int, default=[1, 3, 5], help="K values for Recall@k."
+    )
     parser.add_argument("--output-dir", required=True, help="Directory for output reports.")
     parser.add_argument(
         "--filter-contract-type",
@@ -532,19 +599,19 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--use-rerank",
         type=_parse_bool,
-        default=current.retrieval_enable_rerank,
+        default=None,
         help="Whether to use rerank in evaluation (true/false).",
     )
     parser.add_argument(
         "--fetch-k",
         type=int,
-        default=current.retrieval_fetch_k,
+        default=None,
         help="Candidate size before rerank.",
     )
     parser.add_argument(
         "--final-k",
         type=int,
-        default=current.retrieval_final_k,
+        default=None,
         help="Final output size after rerank.",
     )
     return parser.parse_args()
@@ -552,6 +619,7 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    context = configure_runtime(config_path=args.config)
     k_values = sorted({int(k) for k in args.k if int(k) > 0})
     if not k_values:
         raise ValueError("At least one positive K value is required.")
@@ -562,6 +630,7 @@ def main() -> None:
         k_values=k_values,
         contract_types=_parse_values(args.filter_contract_type),
         severities=_parse_values(args.filter_severity),
+        app_context=context,
         use_rerank=args.use_rerank,
         fetch_k=args.fetch_k,
         final_k=args.final_k,

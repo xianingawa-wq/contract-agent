@@ -13,7 +13,9 @@ from contract_agent.config import Settings, settings_snapshot
 class MemoryManager:
     """Unified access to all three memory tiers."""
 
-    def __init__(self, config: MultiAgentConfig | None = None, runtime_settings: Settings | None = None) -> None:
+    def __init__(
+        self, config: MultiAgentConfig | None = None, runtime_settings: Settings | None = None
+    ) -> None:
         self.config = config or MultiAgentConfig()
         self.settings = runtime_settings or settings_snapshot()
         self.hot = HotLayer(self.config)

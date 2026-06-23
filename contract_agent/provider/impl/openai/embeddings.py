@@ -15,12 +15,15 @@ class OpenAIEmbeddings(Embeddings):
             kwargs["base_url"] = config.base_url
         self.client = OpenAI(**kwargs)
         self.model = config.embedding_model
-        self.chunk_size = 10
+        self.chunk_size = max(1, int(config.embedding_batch_size))
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
         for start in range(0, len(texts), self.chunk_size):
-            batch = [text if isinstance(text, str) else str(text) for text in texts[start : start + self.chunk_size]]
+            batch = [
+                text if isinstance(text, str) else str(text)
+                for text in texts[start : start + self.chunk_size]
+            ]
             response = self.client.embeddings.create(model=self.model, input=batch)
             vectors.extend(item.embedding for item in response.data)
         return vectors

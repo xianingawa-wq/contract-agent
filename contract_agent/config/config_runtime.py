@@ -55,6 +55,7 @@ class Settings(BaseModel):
     llm_embedding_model: str = "text-embedding-v4"
     llm_temperature: float = 0
     llm_use_responses_api: bool = True
+    embedding_batch_size: int = 10
 
     chat_provider: str = "openai_compatible"
     chat_api_key: str | None = None
@@ -90,9 +91,13 @@ class Settings(BaseModel):
     rerank_timeout_seconds: int = 8
     rerank_max_retries: int = 0
     react_max_steps: int = 3
-    postgres_dsn: str | None = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/contract_agent"
+    postgres_dsn: str | None = (
+        "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/contract_agent"
+    )
     max_upload_size_bytes: int = 5 * 1024 * 1024
     max_redraft_chunk_chars: int = 12000
+    stream_max_seconds: float = 24.0
+    stream_max_chars: int = 900
 
 
 def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings:
@@ -109,9 +114,20 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
         "QWEN_BASE_URL",
         default="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
-    llm_chat_model = _first_env(env, "LLM_CHAT_MODEL", "OPENAI_CHAT_MODEL", "QWEN_CHAT_MODEL", default="qwen-max") or "qwen-max"
+    llm_chat_model = (
+        _first_env(
+            env, "LLM_CHAT_MODEL", "OPENAI_CHAT_MODEL", "QWEN_CHAT_MODEL", default="qwen-max"
+        )
+        or "qwen-max"
+    )
     llm_embedding_model = (
-        _first_env(env, "LLM_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL", "QWEN_EMBEDDING_MODEL", default="text-embedding-v4")
+        _first_env(
+            env,
+            "LLM_EMBEDDING_MODEL",
+            "OPENAI_EMBEDDING_MODEL",
+            "QWEN_EMBEDDING_MODEL",
+            default="text-embedding-v4",
+        )
         or "text-embedding-v4"
     )
 
@@ -136,6 +152,7 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
         llm_embedding_model=llm_embedding_model,
         llm_temperature=_float_value(_env(env, "LLM_TEMPERATURE"), "0"),
         llm_use_responses_api=_bool_value(_env(env, "LLM_USE_RESPONSES_API"), "true"),
+        embedding_batch_size=_int_value(_env(env, "EMBEDDING_BATCH_SIZE"), "10"),
         chat_provider=chat_provider,
         chat_api_key=chat_api_key,
         chat_base_url=chat_base_url,
@@ -156,7 +173,8 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
         )
         or str(PROJECT_ROOT / "knowledge" / "ingested" / "laws_faiss"),
         milvus_uri=_env(env, "MILVUS_URI", "http://127.0.0.1:19530") or "http://127.0.0.1:19530",
-        milvus_collection_name=_env(env, "MILVUS_COLLECTION_NAME", "legal_knowledge_chunks") or "legal_knowledge_chunks",
+        milvus_collection_name=_env(env, "MILVUS_COLLECTION_NAME", "legal_knowledge_chunks")
+        or "legal_knowledge_chunks",
         milvus_consistency_level=_env(env, "MILVUS_CONSISTENCY_LEVEL", "Session") or "Session",
         retrieval_enable_rerank=_bool_value(_env(env, "RETRIEVAL_ENABLE_RERANK"), "true"),
         rerank_provider=_env(env, "RERANK_PROVIDER", "qwen") or "qwen",
@@ -171,13 +189,20 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
         rerank_timeout_seconds=_int_value(_env(env, "RERANK_TIMEOUT_SECONDS"), "8"),
         rerank_max_retries=_int_value(_env(env, "RERANK_MAX_RETRIES"), "0"),
         react_max_steps=_int_value(_env(env, "REACT_MAX_STEPS"), "3"),
-        postgres_dsn=_env(env, "POSTGRES_DSN", "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/contract_agent"),
+        postgres_dsn=_env(
+            env,
+            "POSTGRES_DSN",
+            "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/contract_agent",
+        ),
         max_upload_size_bytes=_int_value(_env(env, "MAX_UPLOAD_SIZE_BYTES"), str(5 * 1024 * 1024)),
         max_redraft_chunk_chars=_int_value(_env(env, "MAX_REDRAFT_CHUNK_CHARS"), "12000"),
+        stream_max_seconds=_float_value(_env(env, "STREAM_MAX_SECONDS"), "24.0"),
+        stream_max_chars=_int_value(_env(env, "STREAM_MAX_CHARS"), "900"),
     )
 
 
 if not hasattr(Settings, "model_dump"):
+
     def _settings_model_dump(self: Settings, *args, **kwargs) -> dict[str, object]:
         return self.dict(*args, **kwargs)
 
@@ -185,6 +210,7 @@ if not hasattr(Settings, "model_dump"):
 
 
 if not hasattr(Settings, "model_validate"):
+
     @classmethod
     def _settings_model_validate(cls, value: object) -> Settings:
         if isinstance(value, cls):

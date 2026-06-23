@@ -7,7 +7,12 @@ from pathlib import Path
 from contract_agent.logger.audit import AuditLogger
 from contract_agent.config import Settings, temporary_settings
 from contract_agent.schemas.chat import ChatMessage, ChatRequest, ChatResponse
-from contract_agent.schemas.review import ExtractedFields, ReviewReport, ReviewResponse, ReviewSummary
+from contract_agent.schemas.review import (
+    ExtractedFields,
+    ReviewReport,
+    ReviewResponse,
+    ReviewSummary,
+)
 from contract_agent.services.chat_service import ChatService
 from contract_agent.services.review_service import ReviewService
 
@@ -25,7 +30,9 @@ class ServiceConfigInjectionTests(unittest.TestCase):
                 service._require_llm()
 
     def test_review_service_uses_constructor_settings_for_health(self):
-        service = ReviewService(runtime_settings=Settings(chat_api_key="injected-key", vector_backend="faiss"))
+        service = ReviewService(
+            runtime_settings=Settings(chat_api_key="injected-key", vector_backend="faiss")
+        )
 
         with temporary_settings(chat_api_key=None, vector_backend="milvus"):
             health = service.health()
@@ -37,7 +44,9 @@ class ServiceConfigInjectionTests(unittest.TestCase):
         class FakeReviewService:
             def review(self, payload):
                 return ReviewResponse(
-                    summary=ReviewSummary(contract_type="采购合同", overall_risk="info", risk_count=0),
+                    summary=ReviewSummary(
+                        contract_type="采购合同", overall_risk="info", risk_count=0
+                    ),
                     extracted_fields=ExtractedFields(),
                     risks=[],
                     report=ReviewReport(
@@ -65,9 +74,13 @@ class ServiceConfigInjectionTests(unittest.TestCase):
                     )
                 )
             )
-            records = [json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()]
+            records = [
+                json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()
+            ]
 
-        span_names = {record.get("span_name") for record in records if record["event"] == "span.completed"}
+        span_names = {
+            record.get("span_name") for record in records if record["event"] == "span.completed"
+        }
         self.assertIn("chat.route", span_names)
         self.assertIn("chat.review", span_names)
         self.assertIn("[Service][Chat]", {record.get("prefix") for record in records})

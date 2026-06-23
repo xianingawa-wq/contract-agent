@@ -1,4 +1,3 @@
-﻿
 from contract_agent.provider.interface import LLMConfig, LLMProvider, ModelResponse, ToolCall
 
 __all__ = [
@@ -15,7 +14,10 @@ __all__ = [
 
 def __getattr__(name: str):
     if name in {"ModelProviderFactory", "create_model_provider_service"}:
-        from contract_agent.provider.factory import ModelProviderFactory, create_model_provider_service
+        from contract_agent.provider.factory import (
+            ModelProviderFactory,
+            create_model_provider_service,
+        )
 
         exports = {
             "ModelProviderFactory": ModelProviderFactory,

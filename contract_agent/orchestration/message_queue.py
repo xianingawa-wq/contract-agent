@@ -35,7 +35,9 @@ class TaskMessageQueue:
             registry.set_pending_command_count(task_id, count)
         return task_id
 
-    def drain_commands(self, task_id: str, registry: TaskRegistry | None = None) -> list[TaskCommand]:
+    def drain_commands(
+        self, task_id: str, registry: TaskRegistry | None = None
+    ) -> list[TaskCommand]:
         with self._lock:
             commands = list(self._commands_by_task.pop(task_id, deque()))
         if registry is not None:

@@ -61,7 +61,9 @@ def SessionLocal(runtime_settings: Settings | None = None, *, dsn: str | None = 
 
 
 @contextmanager
-def session_scope(runtime_settings: Settings | None = None, *, dsn: str | None = None) -> Iterator[Session]:
+def session_scope(
+    runtime_settings: Settings | None = None, *, dsn: str | None = None
+) -> Iterator[Session]:
     session = SessionLocal(runtime_settings, dsn=dsn)
     try:
         yield session

@@ -1,18 +1,22 @@
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from contract_agent.model_config.factory import create_model_config_resolver, create_model_profile_service
-from contract_agent.model_config.impl.json_profile_store import JsonModelProfileStore
-from contract_agent.model_config.interface import ModelEndpointConfig, ModelRole, ModelRuntimeConfig
+from contract_agent.config import (
+    ModelEndpointConfig,
+    ModelRole,
+    ModelRuntimeConfig,
+    YamlModelProfileStore,
+    create_model_config_resolver,
+    create_model_profile_service,
+)
 
 
 class ModelConfigTests(unittest.TestCase):
-    def test_json_profile_store_round_trips_runtime_config(self):
+    def test_yaml_profile_store_round_trips_runtime_config(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "profile.json"
-            store = JsonModelProfileStore(path)
+            path = Path(tmp) / "profile.yaml"
+            store = YamlModelProfileStore(path)
             config = ModelRuntimeConfig(
                 chat=ModelEndpointConfig(
                     role=ModelRole.CHAT,
@@ -44,30 +48,25 @@ class ModelConfigTests(unittest.TestCase):
 
     def test_profile_service_hides_api_keys_in_public_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "profile.json"
+            path = Path(tmp) / "profile.yaml"
             path.write_text(
-                json.dumps(
-                    {
-                        "chat": {
-                            "provider": "openai_compatible",
-                            "base_url": "https://chat.example.test/v1",
-                            "api_key": "chat-secret",
-                            "model": "chat-model",
-                        },
-                        "embedding": {
-                            "provider": "openai_compatible",
-                            "base_url": "https://embedding.example.test/v1",
-                            "api_key": "embedding-secret",
-                            "model": "embedding-model",
-                        },
-                        "rerank": {
-                            "provider": "openai_compatible",
-                            "base_url": "https://rerank.example.test/v1",
-                            "api_key": "rerank-secret",
-                            "model": "rerank-model",
-                        },
-                    }
-                ),
+                """
+chat:
+  provider: openai_compatible
+  base_url: https://chat.example.test/v1
+  api_key: chat-secret
+  model: chat-model
+embedding:
+  provider: openai_compatible
+  base_url: https://embedding.example.test/v1
+  api_key: embedding-secret
+  model: embedding-model
+rerank:
+  provider: openai_compatible
+  base_url: https://rerank.example.test/v1
+  api_key: rerank-secret
+  model: rerank-model
+""",
                 encoding="utf-8",
             )
             service = create_model_profile_service(path)
@@ -84,18 +83,15 @@ class ModelConfigTests(unittest.TestCase):
 
     def test_resolver_prefers_local_profile_over_environment_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "profile.json"
+            path = Path(tmp) / "profile.yaml"
             path.write_text(
-                json.dumps(
-                    {
-                        "chat": {
-                            "provider": "openai_compatible",
-                            "base_url": "https://profile-chat.example.test/v1",
-                            "api_key": "profile-chat-key",
-                            "model": "profile-chat-model",
-                        }
-                    }
-                ),
+                """
+chat:
+  provider: openai_compatible
+  base_url: https://profile-chat.example.test/v1
+  api_key: profile-chat-key
+  model: profile-chat-model
+""",
                 encoding="utf-8",
             )
             resolver = create_model_config_resolver(path)

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -31,9 +31,7 @@ class PipelineOrchestrator:
     def register_agent(self, agent_id: str, fn: AgentFn) -> None:
         self._agents[agent_id] = fn
 
-    def register_route(
-        self, from_agent: str, condition: str, to_agent: str
-    ) -> None:
+    def register_route(self, from_agent: str, condition: str, to_agent: str) -> None:
         if from_agent not in self._routes:
             self._routes[from_agent] = []
         self._routes[from_agent].append((to_agent, condition))
@@ -48,7 +46,11 @@ class PipelineOrchestrator:
         initial_input: dict[str, Any],
         on_event: Callable[[PipelineEvent], None] | None = None,
     ) -> PipelineState:
-        if state.status in (PipelineStatus.FAILED, PipelineStatus.CANCELLED, PipelineStatus.INTERRUPTED):
+        if state.status in (
+            PipelineStatus.FAILED,
+            PipelineStatus.CANCELLED,
+            PipelineStatus.INTERRUPTED,
+        ):
             return state
         state.status = PipelineStatus.RUNNING
         self._emit(on_event, self._event(state, "pipeline_started"))
@@ -84,7 +86,9 @@ class PipelineOrchestrator:
                     error_message=str(exc),
                 )
                 state.errors.append({"agent_id": agent_id, "error": str(exc)})
-                self._emit(on_event, self._event(state, "agent_failed", agent_id, {"error": str(exc)}))
+                self._emit(
+                    on_event, self._event(state, "agent_failed", agent_id, {"error": str(exc)})
+                )
 
                 next_target = self._resolve_fallback(agent_id)
                 if next_target == "__abort__":
@@ -102,11 +106,19 @@ class PipelineOrchestrator:
             ctx.update(output.structured_data)
             state.token_used_total += output.token_used
 
-            self._emit(on_event, self._event(state, "agent_completed", agent_id, {
-                "findings_count": len(output.findings),
-                "token_used": output.token_used,
-                "status": output.status.value,
-            }))
+            self._emit(
+                on_event,
+                self._event(
+                    state,
+                    "agent_completed",
+                    agent_id,
+                    {
+                        "findings_count": len(output.findings),
+                        "token_used": output.token_used,
+                        "status": output.status.value,
+                    },
+                ),
+            )
 
         if state.status not in (PipelineStatus.FAILED, PipelineStatus.CANCELLED):
             state.status = PipelineStatus.COMPLETED

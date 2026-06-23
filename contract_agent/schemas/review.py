@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -55,8 +55,14 @@ class RiskItem(BaseModel):
 
     @model_validator(mode="after")
     def validate_offsets(self):
-        if self.start_offset is not None and self.end_offset is not None and self.start_offset > self.end_offset:
-            raise ValueError(f"start_offset ({self.start_offset}) must not exceed end_offset ({self.end_offset})")
+        if (
+            self.start_offset is not None
+            and self.end_offset is not None
+            and self.start_offset > self.end_offset
+        ):
+            raise ValueError(
+                f"start_offset ({self.start_offset}) must not exceed end_offset ({self.end_offset})"
+            )
         return self
 
 

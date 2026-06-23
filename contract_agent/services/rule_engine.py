@@ -48,11 +48,15 @@ class RuleEngine:
             if requires_cross_clause and self._has_cross_clause_support(rule, document, chunk):
                 continue
 
-            risks.append(self._build_risk(rule, self._find_evidence(chunk, trigger_keywords), chunk))
+            risks.append(
+                self._build_risk(rule, self._find_evidence(chunk, trigger_keywords), chunk)
+            )
 
         return risks
 
-    def _has_cross_clause_support(self, rule: dict, document: ParsedDocument, target_chunk: ClauseChunk) -> bool:
+    def _has_cross_clause_support(
+        self, rule: dict, document: ParsedDocument, target_chunk: ClauseChunk
+    ) -> bool:
         must_have_any = rule.get("must_have_any", [])
         exclusions = rule.get("exclusions", [])
 
@@ -66,7 +70,9 @@ class RuleEngine:
 
         return False
 
-    def _related_chunks(self, document: ParsedDocument, target_chunk: ClauseChunk) -> list[ClauseChunk]:
+    def _related_chunks(
+        self, document: ParsedDocument, target_chunk: ClauseChunk
+    ) -> list[ClauseChunk]:
         related: list[ClauseChunk] = []
         target_root = target_chunk.parent_clause_no or target_chunk.clause_no
 

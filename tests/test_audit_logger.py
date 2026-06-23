@@ -23,7 +23,9 @@ class AuditLoggerTests(unittest.TestCase):
                         with logger.span("stage.inner"):
                             raise ValueError("boom")
 
-            records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+            records = [
+                json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+            ]
 
         event_names = [record["event"] for record in records]
         self.assertEqual(event_names[0], "trace.started")
@@ -33,8 +35,16 @@ class AuditLoggerTests(unittest.TestCase):
         self.assertEqual(event_names[-1], "trace.failed")
         self.assertTrue(all(record.get("trace_id") == trace_id for record in records))
 
-        outer_started = next(record for record in records if record.get("span_name") == "stage.outer" and record["event"] == "span.started")
-        inner_failed = next(record for record in records if record.get("span_name") == "stage.inner" and record["event"] == "span.failed")
+        outer_started = next(
+            record
+            for record in records
+            if record.get("span_name") == "stage.outer" and record["event"] == "span.started"
+        )
+        inner_failed = next(
+            record
+            for record in records
+            if record.get("span_name") == "stage.inner" and record["event"] == "span.failed"
+        )
         custom = next(record for record in records if record["event"] == "custom.event")
 
         self.assertEqual(custom["span_id"], outer_started["span_id"])
@@ -96,7 +106,9 @@ class AuditLoggerTests(unittest.TestCase):
                 )
             )
 
-            events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+            events = [
+                json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+            ]
 
         self.assertTrue(result.risks)
         self.assertIsNotNone(result.trace)
@@ -142,7 +154,9 @@ class AuditLoggerTests(unittest.TestCase):
                 )
             )
 
-            events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+            events = [
+                json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+            ]
 
         trace_ids = {event.get("trace_id") for event in events}
         self.assertEqual(len(trace_ids), 1)

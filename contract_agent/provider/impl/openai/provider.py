@@ -63,7 +63,9 @@ class OpenAIProvider:
             except Exception:
                 if tools or previous_response_id:
                     raise
-        return self._chat_completion_create(input=input, instructions=instructions, model=model, tools=tools)
+        return self._chat_completion_create(
+            input=input, instructions=instructions, model=model, tools=tools
+        )
 
     def structured_output(
         self,
@@ -118,7 +120,9 @@ class OpenAIProvider:
         model: str | None = None,
         max_rounds: int = 5,
     ) -> ModelResponse:
-        response = self.create_response(input=input, instructions=instructions, model=model, tools=tools)
+        response = self.create_response(
+            input=input, instructions=instructions, model=model, tools=tools
+        )
         for _ in range(max_rounds):
             if not response.tool_calls:
                 return response
@@ -160,7 +164,11 @@ class OpenAIProvider:
         if previous_response_id:
             kwargs["previous_response_id"] = previous_response_id
         response = self.client.responses.create(**kwargs)
-        return ModelResponse(text=extract_output_text(response), raw=response, tool_calls=extract_tool_calls(response))
+        return ModelResponse(
+            text=extract_output_text(response),
+            raw=response,
+            tool_calls=extract_tool_calls(response),
+        )
 
     def _chat_completion_create(
         self,

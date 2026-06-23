@@ -1,4 +1,4 @@
-﻿import re
+import re
 
 from contract_agent.schemas.review import ExtractedFields
 
