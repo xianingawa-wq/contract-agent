@@ -103,6 +103,86 @@ class SupervisorAgentTests(unittest.TestCase):
         self.assertEqual(result.agent_outputs["missing"].error_message, "未知 Agent: missing")
         self.assertEqual(result.agent_outputs["supervisor"].status, AgentStatus.COMPLETED)
 
+    def test_review_agents_requested_in_same_round_run_in_dependency_batches(self):
+        llm = FakeSupervisorLlm(
+            [
+                '{"thought":"call all","action":"call_agents","agents":["summarizer","parser","risk_checker","legal_ref","redrafter"]}',
+                '{"thought":"finish","action":"finish","final_report":{"summary":"done","key_findings":[]}}',
+            ]
+        )
+        supervisor = SupervisorAgent(
+            MultiAgentConfig(supervisor_max_rounds=2, max_parallel_agents=5, agent_timeout_seconds=2),
+            llm=llm,
+        )
+        execution_order = []
+
+        def parser_agent(ctx):
+            execution_order.append("parser")
+            self.assertNotIn("parsed", ctx)
+            return AgentOutput(
+                agent_id="parser",
+                status=AgentStatus.COMPLETED,
+                input_summary="parsed",
+                structured_data={"parsed": True},
+            )
+
+        def risk_checker_agent(ctx):
+            execution_order.append("risk_checker")
+            self.assertTrue(ctx["parsed"])
+            return AgentOutput(
+                agent_id="risk_checker",
+                status=AgentStatus.COMPLETED,
+                input_summary="risk checked",
+                structured_data={"risk_checked": True},
+            )
+
+        def legal_ref_agent(ctx):
+            execution_order.append("legal_ref")
+            self.assertTrue(ctx["risk_checked"])
+            return AgentOutput(
+                agent_id="legal_ref",
+                status=AgentStatus.COMPLETED,
+                input_summary="legal referenced",
+                structured_data={"legal_ref_done": True},
+            )
+
+        def redrafter_agent(ctx):
+            execution_order.append("redrafter")
+            self.assertTrue(ctx["legal_ref_done"])
+            return AgentOutput(
+                agent_id="redrafter",
+                status=AgentStatus.COMPLETED,
+                input_summary="redrafted",
+                structured_data={"redrafted": True},
+            )
+
+        def summarizer_agent(ctx):
+            execution_order.append("summarizer")
+            self.assertTrue(ctx["redrafted"])
+            return AgentOutput(
+                agent_id="summarizer",
+                status=AgentStatus.COMPLETED,
+                input_summary="summarized",
+            )
+
+        supervisor.register_agent("parser", parser_agent)
+        supervisor.register_agent("risk_checker", risk_checker_agent)
+        supervisor.register_agent("legal_ref", legal_ref_agent)
+        supervisor.register_agent("redrafter", redrafter_agent)
+        supervisor.register_agent("summarizer", summarizer_agent)
+        state = PipelineState(
+            pipeline_id="pipeline-deps",
+            contract_id="contract-deps",
+            mode=AgentMode.MULTI_AUTO,
+            team="review",
+            status=PipelineStatus.PENDING,
+        )
+
+        result = supervisor.run(state, {"contract_text": "contract body"})
+
+        self.assertEqual(result.status, PipelineStatus.COMPLETED)
+        self.assertEqual(execution_order, ["parser", "risk_checker", "legal_ref", "redrafter", "summarizer"])
+
     def test_supervisor_writes_trace_spans_for_rounds_and_agents(self):
         llm = FakeSupervisorLlm(
             [

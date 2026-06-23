@@ -1,6 +1,6 @@
 import unittest
 
-from contract_agent.orchestration.gateway import GatewayRouter
+from contract_agent.services.review_gateway import GatewayRouter
 from contract_agent.orchestration.protocol import AgentMode, PipelineStatus
 
 

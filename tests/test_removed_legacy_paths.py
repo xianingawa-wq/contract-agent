@@ -1,4 +1,4 @@
-import importlib
+﻿import importlib
 import unittest
 
 
@@ -23,6 +23,7 @@ class RemovedLegacyPathTests(unittest.TestCase):
             "contract_agent.provider.impl.openai_compatible_embeddings",
             "contract_agent.provider.impl.openai_compatible_provider",
             "contract_agent.provider.impl.openai_message_codec",
+            "contract_agent.orchestration.gateway",
             "contract_agent.orchestration.config",
             "contract_agent.knowledge.rag.config",
             "contract_agent.runtime.config",

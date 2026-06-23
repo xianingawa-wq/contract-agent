@@ -43,7 +43,7 @@ Contract Agent 是一个独立的合同审查智能体运行时，从 `context-v
 | 规则审查 | 基于确定规则的合同条款检查（采购/通用两类） | `services/rule_engine.py` |
 | LLM 辅助审查 | 使用 LLM 对规则发现的风险进行深度分析和建议 | `agents/reviewer.py` |
 | 法律知识检索 | RAG 管道：分词 → 向量检索 → 混合重排 → 上下文注入 | `knowledge/rag/` |
-| 多智能体编排 | Gateway 路由 → Supervisor ReAct 循环 → 并行专家智能体 | `orchestration/` |
+| 多智能体编排 | ReviewGateway 路由 → Supervisor ReAct 循环 → 本地任务运行时 → 专家智能体 | `services/review_gateway.py`, `orchestration/` |
 | 合同改写 | 全量或分块合同条款改写建议 | `agents/editor.py` |
 | 结构化审计 | JSONL 格式审计日志，记录审查全流程 | `logger/audit.py` |
 | Token 追踪 | 字符级估算的 token 消耗汇总 | `trace/tokens.py` |
@@ -153,7 +153,7 @@ graph TB
     end
 
     subgraph 基础设施层
-        CONFIG[Settings<br/>runtime/config.py]
+        CONFIG[Settings<br/>config/config_runtime.py]
         DB[Database<br/>runtime/database.py]
         LOGGER[Audit Logger<br/>logger/audit.py]
         TRACE[Token Trace<br/>trace/tokens.py]
@@ -240,7 +240,7 @@ graph LR
 |----|------|------|------|
 | ADR-1 | **Protocol 抽象 > ABC 抽象** | `LLMProvider` 使用 `typing.Protocol` 而非 `abc.ABC` | ✅ 更轻量，无需显式继承；❌ 不能强制构造器签名 |
 | ADR-2 | **字符串注册工厂模式** | `ModelProviderFactory` 用字符串 key 注册 provider builder | ✅ 易扩展，支持运行时切换；❌ 拼写错误只能在运行时发现 |
-| ADR-3 | **全局 Settings 单例** | `runtime/config.py` 中 `settings = Settings()` 全局可变 | ✅ CLI 场景简单直接；❌ 测试困难、不支持多租户 |
+| ADR-3 | **全局 Settings 单例** | `config/config_runtime.py` 中 `settings = Settings()` 全局可变 | ✅ CLI 场景简单直接；❌ 测试困难、不支持多租户 |
 | ADR-4 | **三级记忆：热→温→冷** | Redis (hot) → PostgreSQL (warm) → Vector (cold) | ✅ 分层满足不同时效性需求；❌ 增加系统复杂度 |
 | ADR-5 | **Responses API 优先，Chat Completions 回退** | OpenAIProvider 优先调用 Responses API，异常时回退 | ✅ 对 OpenAI 最优；❌ DashScope 不支持 Responses |
 | ADR-6 | **LangChain 组合模式** | 使用 `prompt \| llm` chain 组合 | ✅ 减少样板代码；❌ 增加对 LangChain 的依赖耦合 |
@@ -257,11 +257,13 @@ graph LR
 **关键文件**:
 | 文件 | 内容 |
 |------|------|
-| `config.py` | `Settings(BaseModel)` — 约 40 个配置字段，从环境变量读取 |
+| `../config/config_runtime.py` | `Settings(BaseModel)` — 全局运行时配置与环境变量读取 |
+| `../config/config_multiagent.py` | `MultiAgentConfig` — 多智能体运行时配置 |
+| `../config/config_retrieval.py` | `RetrievalConfig` — RAG 检索参数快照 |
 | `database.py` | SQLAlchemy engine 创建（lazy init, pool_pre_ping） |
 | `schema.py` | `ensure_runtime_schema()` — 创建表、索引 |
 
-**核心类 `Settings`** (config.py:14-76):
+**核心类 `Settings`** (config/config_runtime.py):
 - `llm_*` 字段: 统一的 LLM 配置（向后兼容 QWEN_* 和 OPENAI_* 环境变量）
 - `chat_*` / `embedding_*` 字段: 角色分离的 chat 和 embedding 配置
 - `vector_backend`: `"milvus"` 或 `"faiss"`
@@ -564,6 +566,7 @@ sequenceDiagram
 | 文件 | 类 | 职责 |
 |------|-----|------|
 | `review_service.py` | `ReviewService` | 审查流程编排：parse → classify → extract → rules → RAG → LLM enrichment → report |
+| `review_gateway.py` | `GatewayRouter` | 审查总入口路由：请求分类、执行模式选择、PipelineState 创建 |
 | `chat_service.py` | `ChatService` | 对话服务：意图路由（review/search/advice/chat）+ ReAct 运行时 |
 | `parser.py` | `ContractParser` | 合同解析：txt（编码检测）、docx（mammoth HTML 转换）、pdf |
 | `classifier.py` | `ContractClassifier` | 合同类型分类（正则匹配） |
@@ -574,20 +577,13 @@ sequenceDiagram
 
 ---
 
-### 4.7 `contract_agent/orchestration/` — 多智能体编排
+### 4.7 `contract_agent/orchestration/` — 多智能体执行编排
 
-**职责**: 请求路由、智能体编排、事件发布、协议定义。
+**职责**: 多智能体执行编排、任务运行时、事件发布、协议定义。审查总入口路由位于 `contract_agent/services/review_gateway.py`。
 
 ```mermaid
 graph TB
-    subgraph 入口
-        GW[GatewayRouter<br/>gateway.py]
-    end
-
-    subgraph 路由决策
-        KW{关键词匹配?}
-        CC{条款数 > 50?}
-    end
+    GW[GatewayRouter<br/>services/review_gateway.py]
 
     subgraph 执行模式
         SINGLE[SingleAgentHandler<br/>single.py]
@@ -600,11 +596,8 @@ graph TB
         REDIS[(Redis Pub/Sub)]
     end
 
-    GW --> KW
-    KW -->|简单/快速 关键词| SINGLE
-    KW -->|审查 关键词| CC
-    CC -->|是| SUPERVISOR
-    CC -->|否| SUPERVISOR
+    GW -->|SINGLE| SINGLE
+    GW -->|MULTI_AUTO / MULTI_MANUAL| SUPERVISOR
     SUPERVISOR -->|并行执行| AGENTS[Agent Workers<br/>agents/workers.py]
     PIPELINE -->|顺序执行| AGENTS
     EVENTS --> REDIS
@@ -620,11 +613,9 @@ graph TB
 | 文件 | 类 | 职责 |
 |------|-----|------|
 | `protocol.py` | `AgentMode`, `PipelineState`, `AgentOutput`, `AgentFinding`, `PipelineEvent`, `GatewayResponse` | 编排核心数据模型（116 行） |
-| `gateway.py` | `GatewayRouter` | 请求分类和分发：关键词检测 + 条款数启发式 |
 | `supervisor.py` | `SupervisorAgent` | ReAct 循环编排器：prompt → LLM 决策 → 并行执行 → 积累结果 → 循环 |
 | `pipeline.py` | `PipelineOrchestrator` | 顺序管道编排：固定 agent 队列 + 条件路由 + 错误恢复 |
 | `single.py` | `SingleAgentHandler` | 单智能体路径：直接调用 ReviewService |
-| `config.py` | `MultiAgentConfig` | 编排配置（超时、并行度、轮次限制） |
 | `events.py` | `EventPublisher` | 事件发布（Redis Pub/Sub + 内存回调） |
 
 **三种执行模式**:
@@ -1089,7 +1080,7 @@ erDiagram
 
 ### 8.1 Settings 单例结构
 
-`runtime/config.py` 中的 `Settings(BaseModel)` 是全局配置单例，包含约 40 个字段，按功能分组：
+`config/config_runtime.py` 中的 `Settings(BaseModel)` 是全局配置单例，包含约 40 个字段，按功能分组：
 
 | 分组 | 字段 | 环境变量示例 |
 |------|------|-------------|
@@ -1296,7 +1287,9 @@ flowchart LR
 
 ## 11. 多智能体编排深度解析
 
-### 11.1 GatewayRouter 路由逻辑
+### 11.1 Review Gateway 路由逻辑
+
+`GatewayRouter` 位于 `contract_agent/services/review_gateway.py`，属于审查总入口应用服务；`orchestration/` 只消费它产出的 `PipelineState` 并负责执行编排。
 
 ```mermaid
 flowchart TD
@@ -1584,7 +1577,7 @@ python -m contract_agent.knowledge.rag.ingest
 
 ### 16.1 全局可变 Settings 单例
 
-**位置**: `runtime/config.py`
+**位置**: `config/config_runtime.py`
 
 ```python
 settings = load_settings_from_env()  # 模块级全局对象，保持导入绑定稳定
@@ -1783,8 +1776,12 @@ contract_agent/                          # 107 个 Python 文件, ~8000 行
 │   ├── console.py                       # 交互式控制台 (run_console_demo)
 │   ├── console_paths.py                 # 控制台路径常量
 │   └── http.py                          # FastAPI HTTP 适配器
+├── config/
+│   ├── __init__.py                      # 配置聚合出口
+│   ├── config_runtime.py                # Settings 全局单例
+│   ├── config_multiagent.py             # MultiAgentConfig
+│   └── config_retrieval.py              # RetrievalConfig
 ├── runtime/
-│   ├── config.py                        # Settings 全局单例 (~40 个配置字段)
 │   ├── database.py                      # SQLAlchemy engine 生命周期
 │   └── schema.py                        # ensure_runtime_schema()
 ├── provider/
@@ -1834,6 +1831,7 @@ contract_agent/                          # 107 个 Python 文件, ~8000 行
 │               └── qwen_response_parser.py # 响应解析
 ├── services/
 │   ├── review_service.py                # ReviewService (核心审查编排)
+│   ├── review_gateway.py                # GatewayRouter (审查总入口路由)
 │   ├── chat_service.py                  # ChatService (意图路由 + ReAct)
 │   ├── parser.py                        # ContractParser (txt/docx/pdf)
 │   ├── classifier.py                    # ContractClassifier
@@ -1847,11 +1845,9 @@ contract_agent/                          # 107 个 Python 文件, ~8000 行
 │   └── workers.py                       # 4 个 specialist agent 函数
 ├── orchestration/
 │   ├── protocol.py                      # 编排核心数据模型 (116 行)
-│   ├── gateway.py                       # GatewayRouter (请求分类和分发)
 │   ├── supervisor.py                    # SupervisorAgent (ReAct 循环)
 │   ├── pipeline.py                      # PipelineOrchestrator (顺序管道)
 │   ├── single.py                        # SingleAgentHandler (单智能体路径)
-│   ├── config.py                        # MultiAgentConfig
 │   └── events.py                        # EventPublisher
 ├── memory/
 │   ├── manager.py                       # MemoryManager (统一入口)

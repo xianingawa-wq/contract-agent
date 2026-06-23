@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
+import uuid
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +21,22 @@ class AgentStatus(str, Enum):
     FAILED = "failed"
     SKIPPED = "skipped"
     CANCELLED = "cancelled"
+
+
+class AgentTaskStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCEL_REQUESTED = "cancel_requested"
+    KILLED = "killed"
+    CANCELLED = "cancelled"
+
+
+class TaskCommandType(str, Enum):
+    FOLLOW_UP = "follow_up"
+    CANCEL = "cancel"
+    HEARTBEAT = "heartbeat"
 
 
 class PipelineStatus(str, Enum):
@@ -51,6 +68,84 @@ class AgentOutput(BaseModel):
     completed_at: datetime | None = None
     token_used: int = 0
     llm_calls: int = 0
+
+
+class AgentTask(BaseModel):
+    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    pipeline_id: str
+    agent_id: str
+    run_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    status: AgentTaskStatus = AgentTaskStatus.PENDING
+    input_summary: str = ""
+    progress: float = 0.0
+    pending_command_count: int = 0
+    attempt: int = 1
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    timeout_seconds: float | None = None
+    transcript_path: str | None = None
+    output: AgentOutput | None = None
+    error_message: str | None = None
+
+
+class TaskCommand(BaseModel):
+    command_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    command_type: TaskCommandType
+    target: str
+    pipeline_id: str | None = None
+    message: str = ""
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TaskNotification(BaseModel):
+    task_id: str
+    pipeline_id: str
+    agent_id: str
+    run_id: str
+    status: AgentTaskStatus
+    summary: str = ""
+    output: AgentOutput | None = None
+    error_message: str | None = None
+    duration_ms: int = 0
+    token_used: int = 0
+    llm_calls: int = 0
+    tool_uses: int = 0
+    transcript_path: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @property
+    def idempotency_key(self) -> tuple[str, str, AgentTaskStatus]:
+        return (self.task_id, self.run_id, self.status)
+
+    @classmethod
+    def from_task(
+        cls,
+        task: AgentTask,
+        status: AgentTaskStatus | None = None,
+        summary: str = "",
+        output: AgentOutput | None = None,
+        error_message: str | None = None,
+        duration_ms: int = 0,
+        tool_uses: int = 0,
+    ) -> "TaskNotification":
+        resolved_output = output if output is not None else task.output
+        return cls(
+            task_id=task.task_id,
+            pipeline_id=task.pipeline_id,
+            agent_id=task.agent_id,
+            run_id=task.run_id,
+            status=status or task.status,
+            summary=summary or task.input_summary,
+            output=resolved_output,
+            error_message=error_message if error_message is not None else task.error_message,
+            duration_ms=duration_ms,
+            token_used=resolved_output.token_used if resolved_output else 0,
+            llm_calls=resolved_output.llm_calls if resolved_output else 0,
+            tool_uses=tool_uses,
+            transcript_path=task.transcript_path,
+        )
 
 
 class PipelineState(BaseModel):

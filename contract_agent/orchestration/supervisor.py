@@ -1,22 +1,50 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from contract_agent.constants.agent_prompts import supervisor_prompt
 from contract_agent.logger.audit import AuditLogger, get_audit_logger
 from contract_agent.provider.client import get_chat_model
 from contract_agent.config import MultiAgentConfig
 from contract_agent.orchestration.protocol import (
     AgentOutput,
     AgentStatus,
+    AgentTaskStatus,
     PipelineEvent,
     PipelineState,
     PipelineStatus,
+    TaskNotification,
 )
+from contract_agent.orchestration.runtime import AgentRuntime
+
+
+REVIEW_AGENT_DEPENDENCIES: dict[str, list[str]] = {
+    "parser": [],
+    "risk_checker": ["parser"],
+    "legal_ref": ["risk_checker"],
+    "redrafter": ["legal_ref"],
+    "summarizer": ["redrafter"],
+}
+
+
+FALLBACK_SUPERVISOR_PROMPT = """\
+你是合同审查协调员(Supervisor)。你可以调用子Agent来完成任务。
+
+当前合同：
+  合同类型：{contract_type}
+  我方角色：{our_side}
+  合同文本：{contract_text}
+
+已有信息：
+{accumulated_results}
+
+当前轮次：{round}/{max_rounds}
+
+请输出严格JSON（无其他文本）：
+{{"thought": "思考过程，≤40字", "action": "call_agents|finish", "agents": ["agent_id", ...], "final_report": {{"overall_risk": "high|medium|low|info", "summary": "审查总结", "key_findings": []}}}}
+"""
 
 
 class SupervisorAgent:
@@ -30,6 +58,7 @@ class SupervisorAgent:
     ) -> None:
         self.config = config or MultiAgentConfig()
         self._agents: dict[str, Callable[[dict[str, Any]], AgentOutput]] = {}
+        self.runtime = AgentRuntime(self.config)
         self._llm = llm or get_chat_model()
         self.audit_logger = (audit_logger or get_audit_logger()).with_prefix(
             "[Orchestration][Supervisor]",
@@ -38,6 +67,7 @@ class SupervisorAgent:
 
     def register_agent(self, agent_id: str, fn: Callable[[dict[str, Any]], AgentOutput]) -> None:
         self._agents[agent_id] = fn
+        self.runtime.register_agent(agent_id, fn)
 
     def run(
         self,
@@ -67,7 +97,7 @@ class SupervisorAgent:
             with self.audit_logger.span("supervisor.round", round=round_num):
                 accumulated = self._build_accumulated(state.agent_outputs)
 
-                decision_prompt = supervisor_prompt.format(
+                decision_prompt = self._format_supervisor_prompt(
                     contract_type=ctx.get("contract_type", ""),
                     our_side=ctx.get("our_side", "甲方"),
                     contract_text=self._truncate_text(ctx.get("contract_text", "")),
@@ -160,70 +190,132 @@ class SupervisorAgent:
         results: dict[str, AgentOutput] = {}
         timeout = self.config.agent_timeout_seconds
 
-        with ThreadPoolExecutor(max_workers=self.config.max_parallel_agents) as pool:
-            futures = {}
-            for aid in agent_ids:
-                normalized = aid.removeprefix("call_")
-                fn = self._agents.get(normalized)
-                if fn is None:
-                    results[normalized] = AgentOutput(
-                        agent_id=normalized,
-                        status=AgentStatus.FAILED,
-                        error_message=f"未知 Agent: {normalized}",
-                    )
-                    continue
+        completed = {
+            aid
+            for aid, output in state.agent_outputs.items()
+            if output.status == AgentStatus.COMPLETED
+        }
+        failed = {
+            aid
+            for aid, output in state.agent_outputs.items()
+            if output.status in {AgentStatus.FAILED, AgentStatus.SKIPPED, AgentStatus.CANCELLED}
+        }
+
+        pending = self._normalize_agent_ids(agent_ids)
+        while pending:
+            batch, skipped = self._select_execution_batch(pending, state.team, completed, failed)
+            for aid, output in skipped.items():
+                results[aid] = output
+                failed.add(aid)
                 self._emit(on_event, PipelineEvent(
                     pipeline_id=state.pipeline_id,
-                    event_type="agent_started",
-                    agent_id=normalized,
+                    event_type="agent_skipped",
+                    agent_id=aid,
                     round=round_num,
+                    data={"error": output.error_message},
                 ))
-                futures[normalized] = pool.submit(fn, ctx)
+            pending = [aid for aid in pending if aid not in skipped]
 
-            for aid, future in futures.items():
-                try:
-                    with self.audit_logger.span("supervisor.agent", agent_id=aid, round=round_num):
-                        output = future.result(timeout=timeout)
+            if not batch:
+                for aid in pending:
+                    unmet = self._unmet_dependencies(aid, state.team, completed)
+                    output = AgentOutput(
+                        agent_id=aid,
+                        status=AgentStatus.SKIPPED,
+                        error_message=f"依赖未满足: {', '.join(unmet) if unmet else '无可执行批次'}",
+                    )
                     results[aid] = output
                     self._emit(on_event, PipelineEvent(
                         pipeline_id=state.pipeline_id,
-                        event_type="agent_completed",
+                        event_type="agent_skipped",
                         agent_id=aid,
                         round=round_num,
-                        data={
-                            "input_summary": output.input_summary,
-                            "findings_count": len(output.findings),
-                            "token_used": output.token_used,
-                        },
+                        data={"error": output.error_message},
                     ))
-                except FutureTimeout:
-                    results[aid] = AgentOutput(
-                        agent_id=aid,
-                        status=AgentStatus.FAILED,
-                        error_message=f"Agent 超时（{timeout}s）",
-                    )
-                    self._emit(on_event, PipelineEvent(
-                        pipeline_id=state.pipeline_id,
-                        event_type="agent_failed",
-                        agent_id=aid,
-                        round=round_num,
-                        data={"error": f"Timeout after {timeout}s"},
-                    ))
-                except Exception as exc:
-                    results[aid] = AgentOutput(
-                        agent_id=aid,
-                        status=AgentStatus.FAILED,
-                        error_message=str(exc),
-                    )
-                    self._emit(on_event, PipelineEvent(
-                        pipeline_id=state.pipeline_id,
-                        event_type="agent_failed",
-                        agent_id=aid,
-                        round=round_num,
-                        data={"error": str(exc)},
-                    ))
+                break
+
+            pending = [aid for aid in pending if aid not in batch]
+            tasks = [
+                self.runtime.spawn(
+                    state.pipeline_id,
+                    aid,
+                    ctx,
+                    timeout_seconds=timeout,
+                    on_event=on_event,
+                    round_num=round_num,
+                )
+                for aid in batch
+            ]
+            notifications = self.runtime.collect(
+                state.pipeline_id,
+                [task.task_id for task in tasks],
+                timeout_seconds=timeout,
+                on_event=on_event,
+                round_num=round_num,
+            )
+            for notification in notifications:
+                with self.audit_logger.span("supervisor.agent", agent_id=notification.agent_id, round=round_num):
+                    output = self._notification_to_output(notification)
+                results[notification.agent_id] = output
+                if output.status == AgentStatus.COMPLETED:
+                    completed.add(notification.agent_id)
+                    ctx.update(output.structured_data)
+                else:
+                    failed.add(notification.agent_id)
 
         return results
+
+    def _select_execution_batch(
+        self,
+        pending: list[str],
+        team: str,
+        completed: set[str],
+        failed: set[str],
+    ) -> tuple[list[str], dict[str, AgentOutput]]:
+        dependencies = REVIEW_AGENT_DEPENDENCIES if team == "review" else {}
+        runnable: list[str] = []
+        skipped: dict[str, AgentOutput] = {}
+
+        for aid in pending:
+            deps = dependencies.get(aid, [])
+            failed_deps = [dep for dep in deps if dep in failed]
+            if failed_deps:
+                skipped[aid] = AgentOutput(
+                    agent_id=aid,
+                    status=AgentStatus.SKIPPED,
+                    error_message=f"上游失败: {', '.join(failed_deps)}",
+                )
+                continue
+            if all(dep in completed for dep in deps):
+                runnable.append(aid)
+
+        return runnable[: self.config.max_parallel_agents], skipped
+
+    def _unmet_dependencies(self, agent_id: str, team: str, completed: set[str]) -> list[str]:
+        dependencies = REVIEW_AGENT_DEPENDENCIES if team == "review" else {}
+        return [dep for dep in dependencies.get(agent_id, []) if dep not in completed]
+
+    def _normalize_agent_ids(self, agent_ids: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for aid in agent_ids:
+            name = aid.removeprefix("call_")
+            if name not in seen:
+                normalized.append(name)
+                seen.add(name)
+        return normalized
+
+    def _notification_to_output(self, notification: TaskNotification) -> AgentOutput:
+        if notification.output is not None:
+            return notification.output
+        status = AgentStatus.FAILED
+        if notification.status == AgentTaskStatus.CANCELLED:
+            status = AgentStatus.CANCELLED
+        return AgentOutput(
+            agent_id=notification.agent_id,
+            status=status,
+            error_message=notification.error_message,
+        )
 
     def _build_accumulated(self, agent_outputs: dict[str, AgentOutput]) -> str:
         if not agent_outputs:
@@ -261,6 +353,14 @@ class SupervisorAgent:
         if len(text) <= max_chars:
             return text
         return text[:max_chars] + f"\n\n…(合同全文共 {len(text)} 字符，此处仅展示开头部分)…"
+
+    def _format_supervisor_prompt(self, **kwargs: Any) -> str:
+        try:
+            from contract_agent.constants.agent_prompts import supervisor_prompt
+
+            return supervisor_prompt.format(**kwargs)
+        except ImportError:
+            return FALLBACK_SUPERVISOR_PROMPT.format(**kwargs)
 
     def _estimate_tokens(self, text: str) -> int:
         return len(text) // 3

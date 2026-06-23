@@ -9,6 +9,7 @@ __all__ = [
     "ContractClassifier",
     "ContractExtractor",
     "ContractParser",
+    "GatewayRouter",
     "QueryKnowledgeAction",
     "ReactTraceStep",
     "ReviewService",
@@ -26,6 +27,10 @@ def __getattr__(name: str):
         from contract_agent.services.review_service import ReviewService
 
         return ReviewService
+    if name == "GatewayRouter":
+        from contract_agent.services.review_gateway import GatewayRouter
+
+        return GatewayRouter
     if name == "ContractParser":
         from contract_agent.services.parser import ContractParser
 

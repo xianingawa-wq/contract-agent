@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import uuid
 from typing import Literal
 
-from contract_agent.orchestration.config import MultiAgentConfig
+from contract_agent.config import MultiAgentConfig
 from contract_agent.orchestration.protocol import (
     AgentMode,
     GatewayResponse,
@@ -14,9 +14,8 @@ from contract_agent.orchestration.protocol import (
 
 
 class GatewayRouter:
-    """Lightweight router that classifies requests and dispatches to the appropriate team."""
+    """Application-layer router for contract review entrypoints."""
 
-    # Explicit review keywords — bypass LLM classification
     _REVIEW_KEYWORDS: frozenset[str] = frozenset({
         "审查", "校审", "审阅", "重新扫描", "扫描合同",
         "复核", "检查合同", "跑一遍审查", "全面审查", "详细审查",
@@ -39,14 +38,9 @@ class GatewayRouter:
         contract_clause_count: int = 0,
     ) -> GatewayResponse:
         request_id = str(uuid.uuid4())
-
-        # 1. Explicit mode takes priority
         mode = explicit_mode or self._detect_mode(user_message, contract_clause_count)
-
-        # 2. Detect team
         team = self._detect_team(user_message)
 
-        # 3. Build response
         return GatewayResponse(
             request_id=request_id,
             mode=mode,
@@ -67,13 +61,11 @@ class GatewayRouter:
     def _detect_mode(self, message: str, clause_count: int) -> AgentMode:
         msg_lower = message.lower()
 
-        # Check for explicit simple/deep keywords
         if any(kw in msg_lower for kw in self._SIMPLE_KEYWORDS):
             return AgentMode.SINGLE
         if any(kw in msg_lower for kw in self._DEEP_KEYWORDS):
             return AgentMode.MULTI_MANUAL
 
-        # Auto mode: decide based on complexity
         if clause_count > 50:
             return AgentMode.MULTI_MANUAL
         if clause_count > 20:
