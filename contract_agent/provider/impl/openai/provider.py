@@ -14,7 +14,8 @@ from contract_agent.provider.impl.openai.message_codec import (
     loads_json_object,
     with_strict_objects,
 )
-from contract_agent.provider.interface import LLMConfig, ModelResponse, ToolCall
+from contract_agent.config import LLMConfig
+from contract_agent.provider.interface import ModelResponse, ToolCall
 
 
 class OpenAIProvider:

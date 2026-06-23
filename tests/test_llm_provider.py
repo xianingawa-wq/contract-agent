@@ -8,7 +8,7 @@ from contract_agent.provider.impl.openai_compatible import (
     OpenAICompatibleEmbeddings,
     OpenAICompatibleProvider,
 )
-from contract_agent.provider.interface import LLMConfig
+from contract_agent.config import LLMConfig
 from contract_agent.config import ModelEndpointConfig, ModelRole, ModelRuntimeConfig, Settings
 from contract_agent.provider import client as provider_client
 from contract_agent.provider.service import ModelProviderService, ProviderRuntimeOptions

@@ -1,7 +1,6 @@
-from contract_agent.provider.interface import LLMConfig, LLMProvider, ModelResponse, ToolCall
+from contract_agent.provider.interface import LLMProvider, ModelResponse, ToolCall
 
 __all__ = [
-    "LLMConfig",
     "LLMProvider",
     "ModelProviderFactory",
     "ModelProviderService",

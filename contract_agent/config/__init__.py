@@ -21,6 +21,7 @@ from contract_agent.config.config_model import (
     ModelRole,
     ModelRuntimeConfig,
 )
+from contract_agent.config.config_provider import LLMConfig
 from contract_agent.config.config_app import AppConfig, AppContext
 from contract_agent.config.config_loader import (
     DEFAULT_APP_CONFIG_PATH,
@@ -57,6 +58,7 @@ __all__ = [
     "EnvironmentRerankConfigSource",
     "PROJECT_ROOT",
     "Settings",
+    "LLMConfig",
     "ModelConfigSource",
     "ModelEndpointConfig",
     "ModelProfileStore",

@@ -343,7 +343,7 @@ classDiagram
     LLMProvider <|.. OpenAIProvider : implements
     LLMProvider <|.. DashScopeProvider : implements
     OpenAIProvider <|-- DashScopeProvider : extends
-    LLMConfig --> LLMProvider
+    LLMProvider --> LLMConfig : uses config.LLMConfig
     ModelResponse --> LLMProvider
     ToolCall --> ModelResponse
     ModelProviderFactory --> LLMProvider : creates
@@ -354,7 +354,7 @@ classDiagram
 
 | 文件 | 内容 |
 |------|------|
-| `interface.py` | `LLMProvider` Protocol、`LLMConfig`、`ModelResponse`、`ToolCall` |
+| `interface.py` | `LLMProvider` Protocol、`ModelResponse`、`ToolCall` |
 | `service.py` | `ModelProviderService` — 连接 config source 和 provider factory |
 | `factory.py` | `ModelProviderFactory` — 注册 openai/qwen/dashscope/openai_compatible |
 | `client.py` | 便捷函数：`get_chat_model()`, `get_embeddings()`, `get_llm_provider()` |
@@ -749,7 +749,7 @@ graph LR
 **使用此模式的包**:
 | 包 | Interface | Service | Impl | Factory |
 |----|-----------|---------|------|---------|
-| `provider/` | `LLMProvider`, `LLMConfig` | `ModelProviderService` | `impl/openai/`, `impl/dashscope/` | `ModelProviderFactory` |
+| `provider/` | `LLMProvider`, `ModelResponse`, `ToolCall` | `ModelProviderService` | `impl/openai/`, `impl/dashscope/` | `ModelProviderFactory` |
 | `config/` | `ModelConfigSource`, `ModelProfileStore` | `ModelConfigResolver`, `ModelProfileService`, `load_app_config()` | `config_model_store.py` | `create_model_profile_service()` |
 | `knowledge/rag/rerank/` | `Reranker`, `RerankResult` | `RerankerService` | `impl/qwen*.py` | `RerankerFactory` |
 
@@ -1064,7 +1064,7 @@ erDiagram
 
 | 模型 | 类型 | 关键字段 |
 |------|------|----------|
-| `LLMConfig` | dataclass(frozen) | provider, api_key, base_url, chat_model, embedding_model, temperature, use_responses_api |
+| `LLMConfig` | dataclass(frozen), `config/config_provider.py` | provider, api_key, base_url, chat_model, embedding_model, temperature, use_responses_api |
 | `ModelResponse` | dataclass(frozen) | text, raw, tool_calls |
 | `ToolCall` | dataclass(frozen) | call_id, name, arguments |
 | `ModelEndpointConfig` | dataclass(frozen) | role, provider, base_url, api_key, model |
@@ -1781,6 +1781,7 @@ contract_agent/                          # 107 个 Python 文件, ~8000 行
 │   ├── config_loader.py                 # .run/config.yaml loader and runtime installer
 │   ├── config_model.py                  # Model runtime dataclasses and protocols
 │   ├── config_model_store.py            # YAML profile store, env/static sources and resolver
+│   ├── config_provider.py               # LLMConfig provider runtime value object
 │   ├── config_runtime.py                # Settings 全局单例
 │   ├── config_multiagent.py             # MultiAgentConfig
 │   └── config_retrieval.py              # RetrievalConfig
@@ -1788,7 +1789,7 @@ contract_agent/                          # 107 个 Python 文件, ~8000 行
 │   ├── database.py                      # SQLAlchemy engine 生命周期
 │   └── schema.py                        # ensure_runtime_schema()
 ├── provider/
-│   ├── interface.py                     # LLMProvider Protocol, LLMConfig, ModelResponse, ToolCall
+│   ├── interface.py                     # LLMProvider Protocol, ModelResponse, ToolCall
 │   ├── service.py                       # ModelProviderService, ProviderFactory Protocol
 │   ├── factory.py                       # ModelProviderFactory (4 registered builders)
 │   ├── client.py                        # 便捷函数 (get_chat_model, get_embeddings, get_llm_provider)

@@ -5,7 +5,7 @@ from typing import Any
 from langchain_core.embeddings import Embeddings
 from openai import OpenAI
 
-from contract_agent.provider.interface import LLMConfig
+from contract_agent.config import LLMConfig
 
 
 class OpenAIEmbeddings(Embeddings):

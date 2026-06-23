@@ -8,7 +8,7 @@ from contract_agent.provider.impl.openai.message_codec import (
     with_strict_objects as _with_strict_objects,
 )
 from contract_agent.provider.impl.openai.provider import OpenAIProvider
-from contract_agent.provider.interface import LLMConfig, LLMProvider, ModelResponse, ToolCall
+from contract_agent.provider.interface import LLMProvider, ModelResponse, ToolCall
 
 OpenAICompatibleEmbeddings = OpenAIEmbeddings
 OpenAICompatibleProvider = OpenAIProvider
@@ -27,7 +27,6 @@ def get_embedding_provider() -> LLMProvider:
 
 
 __all__ = [
-    "LLMConfig",
     "LLMProvider",
     "ModelProviderFactory",
     "ModelResponse",

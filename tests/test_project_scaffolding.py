@@ -35,8 +35,8 @@ class ProjectScaffoldingTests(unittest.TestCase):
                 self.assertIn(f"{key}=", content)
 
     def test_canonical_provider_package_exports_public_interfaces(self):
+        from contract_agent.config import LLMConfig
         from contract_agent.provider import (
-            LLMConfig,
             LLMProvider,
             ModelProviderFactory,
             ModelProviderService,

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from contract_agent.config import EnvironmentModelConfigSource
+from contract_agent.config import EnvironmentModelConfigSource, LLMConfig
 from contract_agent.config import (
     ModelConfigSource,
     ModelRuntimeConfig,
     Settings,
     StaticModelConfigSource,
 )
-from contract_agent.provider.interface import LLMConfig, LLMProvider
+from contract_agent.provider.interface import LLMProvider
 from contract_agent.provider.service import ModelProviderService, ProviderRuntimeOptions
 
 

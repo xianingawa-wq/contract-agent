@@ -4,20 +4,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from contract_agent.config import LLMConfig
     from langchain_core.embeddings import Embeddings
     from langchain_openai import ChatOpenAI
-
-
-@dataclass(frozen=True)
-class LLMConfig:
-    provider: str
-    api_key: str | None
-    base_url: str | None
-    chat_model: str
-    embedding_model: str
-    temperature: float = 0
-    use_responses_api: bool = True
-    embedding_batch_size: int = 10
 
 
 @dataclass(frozen=True)

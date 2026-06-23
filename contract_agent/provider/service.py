@@ -3,9 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from contract_agent.config import ModelConfigSource
-from contract_agent.provider.interface import LLMConfig, LLMProvider
-from contract_agent.config import Settings, settings_snapshot
+from contract_agent.config import LLMConfig, ModelConfigSource, Settings, settings_snapshot
+from contract_agent.provider.interface import LLMProvider
 
 
 @dataclass(frozen=True)
