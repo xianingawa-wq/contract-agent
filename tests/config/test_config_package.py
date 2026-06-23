@@ -114,13 +114,13 @@ class ConfigPackageTests(unittest.TestCase):
 
         logs = "\n".join(captured.output)
         self.assertEqual(context.settings.chat_model, "profile-chat")
-        self.assertIn("Loaded runtime config file", logs)
-        self.assertIn("Applied environment config overlay keys", logs)
+        self.assertIn("[Config][Info] Loaded runtime config file", logs)
+        self.assertIn("[Config][Info] Applied environment config overlay keys", logs)
         self.assertIn("models.chat.model", logs)
         self.assertIn("models.chat.api_key", logs)
-        self.assertIn("Applied CLI profile config overlay keys", logs)
+        self.assertIn("[Config][Info] Applied CLI profile config overlay keys", logs)
         self.assertIn("models.chat", logs)
-        self.assertIn("Runtime config injected", logs)
+        self.assertIn("[Config][Info] Runtime config injected", logs)
         self.assertNotIn("super-secret-key", logs)
 
 

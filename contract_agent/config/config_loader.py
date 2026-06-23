@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -15,10 +14,11 @@ from contract_agent.config.config_runtime import (
     settings_to_dict,
     update_settings,
 )
+from contract_agent.logger.base import Debug, Info, Warn, get_component_logger
 
 
 DEFAULT_APP_CONFIG_PATH = PROJECT_ROOT / ".run" / "config.yaml"
-logger = logging.getLogger(__name__)
+logger = get_component_logger(__name__, "Config")
 
 
 def load_app_config(
@@ -32,11 +32,13 @@ def load_app_config(
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         if isinstance(raw, Mapping):
             config = AppConfig.model_validate(_deep_merge(config.model_dump(), dict(raw)))
-            logger.info("Loaded runtime config file: %s", config_path)
+            logger.handle(Info("Loaded runtime config file: %s", config_path))
         else:
-            logger.warning("Ignored runtime config file with non-mapping root: %s", config_path)
+            logger.handle(
+                Warn("Ignored runtime config file with non-mapping root: %s", config_path)
+            )
     else:
-        logger.info("Runtime config file not found, using defaults: %s", config_path)
+        logger.handle(Info("Runtime config file not found, using defaults: %s", config_path))
 
     environment_overlay_keys: list[str] = []
     config = _apply_environment_overlay(
@@ -45,23 +47,27 @@ def load_app_config(
         applied=environment_overlay_keys,
     )
     if environment_overlay_keys:
-        logger.info(
-            "Applied environment config overlay keys: %s",
-            ", ".join(sorted(environment_overlay_keys)),
+        logger.handle(
+            Info(
+                "Applied environment config overlay keys: %s",
+                ", ".join(sorted(environment_overlay_keys)),
+            )
         )
     else:
-        logger.debug("No environment config overlay keys applied")
+        logger.handle(Debug("No environment config overlay keys applied"))
 
     profile_overlay_keys: list[str] = []
     config = _apply_profile_overlay(config, applied=profile_overlay_keys)
     if profile_overlay_keys:
-        logger.info(
-            "Applied CLI profile config overlay keys from %s: %s",
-            config.profile.path,
-            ", ".join(sorted(profile_overlay_keys)),
+        logger.handle(
+            Info(
+                "Applied CLI profile config overlay keys from %s: %s",
+                config.profile.path,
+                ", ".join(sorted(profile_overlay_keys)),
+            )
         )
     else:
-        logger.debug("No CLI profile config overlay applied from %s", config.profile.path)
+        logger.handle(Debug("No CLI profile config overlay applied from %s", config.profile.path))
     return config
 
 
@@ -74,12 +80,14 @@ def configure_runtime(
     app_config = config or load_app_config(config_path, environ=environ)
     runtime_settings = app_config.to_settings()
     update_settings(settings_to_dict(runtime_settings))
-    logger.info(
-        "Runtime config injected: app=%s vector_backend=%s grpc_port=%s profile_path=%s",
-        app_config.app.name,
-        app_config.vector_store.backend,
-        app_config.grpc.port,
-        app_config.profile.path,
+    logger.handle(
+        Info(
+            "Runtime config injected: app=%s vector_backend=%s grpc_port=%s profile_path=%s",
+            app_config.app.name,
+            app_config.vector_store.backend,
+            app_config.grpc.port,
+            app_config.profile.path,
+        )
     )
     return AppContext(
         config=app_config,
@@ -312,7 +320,7 @@ def _apply_profile_overlay(config: AppConfig, *, applied: list[str] | None = Non
         return config
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, Mapping):
-        logger.warning("Ignored CLI profile with non-mapping root: %s", path)
+        logger.handle(Warn("Ignored CLI profile with non-mapping root: %s", path))
         return config
     model_overlay = {key: raw[key] for key in ("chat", "embedding", "rerank") if key in raw}
     if not model_overlay and isinstance(raw.get("models"), Mapping):

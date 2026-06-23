@@ -74,6 +74,8 @@ Service-backed review responses include a `trace` object with estimated input, o
 
 `contract-agent` uses a provider abstraction with an OpenAI-compatible default. File-based runtime configuration is YAML, with `.run/config.yaml` as the primary runtime file and `.run/cli_profile.yaml` for CLI model profile overrides. Environment variables are deployment overlays and are read only by `contract_agent.config`.
 
+Start from `config.example.yaml` and copy it to `.run/config.yaml` for local runtime configuration.
+
 ```powershell
 $env:LLM_PROVIDER = "openai_compatible"
 $env:LLM_API_KEY = "..."

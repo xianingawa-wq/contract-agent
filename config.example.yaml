@@ -1,0 +1,78 @@
+# Copy this file to .run/config.yaml and adjust values for your environment.
+# Secrets may also be supplied by environment variables as deployment overlays.
+
+app:
+  name: Contract Review Agent
+  default_contract_type: purchase_contract
+
+models:
+  chat:
+    provider: openai_compatible
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: null
+    model: qwen-max
+  embedding:
+    provider: openai_compatible
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: null
+    model: text-embedding-v4
+  rerank:
+    provider: qwen
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: null
+    model: qwen3-rerank
+    endpoint: null
+
+provider:
+  temperature: 0
+  use_responses_api: true
+  embedding_batch_size: 10
+
+retrieval:
+  enable_rerank: true
+  enable_hybrid: true
+  fetch_k: 12
+  final_k: 4
+  dense_pool_k: 36
+  rerank_timeout_seconds: 8
+  rerank_max_retries: 0
+
+vector_store:
+  backend: milvus
+  knowledge_vector_store_dir: knowledge/ingested/laws_faiss
+  milvus_uri: http://127.0.0.1:19530
+  milvus_collection_name: legal_knowledge_chunks
+  milvus_consistency_level: Session
+  milvus_retry_max: 3
+
+database:
+  postgres_dsn: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/contract_agent
+
+multiagent:
+  redis_url: redis://localhost:6379/0
+  redis_ttl_seconds: 1800
+  max_retries_per_agent: 1
+  pipeline_timeout_seconds: 300
+  agent_timeout_seconds: 120
+  supervisor_max_rounds: 5
+  max_parallel_agents: 4
+  hot_layer_rounds: 3
+  warm_layer_rounds: 10
+  context_warn_threshold: 0.6
+  context_compress_threshold: 0.75
+  context_force_threshold: 0.9
+
+grpc:
+  port: 50051
+  max_workers: 16
+  max_message_bytes: 10485760
+
+limits:
+  react_max_steps: 3
+  max_upload_size_bytes: 5242880
+  max_redraft_chunk_chars: 12000
+  stream_max_seconds: 24.0
+  stream_max_chars: 900
+
+profile:
+  path: .run/cli_profile.yaml
