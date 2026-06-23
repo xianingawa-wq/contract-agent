@@ -36,6 +36,14 @@ class ConfigPackageTests(unittest.TestCase):
         self.assertEqual(config.final_k, 5)
         self.assertEqual(config.dense_pool_k, 40)
 
+    def test_example_yaml_matches_app_config_schema(self):
+        config = load_app_config(Path("config.example.yaml"), environ={})
+
+        self.assertEqual(config.app.name, "Contract Review Agent")
+        self.assertEqual(config.models.chat.model, "qwen-max")
+        self.assertEqual(config.provider.embedding_batch_size, 10)
+        self.assertEqual(config.grpc.port, 50051)
+
     def test_load_app_config_derives_runtime_context_from_yaml(self):
         with TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "config.yaml"
@@ -65,6 +73,55 @@ class ConfigPackageTests(unittest.TestCase):
 
         self.assertEqual(context.settings.chat_model, "yaml-chat")
         self.assertEqual(settings_snapshot().chat_model, "yaml-chat")
+
+    def test_configure_runtime_logs_yaml_env_profile_and_injection(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            profile_path = tmp / "cli_profile.yaml"
+            profile_path.write_text(
+                "\n".join(
+                    [
+                        "models:",
+                        "  chat:",
+                        "    model: profile-chat",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            config_path = tmp / "config.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "app:",
+                        "  name: Logged Config Agent",
+                        "models:",
+                        "  chat:",
+                        "    model: yaml-chat",
+                        "grpc:",
+                        "  port: 50052",
+                        "profile:",
+                        f"  path: {profile_path.as_posix()}",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertLogs("contract_agent.config.config_loader", level="INFO") as captured:
+                context = configure_runtime(
+                    config_path=config_path,
+                    environ={"CHAT_MODEL": "env-chat", "CHAT_API_KEY": "super-secret-key"},
+                )
+
+        logs = "\n".join(captured.output)
+        self.assertEqual(context.settings.chat_model, "profile-chat")
+        self.assertIn("Loaded runtime config file", logs)
+        self.assertIn("Applied environment config overlay keys", logs)
+        self.assertIn("models.chat.model", logs)
+        self.assertIn("models.chat.api_key", logs)
+        self.assertIn("Applied CLI profile config overlay keys", logs)
+        self.assertIn("models.chat", logs)
+        self.assertIn("Runtime config injected", logs)
+        self.assertNotIn("super-secret-key", logs)
 
 
 if __name__ == "__main__":
