@@ -45,3 +45,6 @@ target-version = "py311"
 
 [tool.ruff.format]
 line-ending = "auto"
+
+[tool.ruff.lint.per-file-ignores]
+"contract_agent/agent_rpc/agent_pb2*.py" = ["F401", "F541"]

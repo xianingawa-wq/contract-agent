@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Protocol
 
 from contract_agent.review.models import Finding, ReviewReport, ReviewRequest
 from contract_agent.review.rules import normalize_side, run_rules

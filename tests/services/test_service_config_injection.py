@@ -6,7 +6,7 @@ from pathlib import Path
 
 from contract_agent.logger.audit import AuditLogger
 from contract_agent.config import Settings, temporary_settings
-from contract_agent.schemas.chat import ChatMessage, ChatRequest, ChatResponse
+from contract_agent.schemas.chat import ChatMessage, ChatRequest
 from contract_agent.schemas.review import (
     ExtractedFields,
     ReviewReport,

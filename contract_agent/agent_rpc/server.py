@@ -15,7 +15,6 @@ from contract_agent.schemas.review import ReviewRequest
 
 from contract_agent.orchestration.protocol import (
     AgentMode,
-    GatewayResponse,
     PipelineState,
     PipelineStatus,
 )
@@ -363,7 +362,6 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             legal_ref_agent,
             redrafter_agent,
         )
-        from contract_agent.memory.manager import MemoryManager
 
         try:
             config = self.multiagent_config
@@ -379,7 +377,6 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                 model_config=self.model_config,
                 runtime_settings=self.settings,
             )
-            memory = MemoryManager(config, runtime_settings=self.settings)
 
             for agent_id, agent_fn in [
                 ("parser", parser_agent),

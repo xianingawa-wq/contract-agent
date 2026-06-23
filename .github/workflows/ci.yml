@@ -24,6 +24,9 @@ jobs:
       - name: Check code formatting
         run: python -m ruff format --check contract_agent tests
 
+      - name: Lint Python sources
+        run: python -m ruff check contract_agent tests
+
       - name: Run unit tests
         run: python -m pytest tests -v
 

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import json
 import logging
-from typing import Any, Callable
+from typing import Callable
 
 from contract_agent.orchestration.protocol import PipelineEvent
 

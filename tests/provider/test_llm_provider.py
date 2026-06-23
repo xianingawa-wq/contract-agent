@@ -12,11 +12,7 @@ from contract_agent.config import LLMConfig
 from contract_agent.config import ModelEndpointConfig, ModelRole, ModelRuntimeConfig, Settings
 from contract_agent.provider import client as provider_client
 from contract_agent.provider.service import ModelProviderService, ProviderRuntimeOptions
-from contract_agent.provider.providers import (
-    _with_strict_objects,
-    get_chat_provider,
-    get_embedding_provider,
-)
+from contract_agent.provider.providers import _with_strict_objects
 
 
 class StaticModelConfigSource:

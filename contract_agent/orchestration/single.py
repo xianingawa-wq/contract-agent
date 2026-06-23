@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from contract_agent.orchestration.protocol import AgentMode, PipelineState, PipelineStatus
+from contract_agent.orchestration.protocol import PipelineState, PipelineStatus
 from contract_agent.config import Settings
 from contract_agent.services.review_service import ReviewService
 from contract_agent.schemas.review import ReviewRequest
