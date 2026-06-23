@@ -1,15 +1,25 @@
+# Python environments and bytecode
 .venv/
 __pycache__/
 *.py[cod]
+
+# Test, type-check, lint, and coverage caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
+
+# Build and package artifacts
 dist/
 build/
 *.egg-info/
+
+# Local secret configuration
 .env
 .run/
 .codex/
 .agent-data/
-docs/superpowers/specs/
+
+# Local agent and design notes
+AGENTS.md
+docs/
