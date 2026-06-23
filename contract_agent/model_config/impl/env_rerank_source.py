@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contract_agent.model_config.interface import ModelEndpointConfig, ModelRole
-from contract_agent.runtime.config import Settings, settings
+from contract_agent.config import Settings, settings
 
 
 class EnvironmentRerankConfigSource:

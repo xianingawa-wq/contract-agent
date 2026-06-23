@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 from sqlalchemy.orm import Session
 
 from contract_agent.runtime import database
-from contract_agent.runtime.config import Settings, temporary_settings
+from contract_agent.config import Settings, temporary_settings
 
 
 class RuntimeDatabaseTests(unittest.TestCase):

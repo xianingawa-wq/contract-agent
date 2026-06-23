@@ -3,7 +3,7 @@ import unittest
 from contract_agent.memory import cold_store, hot_store, manager, models, repository, warm_store
 from contract_agent.orchestration.protocol import AgentOutput, AgentStatus
 from contract_agent.runtime import database
-from contract_agent.runtime.config import temporary_settings
+from contract_agent.config import temporary_settings
 
 
 class MemoryPersistenceTests(unittest.TestCase):

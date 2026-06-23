@@ -5,7 +5,7 @@ from typing import Protocol
 
 from contract_agent.model_config.interface import ModelConfigSource
 from contract_agent.provider.interface import LLMConfig, LLMProvider
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 
 
 @dataclass(frozen=True)

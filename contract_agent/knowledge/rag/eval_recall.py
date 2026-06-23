@@ -10,7 +10,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 from contract_agent.knowledge.rag.vector_store import load_vector_store
 

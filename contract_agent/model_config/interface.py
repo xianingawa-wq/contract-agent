@@ -5,7 +5,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
-from contract_agent.runtime.config import PROJECT_ROOT
+from contract_agent.config import PROJECT_ROOT
 
 
 DEFAULT_MODEL_PROFILE_PATH = PROJECT_ROOT / ".run" / "cli_profile.json"

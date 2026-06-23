@@ -2,7 +2,7 @@ from sqlalchemy import text
 
 from contract_agent.knowledge.models import Base as KnowledgeBase
 from contract_agent.memory.models import Base as MemoryBase
-from contract_agent.runtime.config import Settings
+from contract_agent.config import Settings
 from contract_agent.runtime.database import get_engine
 
 

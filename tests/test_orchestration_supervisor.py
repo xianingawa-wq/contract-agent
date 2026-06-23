@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 from contract_agent.logger.audit import AuditLogger
-from contract_agent.orchestration.config import MultiAgentConfig
+from contract_agent.config import MultiAgentConfig
 from contract_agent.orchestration.protocol import AgentMode, AgentOutput, AgentStatus, PipelineState, PipelineStatus
 from contract_agent.orchestration.supervisor import SupervisorAgent
 

@@ -4,7 +4,9 @@
 
 **Goal:** Move runtime settings and built-in rule data into clearer packages while preserving old imports.
 
-**Architecture:** Create `contract_agent.runtime` for settings and `contract_agent.rulesets` for built-in rules. Keep `contract_agent.core.config` and `contract_agent.data.rules` as compatibility shims.
+> Superseded: runtime settings now live in `contract_agent/config/config_runtime.py`; internal imports should use `contract_agent.config`.
+
+**Architecture:** Create `contract_agent.config` for settings and `contract_agent.rulesets` for built-in rules.
 
 **Tech Stack:** Python 3.11+, unittest, existing settings and rule engine.
 
@@ -29,7 +31,7 @@ Expected: ERROR because `contract_agent.runtime` and `contract_agent.rulesets` d
 
 **Files:**
 - Create: `contract_agent/runtime/__init__.py`
-- Create: `contract_agent/runtime/config.py`
+- Create: `contract_agent/config/config_runtime.py`
 - Create: `contract_agent/rulesets/__init__.py`
 - Create: `contract_agent/rulesets/built_in.py`
 - Modify: `contract_agent/core/config.py`
@@ -40,7 +42,7 @@ Expected: ERROR because `contract_agent.runtime` and `contract_agent.rulesets` d
 Copy:
 
 ```text
-contract_agent/core/config.py -> contract_agent/runtime/config.py
+contract_agent/core/config.py -> contract_agent/config/config_runtime.py
 contract_agent/data/rules.py  -> contract_agent/rulesets/built_in.py
 ```
 
@@ -67,7 +69,7 @@ Expected: PASS.
 Change internal imports to:
 
 ```python
-from contract_agent.runtime.config import settings
+from contract_agent.config import settings
 ```
 
 - [x] **Step 2: Replace rule data import**

@@ -6,7 +6,7 @@ from pathlib import Path
 from contract_agent.agent_rpc import agent_pb2
 from contract_agent.agent_rpc.server import AgentRpcServicer
 from contract_agent.logger.audit import AuditLogger
-from contract_agent.runtime.config import Settings
+from contract_agent.config import Settings
 from contract_agent.schemas.review import HealthResponse
 
 

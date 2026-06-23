@@ -1,11 +1,11 @@
 import unittest
 
-from contract_agent.runtime import config
+from contract_agent import config
 from contract_agent.rulesets import built_in
 
 
 class RuntimeRulesetsTests(unittest.TestCase):
-    def test_runtime_config_exports_settings(self):
+    def test_config_package_exports_settings(self):
         self.assertTrue(config.PROJECT_ROOT.exists())
         self.assertIsInstance(config.settings, config.Settings)
 

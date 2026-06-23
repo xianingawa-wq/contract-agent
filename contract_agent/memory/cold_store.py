@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 
 logger = logging.getLogger(__name__)
 

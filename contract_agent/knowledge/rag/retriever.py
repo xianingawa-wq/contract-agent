@@ -8,11 +8,11 @@ from typing import Any, Protocol
 
 from langchain_core.documents import Document
 
-from contract_agent.knowledge.rag.config import RetrievalConfig
+from contract_agent.config import RetrievalConfig
 from contract_agent.knowledge.rag.rerank.interface import Reranker
 from contract_agent.knowledge.rag.rerank.factory import create_reranker_service
 from contract_agent.logger.audit import AuditLogger, get_audit_logger
-from contract_agent.runtime.config import Settings
+from contract_agent.config import Settings
 
 
 class SimilaritySearchStore(Protocol):

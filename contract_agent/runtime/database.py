@@ -6,7 +6,7 @@ from typing import Iterator
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 
 _engine: Engine | None = None
 _engine_dsn: str | None = None

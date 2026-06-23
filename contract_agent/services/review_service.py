@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from contract_agent.logger.audit import AuditLogger, get_audit_logger
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 from contract_agent.knowledge.rag.config import RetrievalConfig
 from contract_agent.schemas.review import (
     HealthResponse,

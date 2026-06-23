@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from contract_agent.orchestration.config import MultiAgentConfig
+from contract_agent.config import MultiAgentConfig
 from contract_agent.orchestration.protocol import AgentOutput, PipelineState
 
 if TYPE_CHECKING:

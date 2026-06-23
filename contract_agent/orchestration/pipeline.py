@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from contract_agent.orchestration.config import MultiAgentConfig
+from contract_agent.config import MultiAgentConfig
 from contract_agent.orchestration.protocol import (
     AgentOutput,
     AgentStatus,

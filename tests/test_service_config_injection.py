@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from contract_agent.logger.audit import AuditLogger
-from contract_agent.runtime.config import Settings, temporary_settings
+from contract_agent.config import Settings, temporary_settings
 from contract_agent.schemas.chat import ChatMessage, ChatRequest, ChatResponse
 from contract_agent.schemas.review import ExtractedFields, ReviewReport, ReviewResponse, ReviewSummary
 from contract_agent.services.chat_service import ChatService

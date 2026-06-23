@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 from contract_agent.knowledge.repository import KnowledgeChunkRepository
 from contract_agent.knowledge.rag.knowledge_documents import build_knowledge_documents
 from contract_agent.knowledge.rag.legal_chunker import LegalKnowledgeChunker

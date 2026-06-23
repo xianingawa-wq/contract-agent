@@ -8,7 +8,7 @@ from typing import TextIO
 from contract_agent.interfaces.console import run_console_demo
 from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
 from contract_agent.model_config.factory import create_model_profile_service
-from contract_agent.runtime.config import settings_snapshot
+from contract_agent.config import settings_snapshot
 from contract_agent.review.reporting import render_json, render_markdown
 from contract_agent.review.service import review_text
 

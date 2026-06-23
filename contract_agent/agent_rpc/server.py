@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import grpc
 
 from contract_agent.logger.audit import AuditLogger, get_audit_logger
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 from contract_agent.schemas.chat import ChatRequest
 from contract_agent.schemas.review import ReviewRequest
 

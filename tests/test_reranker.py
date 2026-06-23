@@ -3,7 +3,7 @@ import unittest
 from contract_agent.knowledge.rag.rerank.factory import RerankerFactory
 from contract_agent.knowledge.rag.rerank.impl.qwen import QwenReranker
 from contract_agent.model_config.interface import ModelEndpointConfig, ModelRole
-from contract_agent.runtime.config import Settings
+from contract_agent.config import Settings
 
 
 class RerankerConfigTests(unittest.TestCase):

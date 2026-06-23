@@ -14,7 +14,7 @@ from contract_agent.model_config.interface import (
     ModelRole,
     ModelRuntimeConfig,
 )
-from contract_agent.runtime.config import settings_snapshot
+from contract_agent.config import settings_snapshot
 from contract_agent.runtime.database import get_engine
 
 

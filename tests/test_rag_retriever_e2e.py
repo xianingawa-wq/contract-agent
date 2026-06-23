@@ -5,7 +5,7 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 
-from contract_agent.knowledge.rag.config import RetrievalConfig
+from contract_agent.config import RetrievalConfig
 from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 from contract_agent.logger.audit import AuditLogger
 

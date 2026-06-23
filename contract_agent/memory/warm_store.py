@@ -4,7 +4,7 @@ from typing import Any
 
 from contract_agent.memory.repository import AgentOutputRepository
 from contract_agent.orchestration.protocol import AgentOutput
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 
 
 class WarmLayer:

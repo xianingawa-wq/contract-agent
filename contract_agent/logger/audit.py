@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from contract_agent.runtime.config import PROJECT_ROOT
+from contract_agent.config import PROJECT_ROOT
 
 
 DEFAULT_AUDIT_LOG_PATH = PROJECT_ROOT / ".run" / "audit.jsonl"

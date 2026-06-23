@@ -6,7 +6,7 @@ from pathlib import Path
 
 from contract_agent.interfaces import cli
 from contract_agent.interfaces.cli import main
-from contract_agent.runtime.config import settings
+from contract_agent.config import settings
 
 
 class CliTests(unittest.TestCase):

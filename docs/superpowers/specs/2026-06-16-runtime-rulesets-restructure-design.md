@@ -1,5 +1,7 @@
 # Runtime and Rulesets Restructure Design
 
+> Superseded: runtime settings now live in `contract_agent/config/config_runtime.py`; internal imports should use `contract_agent.config`.
+
 ## Context
 
 `contract_agent.core` currently contains only environment-backed runtime configuration. `contract_agent.data` currently contains only built-in rule definitions used by the rule engine.
@@ -14,7 +16,7 @@ The names are broader than their actual responsibilities:
 Move these two narrow responsibilities into clearer packages:
 
 ```text
-contract_agent/runtime/config.py
+contract_agent/config/config_runtime.py
 contract_agent/rulesets/built_in.py
 ```
 
@@ -31,18 +33,18 @@ Preserve existing imports through compatibility shims.
 
 Create:
 
-- `contract_agent.runtime`: runtime configuration and process-level settings.
+- `contract_agent.config`: runtime configuration and process-level settings.
 - `contract_agent.rulesets`: built-in rule definitions consumed by `RuleEngine`.
 
 Compatibility shims:
 
-- `contract_agent.core.config` re-exports `contract_agent.runtime.config`.
+- `contract_agent.core.config` was superseded by `contract_agent.config`.
 - `contract_agent.data.rules` re-exports `contract_agent.rulesets.built_in`.
 
 Canonical imports should use the new packages:
 
 ```python
-from contract_agent.runtime.config import settings
+from contract_agent.config import settings
 from contract_agent.rulesets.built_in import RULES
 ```
 
@@ -50,7 +52,7 @@ from contract_agent.rulesets.built_in import RULES
 
 Add tests proving old and new import paths resolve to the same objects:
 
-- `contract_agent.core.config.settings is contract_agent.runtime.config.settings`
+- `contract_agent.config.settings` is the canonical settings singleton
 - `contract_agent.data.rules.RULES is contract_agent.rulesets.built_in.RULES`
 
 Run:
@@ -62,7 +64,7 @@ python -m unittest discover -s tests -v
 
 ## Acceptance Criteria
 
-- `contract_agent.runtime.config` owns settings implementation.
+- `contract_agent.config.config_runtime` owns settings implementation.
 - `contract_agent.rulesets.built_in` owns built-in rules.
 - Old imports continue to work.
 - Internal canonical imports use the new paths.

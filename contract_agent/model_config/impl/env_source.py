@@ -4,7 +4,7 @@ from contract_agent.model_config.impl.env_chat_source import EnvironmentChatConf
 from contract_agent.model_config.impl.env_embedding_source import EnvironmentEmbeddingConfigSource
 from contract_agent.model_config.impl.env_rerank_source import EnvironmentRerankConfigSource
 from contract_agent.model_config.interface import ModelRuntimeConfig
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 
 
 class EnvironmentModelConfigSource:

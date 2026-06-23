@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 from contract_agent.provider.client import get_chat_model
 
 

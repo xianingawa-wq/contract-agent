@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from contract_agent.knowledge.models import KnowledgeChunkModel
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 from contract_agent.runtime.database import session_scope
 from contract_agent.runtime.schema import ensure_runtime_schema
 from contract_agent.schemas.knowledge import KnowledgeChunk

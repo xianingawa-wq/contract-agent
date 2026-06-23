@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
-from contract_agent.runtime.config import Settings, settings, settings_snapshot
+from contract_agent.config import Settings, settings, settings_snapshot
 from contract_agent.provider.client import get_embeddings
 
 if TYPE_CHECKING:

@@ -9,7 +9,7 @@ from contract_agent.knowledge.rag.rerank.impl.qwen_endpoint import build_qwen_re
 from contract_agent.knowledge.rag.rerank.impl.qwen_response_parser import parse_qwen_rerank_results
 from contract_agent.knowledge.rag.rerank.impl.qwen_transport import QwenRerankTransport
 from contract_agent.knowledge.rag.rerank.interface import Reranker, RerankResult
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config import Settings, settings_snapshot
 
 
 class QwenReranker(Reranker):

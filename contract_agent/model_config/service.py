@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from contract_agent.model_config.interface import ModelConfigSource, ModelEndpointConfig, ModelProfileStore, ModelRuntimeConfig
-from contract_agent.runtime.config import update_settings
+from contract_agent.config import update_settings
 
 
 class ModelConfigResolver:

@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from langchain_core.documents import Document
 
 from contract_agent.knowledge.rag.eval_recall import run_evaluation
-from contract_agent.runtime.config import Settings
+from contract_agent.config import Settings
 
 
 class FakeRetriever:

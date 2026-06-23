@@ -3,7 +3,7 @@ import unittest
 from sqlalchemy import inspect
 
 from contract_agent.runtime import database
-from contract_agent.runtime.config import Settings
+from contract_agent.config import Settings
 from contract_agent.runtime.schema import ensure_runtime_schema
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from contract_agent.runtime.config import Settings, settings_snapshot
+from contract_agent.config.config_runtime import Settings, settings_snapshot
 
 
 @dataclass(frozen=True)
