@@ -9,7 +9,7 @@ from typing import Any, Iterator, TYPE_CHECKING
 from contract_agent.logger.audit import AuditLogger, get_audit_logger
 from contract_agent.config import Settings, settings_snapshot
 from contract_agent.provider.client import get_chat_model
-from contract_agent.knowledge.rag.config import RetrievalConfig
+from contract_agent.config import RetrievalConfig
 from contract_agent.schemas.chat import ChatRequest, ChatResponse, ChatSearchResult
 from contract_agent.schemas.review import ReviewRequest
 from contract_agent.services.react_runtime import (

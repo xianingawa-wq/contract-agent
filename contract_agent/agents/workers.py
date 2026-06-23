@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from contract_agent.config import Settings, settings_snapshot
-from contract_agent.knowledge.rag.config import RetrievalConfig
+from contract_agent.config import RetrievalConfig
 from contract_agent.orchestration.protocol import AgentFinding, AgentOutput, AgentStatus
 from contract_agent.services.rule_engine import RuleEngine
 

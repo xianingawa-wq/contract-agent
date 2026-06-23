@@ -188,7 +188,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         )
         from contract_agent.memory.manager import MemoryManager
         from contract_agent.orchestration.events import EventPublisher
-        from contract_agent.orchestration.config import MultiAgentConfig
+        from contract_agent.config import MultiAgentConfig
 
         try:
             config = MultiAgentConfig()
@@ -304,7 +304,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             parser_agent, risk_checker_agent, legal_ref_agent, redrafter_agent,
         )
         from contract_agent.memory.manager import MemoryManager
-        from contract_agent.orchestration.config import MultiAgentConfig
+        from contract_agent.config import MultiAgentConfig
 
         try:
             config = MultiAgentConfig()
