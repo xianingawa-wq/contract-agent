@@ -2,11 +2,16 @@ import unittest
 import json
 import tempfile
 from pathlib import Path
+from concurrent import futures
+from unittest.mock import patch
 
-from contract_agent.agent_rpc import agent_pb2
+import grpc
+
+from contract_agent.agent_rpc import agent_pb2, agent_pb2_grpc
 from contract_agent.agent_rpc.server import AgentRpcServicer
 from contract_agent.logger.audit import AuditLogger
 from contract_agent.config import Settings
+from contract_agent.orchestration.protocol import AgentOutput, AgentStatus, PipelineStatus
 from contract_agent.schemas.review import HealthResponse
 
 
@@ -62,6 +67,65 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertEqual(records[0]["prefix"], "[RPC]")
         self.assertEqual(records[-1]["event"], "trace.completed")
         self.assertEqual(len({record.get("trace_id") for record in records}), 1)
+
+    def test_review_multi_agent_grpc_reaches_supervisor_runtime_boundary(self):
+        def fake_run(state, initial_input, on_event=None):
+            state.status = PipelineStatus.COMPLETED
+            state.agent_outputs["supervisor"] = AgentOutput(
+                agent_id="supervisor",
+                status=AgentStatus.COMPLETED,
+                input_summary=initial_input["contract_type"],
+                structured_data={"review_report": {"overall_risk": "low"}},
+            )
+            return state
+
+        class FakeMemoryManager:
+            def __init__(self, *args, **kwargs):
+                self.saved_states = []
+
+            def save_pipeline_result(self, state):
+                self.saved_states.append(state)
+
+        class FakeEventPublisher:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def publish(self, event):
+                pass
+
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
+        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+        agent_pb2_grpc.add_AgentRpcServiceServicer_to_server(servicer, server)
+        port = server.add_insecure_port("127.0.0.1:0")
+
+        with (
+            patch("contract_agent.memory.manager.MemoryManager", FakeMemoryManager),
+            patch("contract_agent.orchestration.events.EventPublisher", FakeEventPublisher),
+            patch("contract_agent.orchestration.supervisor.SupervisorAgent") as supervisor_cls,
+        ):
+            supervisor_cls.return_value.run.side_effect = fake_run
+            server.start()
+            try:
+                channel = grpc.insecure_channel(f"127.0.0.1:{port}")
+                stub = agent_pb2_grpc.AgentRpcServiceStub(channel)
+
+                response = stub.ReviewMultiAgent(
+                    agent_pb2.ReviewRequest(
+                        contract_text="合同正文",
+                        contract_type="采购合同",
+                        our_side="甲方",
+                    ),
+                    timeout=5,
+                )
+            finally:
+                server.stop(0)
+
+        self.assertEqual(response.code, 200)
+        payload = json.loads(response.json)
+        self.assertEqual(payload["mode"], "multi_auto")
+        self.assertEqual(payload["status"], "completed")
+        self.assertEqual(payload["report"], {"overall_risk": "low"})
+        self.assertEqual(payload["agent_summaries"][0]["agent_id"], "supervisor")
 
 
 if __name__ == "__main__":
