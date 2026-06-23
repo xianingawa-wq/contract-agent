@@ -1,25 +1,15 @@
 from __future__ import annotations
 
 import json
-import logging
-import os
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, Iterator
+from typing import Any, Iterator, TYPE_CHECKING
 
-from contract_agent.runtime.config import settings
+from contract_agent.logger.audit import AuditLogger, get_audit_logger
+from contract_agent.runtime.config import Settings, settings_snapshot
 from contract_agent.provider.client import get_chat_model
-from contract_agent.constants.prompts import (
-    advice_answer_prompt,
-    chat_answer_prompt,
-    chat_intent_prompt,
-    react_step_prompt,
-    react_synthesis_prompt,
-    search_answer_prompt,
-)
-from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
-from contract_agent.knowledge.rag.vector_store import load_vector_store
+from contract_agent.knowledge.rag.config import RetrievalConfig
 from contract_agent.schemas.chat import ChatRequest, ChatResponse, ChatSearchResult
 from contract_agent.schemas.review import ReviewRequest
 from contract_agent.services.react_runtime import (
@@ -32,26 +22,24 @@ from contract_agent.services.react_runtime import (
 )
 from contract_agent.services.review_service import ReviewService
 
-
-# Dedicated trace logger: writes ReAct reasoning traces to a separate file
-_trace_logger = logging.getLogger("chat_trace")
-_trace_handler = logging.FileHandler(
-    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".run", "chat_trace.log"),
-    encoding="utf-8",
-    delay=True,
-)
-_trace_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-_trace_logger.addHandler(_trace_handler)
-_trace_logger.setLevel(logging.INFO)
-_trace_logger.propagate = False
+if TYPE_CHECKING:
+    from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 
 
 class ChatService:
     STREAM_MAX_SECONDS = 24.0
     STREAM_MAX_CHARS = 900
 
-    def __init__(self) -> None:
-        self.review_service = ReviewService()
+    def __init__(
+        self,
+        runtime_settings: Settings | None = None,
+        review_service: ReviewService | None = None,
+        audit_logger: AuditLogger | None = None,
+    ) -> None:
+        self.settings = runtime_settings or settings_snapshot()
+        self.retrieval_config = RetrievalConfig.from_settings(self.settings)
+        self.audit_logger = (audit_logger or get_audit_logger()).with_prefix("[Service][Chat]", scope="chat")
+        self.review_service = review_service or ReviewService(runtime_settings=self.settings, audit_logger=self.audit_logger)
         self.llm = None
         self._knowledge_retriever = None
         self._action_registry = ActionRegistry()
@@ -67,20 +55,24 @@ class ChatService:
         return ChatResponse.model_validate(final_payload)
 
     def chat_stream(self, payload: ChatRequest) -> Iterator[dict[str, Any]]:
-        intent_payload = self._route_intent(payload)
-        intent = intent_payload.get("intent", "chat")
-        query = intent_payload.get("query") or self._latest_user_message(payload)
+        with self.audit_logger.trace("chat", message_count=len(payload.messages), has_contract=bool(payload.contract_text)):
+            with self.audit_logger.span("chat.route"):
+                intent_payload = self._route_intent(payload)
+                intent = intent_payload.get("intent", "chat")
+                query = intent_payload.get("query") or self._latest_user_message(payload)
 
-        if intent == "review":
-            response = self._handle_review(payload, query)
-            yield {"event": "start", "data": {"intent": response.intent, "tool_used": response.tool_used}}
-            for delta in self._chunk_text(response.answer):
-                yield {"event": "delta", "data": {"delta": delta}}
-            yield {"event": "done", "data": response.model_dump(mode="json")}
-            return
+            if intent == "review":
+                with self.audit_logger.span("chat.review", query_length=len(query)):
+                    response = self._handle_review(payload, query)
+                yield {"event": "start", "data": {"intent": response.intent, "tool_used": response.tool_used}}
+                for delta in self._chunk_text(response.answer):
+                    yield {"event": "delta", "data": {"delta": delta}}
+                yield {"event": "done", "data": response.model_dump(mode="json")}
+                return
 
-        for event in self._handle_react_stream(payload, intent=intent, query=query):
-            yield event
+            with self.audit_logger.span("chat.react", intent=intent, query_length=len(query)):
+                for event in self._handle_react_stream(payload, intent=intent, query=query):
+                    yield event
 
     def _handle_review(self, payload: ChatRequest, query: str) -> ChatResponse:
         contract_text = self._resolve_contract_text(payload)
@@ -114,7 +106,7 @@ class ChatService:
 
     def _handle_react_stream(self, payload: ChatRequest, intent: str, query: str) -> Iterator[dict[str, Any]]:
         llm = self._require_llm()
-        max_steps = max(1, settings.react_max_steps)
+        max_steps = max(1, self.settings.react_max_steps)
         action_context = ActionContext(
             user_message=self._latest_user_message(payload),
             intent=intent,
@@ -153,7 +145,13 @@ class ChatService:
                 action_input = {"query": query}
             final_answer_candidate = str(plan.get("final_answer") or "").strip()
 
-            _trace_logger.info("STEP=%d | THOUGHT=%s | ACTION=%s | INPUT=%s", step, thought, action, json.dumps(action_input, ensure_ascii=False))
+            self.audit_logger.emit(
+                "chat.react.step.planned",
+                step=step,
+                thought=thought,
+                action=action,
+                action_input_preview=action_input,
+            )
             yield {"event": "reasoning", "data": {"step": step, "summary": thought}}
 
             if action == "finish":
@@ -172,7 +170,8 @@ class ChatService:
             }
             used_action = True
 
-            result = self._action_registry.execute(action, action_context, action_input)
+            with self.audit_logger.span("chat.react.action", step=step, action=action):
+                result = self._action_registry.execute(action, action_context, action_input)
             collected_references.extend(result.references)
             latest_observation = result.summary
             trace_steps.append(ReactTraceStep(step=step, thought=thought, action=action, observation=result.summary))
@@ -191,20 +190,20 @@ class ChatService:
             }
 
         if not final_answer:
-            final_answer = self._synthesize_react_answer(
-                llm=llm,
-                payload=payload,
-                intent=intent,
-                trace_steps=trace_steps,
-                references=collected_references,
-            )
+            with self.audit_logger.span("chat.react.synthesize", intent=intent, reference_count=len(collected_references)):
+                final_answer = self._synthesize_react_answer(
+                    llm=llm,
+                    payload=payload,
+                    intent=intent,
+                    trace_steps=trace_steps,
+                    references=collected_references,
+                )
 
-        # Log ReAct trace to dedicated file for post-hoc review
-        _trace_logger.info(
-            "INTENT=%s | QUERY=%s | TRACE=%s",
-            intent,
-            query[:120],
-            json.dumps([s.to_summary_dict() for s in trace_steps], ensure_ascii=False),
+        self.audit_logger.emit(
+            "chat.react.trace",
+            intent=intent,
+            query_preview=query[:120],
+            steps=[s.to_summary_dict() for s in trace_steps],
         )
 
         answer = ""
@@ -242,7 +241,7 @@ class ChatService:
         trace_steps: list[ReactTraceStep],
     ) -> dict[str, Any]:
         raw = self._invoke_chain_once(
-            react_step_prompt | llm,
+            self._prompt("react_step_prompt") | llm,
             {
                 "intent": intent,
                 "user_message": query,
@@ -262,7 +261,7 @@ class ChatService:
         references: list[ActionReference],
     ) -> str:
         return self._invoke_chain_once(
-            react_synthesis_prompt | llm,
+            self._prompt("react_synthesis_prompt") | llm,
             {
                 "intent": intent,
                 "user_message": self._latest_user_message(payload),
@@ -278,7 +277,7 @@ class ChatService:
         docs = retriever.retrieve_documents(query=query, k=3)
         contexts = [doc.page_content for doc in docs]
         answer = self._invoke_chain_once(
-            search_answer_prompt | llm,
+            self._prompt("search_answer_prompt") | llm,
             {
                 "user_message": self._latest_user_message(payload),
                 "retrieved_context": "\n\n".join(contexts) if contexts else "未检索到相关内容",
@@ -298,7 +297,7 @@ class ChatService:
         docs = retriever.retrieve_documents(query=query, k=3)
         contexts = [doc.page_content for doc in docs]
         answer = self._invoke_chain_once(
-            advice_answer_prompt | llm,
+            self._prompt("advice_answer_prompt") | llm,
             {
                 "user_message": self._latest_user_message(payload),
                 "contract_text": payload.contract_text or "无合同上下文",
@@ -316,7 +315,7 @@ class ChatService:
     def _handle_chat(self, payload: ChatRequest) -> ChatResponse:
         llm = self._require_llm()
         answer = self._invoke_chain_once(
-            chat_answer_prompt | llm,
+            self._prompt("chat_answer_prompt") | llm,
             {
                 "conversation": self._conversation_text(payload),
                 "user_message": self._latest_user_message(payload),
@@ -332,7 +331,7 @@ class ChatService:
     def _route_intent(self, payload: ChatRequest) -> dict[str, Any]:
         llm = self._require_llm()
         raw = self._invoke_chain_once(
-            chat_intent_prompt | llm,
+            self._prompt("chat_intent_prompt") | llm,
             {
                 "contract_text": payload.contract_text or "无合同上下文",
                 "conversation": self._conversation_text(payload),
@@ -425,8 +424,8 @@ class ChatService:
                 yield content
 
     def _require_llm(self):
-        if not settings.qwen_api_key:
-            raise RuntimeError("QWEN_API_KEY 未配置，无法启用对话功能。")
+        if not self.settings.chat_api_key:
+            raise RuntimeError("CHAT_API_KEY 或 LLM_API_KEY 未配置，无法启用对话功能。QWEN_API_KEY 仍可作为兼容别名。")
         if self.llm is None:
             try:
                 self.llm = get_chat_model()
@@ -437,11 +436,23 @@ class ChatService:
     def _require_knowledge_retriever(self) -> ContractKnowledgeRetriever:
         if self._knowledge_retriever is None:
             try:
-                vector_store = load_vector_store(settings.knowledge_vector_store_dir)
+                from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
+                from contract_agent.knowledge.rag.vector_store import load_vector_store
+
+                vector_store = load_vector_store(self.settings.knowledge_vector_store_dir, runtime_settings=self.settings)
             except Exception as exc:
                 raise RuntimeError(f"法律知识库加载失败：{exc}") from exc
-            self._knowledge_retriever = ContractKnowledgeRetriever(vector_store)
+            self._knowledge_retriever = ContractKnowledgeRetriever(
+                vector_store,
+                retrieval_config=self.retrieval_config,
+                audit_logger=self.audit_logger,
+            )
         return self._knowledge_retriever
+
+    def _prompt(self, name: str):
+        from contract_agent.constants import prompts
+
+        return getattr(prompts, name)
 
     def _latest_user_message(self, payload: ChatRequest) -> str:
         for message in reversed(payload.messages):

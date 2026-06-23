@@ -10,7 +10,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from contract_agent.runtime.config import settings
+from contract_agent.runtime.config import Settings, settings_snapshot
 from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
 from contract_agent.knowledge.rag.vector_store import load_vector_store
 
@@ -158,21 +158,23 @@ def run_evaluation(
     contract_types: set[str] | None = None,
     severities: set[str] | None = None,
     retriever: ContractKnowledgeRetriever | None = None,
+    runtime_settings: Settings | None = None,
     use_rerank: bool | None = None,
     fetch_k: int | None = None,
     final_k: int | None = None,
 ) -> dict[str, Any]:
     started_at_dt = datetime.now(timezone.utc)
+    active_settings = runtime_settings or settings_snapshot()
 
     all_samples = load_recall_dataset(dataset_path)
     selected_samples = filter_samples(all_samples, contract_types=contract_types, severities=severities)
     if not selected_samples:
         raise ValueError("No samples left after applying filters.")
 
-    active_retriever = retriever or _build_retriever()
-    use_rerank_value = settings.retrieval_enable_rerank if use_rerank is None else bool(use_rerank)
-    fetch_k_value = max(1, int(fetch_k or settings.retrieval_fetch_k))
-    final_k_value = max(1, int(final_k or settings.retrieval_final_k))
+    active_retriever = retriever or _build_retriever(active_settings)
+    use_rerank_value = active_settings.retrieval_enable_rerank if use_rerank is None else bool(use_rerank)
+    fetch_k_value = max(1, int(fetch_k or active_settings.retrieval_fetch_k))
+    final_k_value = max(1, int(final_k or active_settings.retrieval_final_k))
 
     details = evaluate_samples(
         selected_samples,
@@ -191,8 +193,8 @@ def run_evaluation(
         "use_rerank": use_rerank_value,
         "fetch_k": fetch_k_value,
         "final_k": final_k_value,
-        "rerank_model": settings.rerank_model,
-        "rerank_endpoint": settings.rerank_endpoint,
+        "rerank_model": active_settings.rerank_model,
+        "rerank_endpoint": active_settings.rerank_endpoint,
     }
 
     finished_at_dt = datetime.now(timezone.utc)
@@ -245,9 +247,10 @@ def run_evaluation(
     }
 
 
-def _build_retriever() -> ContractKnowledgeRetriever:
-    vector_store = load_vector_store(settings.knowledge_vector_store_dir)
-    return ContractKnowledgeRetriever(vector_store)
+def _build_retriever(runtime_settings: Settings | None = None) -> ContractKnowledgeRetriever:
+    active_settings = runtime_settings or settings_snapshot()
+    vector_store = load_vector_store(active_settings.knowledge_vector_store_dir, runtime_settings=active_settings)
+    return ContractKnowledgeRetriever(vector_store, runtime_settings=active_settings)
 
 
 def _parse_sample(payload: dict[str, Any], line_no: int) -> RecallSample:
@@ -509,6 +512,7 @@ def _parse_bool(value: str) -> bool:
 
 
 def _parse_args() -> argparse.Namespace:
+    current = settings_snapshot()
     parser = argparse.ArgumentParser(description="Evaluate RAG retrieval recall with gold-labeled legal article IDs.")
     parser.add_argument("--dataset", required=True, help="Path to recall evaluation dataset in JSONL format.")
     parser.add_argument("--k", nargs="*", type=int, default=[1, 3, 5], help="K values for Recall@k.")
@@ -528,19 +532,19 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--use-rerank",
         type=_parse_bool,
-        default=settings.retrieval_enable_rerank,
+        default=current.retrieval_enable_rerank,
         help="Whether to use rerank in evaluation (true/false).",
     )
     parser.add_argument(
         "--fetch-k",
         type=int,
-        default=settings.retrieval_fetch_k,
+        default=current.retrieval_fetch_k,
         help="Candidate size before rerank.",
     )
     parser.add_argument(
         "--final-k",
         type=int,
-        default=settings.retrieval_final_k,
+        default=current.retrieval_final_k,
         help="Final output size after rerank.",
     )
     return parser.parse_args()

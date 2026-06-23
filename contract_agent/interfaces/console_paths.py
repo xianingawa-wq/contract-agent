@@ -1,0 +1,4 @@
+from contract_agent.model_config.interface import DEFAULT_MODEL_PROFILE_PATH
+
+
+DEFAULT_PROFILE_PATH = DEFAULT_MODEL_PROFILE_PATH

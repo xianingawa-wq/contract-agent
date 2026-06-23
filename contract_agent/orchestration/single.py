@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from contract_agent.orchestration.protocol import AgentMode, PipelineState, PipelineStatus
+from contract_agent.runtime.config import Settings
 from contract_agent.services.review_service import ReviewService
 from contract_agent.schemas.review import ReviewRequest
 
@@ -11,8 +12,8 @@ from contract_agent.schemas.review import ReviewRequest
 class SingleAgentHandler:
     """Handles single-agent mode: direct LLM call, no pipeline overhead."""
 
-    def __init__(self) -> None:
-        self.review_service = ReviewService()
+    def __init__(self, runtime_settings: Settings | None = None, review_service: ReviewService | None = None) -> None:
+        self.review_service = review_service or ReviewService(runtime_settings=runtime_settings)
 
     def run_review(
         self,

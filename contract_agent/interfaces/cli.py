@@ -5,8 +5,10 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from contract_agent.interfaces.console import DEFAULT_PROFILE_PATH, run_console_demo
-from contract_agent.runtime.config import settings
+from contract_agent.interfaces.console import run_console_demo
+from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
+from contract_agent.model_config.factory import create_model_profile_service
+from contract_agent.runtime.config import settings_snapshot
 from contract_agent.review.reporting import render_json, render_markdown
 from contract_agent.review.service import review_text
 
@@ -25,6 +27,9 @@ def main(
     _prefer_utf8(stderr)
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    if args.command not in {None, "demo"}:
+        _load_default_profile_if_present()
 
     if args.command in {None, "demo"}:
         return _demo_command(args, stdin, stdout, stderr)
@@ -87,12 +92,27 @@ def _review_command(args: argparse.Namespace, stdout: TextIO, stderr: TextIO) ->
 
 
 def _config_command(stdout: TextIO) -> int:
-    stdout.write(f"provider={settings.llm_provider}\n")
-    stdout.write(f"chat_model={settings.llm_chat_model}\n")
-    stdout.write(f"embedding_model={settings.llm_embedding_model}\n")
-    stdout.write(f"base_url={settings.llm_base_url or ''}\n")
-    stdout.write(f"responses_api={settings.llm_use_responses_api}\n")
+    current = settings_snapshot()
+    stdout.write(f"chat.provider={current.chat_provider}\n")
+    stdout.write(f"chat.base_url={current.chat_base_url or ''}\n")
+    stdout.write(f"chat.model={current.chat_model}\n")
+    stdout.write(f"chat.api_key_configured={bool(current.chat_api_key)}\n")
+    stdout.write(f"embedding.provider={current.embedding_provider}\n")
+    stdout.write(f"embedding.base_url={current.embedding_base_url or ''}\n")
+    stdout.write(f"embedding.model={current.embedding_model}\n")
+    stdout.write(f"embedding.api_key_configured={bool(current.embedding_api_key)}\n")
+    stdout.write(f"rerank.provider={current.rerank_provider}\n")
+    stdout.write(f"rerank.base_url={current.rerank_base_url or ''}\n")
+    stdout.write(f"rerank.model={current.rerank_model}\n")
+    stdout.write(f"rerank.api_key_configured={bool(current.rerank_api_key)}\n")
+    stdout.write(f"responses_api={current.llm_use_responses_api}\n")
     return 0
+
+
+def _load_default_profile_if_present() -> None:
+    profile_service = create_model_profile_service(DEFAULT_PROFILE_PATH)
+    if profile_service.has_profile():
+        profile_service.apply_to_settings(profile_service.load())
 
 
 def _prefer_utf8(stream: TextIO) -> None:

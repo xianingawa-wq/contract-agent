@@ -9,6 +9,53 @@ from contract_agent.services.review_service import ReviewService
 
 
 class AuditLoggerTests(unittest.TestCase):
+    def test_audit_logger_records_trace_spans_and_failures(self):
+        from contract_agent.logger.audit import AuditLogger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "trace.jsonl"
+            logger = AuditLogger(log_path)
+
+            with self.assertRaises(ValueError):
+                with logger.trace("debug.operation", request_id="req-1") as trace_id:
+                    with logger.span("stage.outer", item_count=2):
+                        logger.emit("custom.event", detail="inside")
+                        with logger.span("stage.inner"):
+                            raise ValueError("boom")
+
+            records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+
+        event_names = [record["event"] for record in records]
+        self.assertEqual(event_names[0], "trace.started")
+        self.assertIn("span.started", event_names)
+        self.assertIn("custom.event", event_names)
+        self.assertIn("span.failed", event_names)
+        self.assertEqual(event_names[-1], "trace.failed")
+        self.assertTrue(all(record.get("trace_id") == trace_id for record in records))
+
+        outer_started = next(record for record in records if record.get("span_name") == "stage.outer" and record["event"] == "span.started")
+        inner_failed = next(record for record in records if record.get("span_name") == "stage.inner" and record["event"] == "span.failed")
+        custom = next(record for record in records if record["event"] == "custom.event")
+
+        self.assertEqual(custom["span_id"], outer_started["span_id"])
+        self.assertEqual(inner_failed["parent_span_id"], outer_started["span_id"])
+        self.assertEqual(inner_failed["error_type"], "ValueError")
+        self.assertIn("duration_ms", inner_failed)
+        self.assertTrue(all(record.get("prefix") == "[Audit]" for record in records))
+
+    def test_audit_logger_can_create_component_prefixed_child_logger(self):
+        from contract_agent.logger.audit import AuditLogger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "trace.jsonl"
+            logger = AuditLogger(log_path).with_prefix("[Knowledge][RAG]", scope="rag")
+
+            logger.emit("rag.test")
+            record = json.loads(log_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(record["prefix"], "[Knowledge][RAG]")
+        self.assertEqual(record["scope"], "rag")
+
     def test_review_service_writes_structured_audit_events(self):
         from contract_agent.logger.audit import AuditLogger
 
@@ -55,12 +102,58 @@ class AuditLoggerTests(unittest.TestCase):
         self.assertIsNotNone(result.trace)
         self.assertGreater(result.trace.estimated_total_tokens, 0)
         event_names = [event["event"] for event in events]
-        self.assertEqual(event_names[0], "review.started")
+        self.assertEqual(event_names[0], "trace.started")
+        self.assertIn("review.started", event_names)
         self.assertIn("review.rules.completed", event_names)
         self.assertIn("review.risk.enriched", event_names)
-        self.assertEqual(event_names[-1], "review.completed")
+        self.assertIn("review.completed", event_names)
+        self.assertEqual(event_names[-1], "trace.completed")
         self.assertTrue(all(event.get("timestamp") for event in events))
-        self.assertTrue(all(event.get("scope") == "audit" for event in events))
+        self.assertTrue(all(event.get("scope") == "review" for event in events))
+        self.assertTrue(all(event.get("prefix") == "[Service][Review]" for event in events))
+
+    def test_review_service_audit_events_share_trace_context(self):
+        from contract_agent.logger.audit import AuditLogger
+
+        class FakeRetriever:
+            def retrieve_documents_with_rerank(self, **kwargs):
+                return []
+
+        class FakeReviewer:
+            def enrich_risk(self, risk, contract_type, clause_text, retrieved_contexts):
+                return risk
+
+        class FakeRuleEngine:
+            def check(self, contract_type, document):
+                return []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "audit.jsonl"
+            service = ReviewService(audit_logger=AuditLogger(log_path))
+            service.rule_engine = FakeRuleEngine()
+            service._require_knowledge_retriever = lambda: FakeRetriever()
+            service._require_llm_reviewer = lambda: FakeReviewer()
+
+            service.review(
+                ReviewRequest(
+                    contract_text="甲方与乙方签订采购合同。",
+                    contract_type="purchase",
+                    our_side="buyer",
+                )
+            )
+
+            events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+
+        trace_ids = {event.get("trace_id") for event in events}
+        self.assertEqual(len(trace_ids), 1)
+        self.assertNotIn(None, trace_ids)
+        self.assertIn("[Service][Review]", {event.get("prefix") for event in events})
+        self.assertIn("trace.started", [event["event"] for event in events])
+        self.assertIn("trace.completed", [event["event"] for event in events])
+        self.assertIn(
+            "review.rules",
+            {event.get("span_name") for event in events if event["event"] == "span.completed"},
+        )
 
 
 if __name__ == "__main__":

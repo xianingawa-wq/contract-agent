@@ -8,8 +8,11 @@ from typing import Any, Protocol
 
 from langchain_core.documents import Document
 
-from contract_agent.runtime.config import settings
-from contract_agent.knowledge.rag.reranker import QwenReranker, Reranker
+from contract_agent.knowledge.rag.config import RetrievalConfig
+from contract_agent.knowledge.rag.rerank.interface import Reranker
+from contract_agent.knowledge.rag.rerank.factory import create_reranker_service
+from contract_agent.logger.audit import AuditLogger, get_audit_logger
+from contract_agent.runtime.config import Settings
 
 
 class SimilaritySearchStore(Protocol):
@@ -22,9 +25,14 @@ class ContractKnowledgeRetriever:
         self,
         vector_store: SimilaritySearchStore,
         reranker: Reranker | None = None,
+        retrieval_config: RetrievalConfig | None = None,
+        runtime_settings: Settings | None = None,
+        audit_logger: AuditLogger | None = None,
     ) -> None:
         self.vector_store = vector_store
-        self.reranker = reranker or QwenReranker()
+        self.retrieval_config = retrieval_config or RetrievalConfig.from_settings(runtime_settings)
+        self.reranker = reranker or create_reranker_service().create_reranker()
+        self.audit_logger = (audit_logger or get_audit_logger()).with_prefix("[Knowledge][RAG]", scope="rag")
         self.last_rerank_meta: dict[str, object] = {
             "attempted": False,
             "success": False,
@@ -34,9 +42,10 @@ class ContractKnowledgeRetriever:
         }
 
     def retrieve_documents(self, query: str, k: int = 3) -> list[Document]:
-        target_k = max(1, int(k))
-        candidates, _, _ = self._retrieve_candidates(query=query, target_k=target_k)
-        return candidates
+        with self.audit_logger.span("rag.retrieve", mode="dense", query_length=len(query), k=k):
+            target_k = max(1, int(k))
+            candidates, _, _ = self._retrieve_candidates(query=query, target_k=target_k)
+            return candidates
 
     def retrieve_documents_with_rerank(
         self,
@@ -46,9 +55,10 @@ class ContractKnowledgeRetriever:
         final_k: int | None = None,
         use_rerank: bool | None = None,
     ) -> list[Document]:
-        candidate_k = max(1, int(fetch_k or settings.retrieval_fetch_k))
-        output_k = max(1, int(final_k or settings.retrieval_final_k))
-        candidates, top1_agree, candidate_profile = self._retrieve_candidates(query=query, target_k=candidate_k)
+        with self.audit_logger.span("rag.retrieve", mode="rerank", query_length=len(query), fetch_k=fetch_k, final_k=final_k):
+            candidate_k = max(1, int(fetch_k or self.retrieval_config.fetch_k))
+            output_k = max(1, int(final_k or self.retrieval_config.final_k))
+            candidates, top1_agree, candidate_profile = self._retrieve_candidates(query=query, target_k=candidate_k)
 
         base_profile = {
             "dense_retrieval_seconds": candidate_profile.get("dense_retrieval_seconds", 0.0),
@@ -60,7 +70,7 @@ class ContractKnowledgeRetriever:
             "network_seconds": 0.0,
         }
 
-        rerank_enabled = settings.retrieval_enable_rerank if use_rerank is None else bool(use_rerank)
+        rerank_enabled = self.retrieval_config.enable_rerank if use_rerank is None else bool(use_rerank)
         if not rerank_enabled:
             self.last_rerank_meta = {
                 "attempted": False,
@@ -68,7 +78,7 @@ class ContractKnowledgeRetriever:
                 "fallback": False,
                 "reason": "disabled",
                 "order_changed": None,
-                "hybrid_applied": bool(settings.retrieval_enable_hybrid),
+                "hybrid_applied": bool(self.retrieval_config.enable_hybrid),
                 "candidate_pool_size": len(candidates),
                 "profile": base_profile,
             }
@@ -81,14 +91,15 @@ class ContractKnowledgeRetriever:
                 "fallback": False,
                 "reason": "short_circuit_dense_bm25_top1_agree",
                 "order_changed": None,
-                "hybrid_applied": bool(settings.retrieval_enable_hybrid),
+                "hybrid_applied": bool(self.retrieval_config.enable_hybrid),
                 "candidate_pool_size": len(candidates),
                 "profile": base_profile,
             }
             return candidates[:output_k]
 
         try:
-            ranked = self.reranker.rerank(query=query, documents=candidates, top_k=output_k)
+            with self.audit_logger.span("rag.rerank", candidate_count=len(candidates), top_k=output_k):
+                ranked = self.reranker.rerank(query=query, documents=candidates, top_k=output_k)
             rerank_profile = _extract_rerank_profile(self.reranker)
             order_changed = _docs_signature(candidates[: len(ranked)]) != _docs_signature(ranked)
             self.last_rerank_meta = {
@@ -97,7 +108,7 @@ class ContractKnowledgeRetriever:
                 "fallback": False,
                 "reason": None,
                 "order_changed": order_changed,
-                "hybrid_applied": bool(settings.retrieval_enable_hybrid),
+                "hybrid_applied": bool(self.retrieval_config.enable_hybrid),
                 "candidate_pool_size": len(candidates),
                 "profile": _merge_profiles(base_profile, rerank_profile),
             }
@@ -110,7 +121,7 @@ class ContractKnowledgeRetriever:
                 "fallback": True,
                 "reason": _classify_rerank_error(exc),
                 "order_changed": False,
-                "hybrid_applied": bool(settings.retrieval_enable_hybrid),
+                "hybrid_applied": bool(self.retrieval_config.enable_hybrid),
                 "candidate_pool_size": len(candidates),
                 "profile": _merge_profiles(base_profile, rerank_profile),
             }
@@ -121,13 +132,13 @@ class ContractKnowledgeRetriever:
         return [doc.page_content for doc in docs]
 
     def _retrieve_candidates(self, query: str, target_k: int) -> tuple[list[Document], bool, dict[str, Any]]:
-        dense_pool_k = max(target_k, int(settings.retrieval_dense_pool_k))
+        dense_pool_k = max(target_k, int(self.retrieval_config.dense_pool_k))
 
         dense_started = time.perf_counter()
         dense_docs = self.vector_store.similarity_search(query, k=dense_pool_k)
         dense_elapsed = time.perf_counter() - dense_started
 
-        if not settings.retrieval_enable_hybrid:
+        if not self.retrieval_config.enable_hybrid:
             return dense_docs[:target_k], False, {
                 "dense_retrieval_seconds": dense_elapsed,
                 "bm25_retrieval_seconds": 0.0,

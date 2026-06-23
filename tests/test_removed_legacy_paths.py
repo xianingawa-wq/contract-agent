@@ -20,6 +20,9 @@ class RemovedLegacyPathTests(unittest.TestCase):
             "contract_agent.multi_agent",
             "contract_agent.multi_agent.memory",
             "contract_agent.rag",
+            "contract_agent.provider.impl.openai_compatible_embeddings",
+            "contract_agent.provider.impl.openai_compatible_provider",
+            "contract_agent.provider.impl.openai_message_codec",
         ]
 
         for path in removed_paths:

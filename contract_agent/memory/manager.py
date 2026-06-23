@@ -7,16 +7,18 @@ from contract_agent.memory.hot_store import HotLayer
 from contract_agent.memory.warm_store import WarmLayer
 from contract_agent.orchestration.config import MultiAgentConfig
 from contract_agent.orchestration.protocol import PipelineState
+from contract_agent.runtime.config import Settings, settings_snapshot
 
 
 class MemoryManager:
     """Unified access to all three memory tiers."""
 
-    def __init__(self, config: MultiAgentConfig | None = None) -> None:
+    def __init__(self, config: MultiAgentConfig | None = None, runtime_settings: Settings | None = None) -> None:
         self.config = config or MultiAgentConfig()
+        self.settings = runtime_settings or settings_snapshot()
         self.hot = HotLayer(self.config)
-        self.warm = WarmLayer()
-        self.cold = ColdLayer()
+        self.warm = WarmLayer(runtime_settings=self.settings)
+        self.cold = ColdLayer(runtime_settings=self.settings)
 
     def save_pipeline_result(self, state: PipelineState) -> None:
         self.hot.set_pipeline_state(state)

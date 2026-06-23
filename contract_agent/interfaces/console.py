@@ -1,63 +1,28 @@
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
 from sqlalchemy import text
 
-from contract_agent.runtime.config import PROJECT_ROOT, settings
+from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
+from contract_agent.model_config.factory import create_model_profile_service
+from contract_agent.model_config.interface import (
+    DEFAULT_PROVIDER_OPTIONS,
+    ModelEndpointConfig,
+    ModelProviderOption,
+    ModelRole,
+    ModelRuntimeConfig,
+)
+from contract_agent.runtime.config import settings_snapshot
 from contract_agent.runtime.database import get_engine
 
 
-DEFAULT_PROFILE_PATH = PROJECT_ROOT / ".run" / "cli_profile.json"
-
-
-@dataclass(frozen=True)
-class ConsoleProfile:
-    provider: str
-    base_url: str
-    chat_model: str
-    embedding_model: str
-    api_key_configured: bool
-
-    @classmethod
-    def from_settings(cls) -> "ConsoleProfile":
-        return cls(
-            provider=settings.llm_provider,
-            base_url=settings.llm_base_url or "",
-            chat_model=settings.llm_chat_model,
-            embedding_model=settings.llm_embedding_model,
-            api_key_configured=bool(settings.llm_api_key),
-        )
-
-    @classmethod
-    def from_json(cls, raw: dict[str, object]) -> "ConsoleProfile":
-        fallback = cls.from_settings()
-        return cls(
-            provider=str(raw.get("provider") or fallback.provider),
-            base_url=str(raw.get("base_url") or fallback.base_url),
-            chat_model=str(raw.get("chat_model") or fallback.chat_model),
-            embedding_model=str(raw.get("embedding_model") or fallback.embedding_model),
-            api_key_configured=bool(raw.get("api_key_configured")),
-        )
-
-    def to_json(self) -> dict[str, object]:
-        return {
-            "provider": self.provider,
-            "base_url": self.base_url,
-            "chat_model": self.chat_model,
-            "embedding_model": self.embedding_model,
-            "api_key_configured": self.api_key_configured,
-        }
-
-
-@dataclass(frozen=True)
 class ComponentStatus:
-    name: str
-    state: str
-    detail: str = ""
+    def __init__(self, name: str, state: str, detail: str = "") -> None:
+        self.name = name
+        self.state = state
+        self.detail = detail
 
 
 def run_console_demo(
@@ -68,20 +33,27 @@ def run_console_demo(
     profile_path: Path | None = None,
     skip_db_connect: bool = False,
 ) -> int:
-    profile_path = profile_path or DEFAULT_PROFILE_PATH
+    profile_service = create_model_profile_service(profile_path or DEFAULT_PROFILE_PATH)
     _write_welcome(stdout)
 
-    if profile_path.exists():
-        profile = _load_profile(profile_path)
+    if profile_service.has_profile():
+        model_config = profile_service.load()
         stdout.write("Profile: ready\n")
     else:
-        profile = _run_initialization_wizard(stdin, stdout)
-        _save_profile(profile_path, profile)
+        model_config = _run_initialization_wizard(stdin, stdout, profile_service.load())
+        profile_service.save(model_config)
 
+    profile_service.apply_to_settings(model_config)
     database_status = _check_database(skip_connect=skip_db_connect)
-    model_status = _check_model(profile)
-    _write_init_status(stdout, database_status, model_status, profile)
-    _run_chat_loop(stdin=stdin, stdout=stdout, profile=profile, database_status=database_status, model_status=model_status)
+    model_statuses = _check_models(model_config)
+    _write_init_status(stdout, database_status, model_statuses, model_config)
+    _run_chat_loop(
+        stdin=stdin,
+        stdout=stdout,
+        model_config=model_config,
+        database_status=database_status,
+        model_statuses=model_statuses,
+    )
     return 0
 
 
@@ -93,27 +65,65 @@ def _write_welcome(stdout: TextIO) -> None:
     stdout.write("Welcome to the local agent console.\n\n")
 
 
-def _run_initialization_wizard(stdin: TextIO, stdout: TextIO) -> ConsoleProfile:
-    defaults = ConsoleProfile.from_settings()
+def _run_initialization_wizard(stdin: TextIO, stdout: TextIO, defaults: ModelRuntimeConfig) -> ModelRuntimeConfig:
     stdout.write("Initialization wizard\n")
-    stdout.write("Configure the model provider for this local CLI profile.\n")
-    provider = _ask(stdin, stdout, "Provider", defaults.provider)
-    base_url = _ask(stdin, stdout, "Base URL", defaults.base_url)
-    chat_model = _ask(stdin, stdout, "Chat model", defaults.chat_model)
-    embedding_model = _ask(stdin, stdout, "Embedding model", defaults.embedding_model)
-    api_key_answer = _ask(stdin, stdout, "API key configured in environment? (yes/no)", "yes" if defaults.api_key_configured else "no")
-    return ConsoleProfile(
-        provider=provider,
-        base_url=base_url,
-        chat_model=chat_model,
-        embedding_model=embedding_model,
-        api_key_configured=api_key_answer.strip().lower() in {"1", "true", "yes", "y", "on"},
+    stdout.write("Configure chat, embedding, and rerank models separately.\n")
+    return ModelRuntimeConfig(
+        chat=_run_endpoint_wizard(stdin, stdout, "Chat", defaults.chat),
+        embedding=_run_endpoint_wizard(stdin, stdout, "Embedding", defaults.embedding),
+        rerank=_run_endpoint_wizard(stdin, stdout, "Rerank", defaults.rerank),
     )
+
+
+def _run_endpoint_wizard(
+    stdin: TextIO,
+    stdout: TextIO,
+    label: str,
+    defaults: ModelEndpointConfig,
+) -> ModelEndpointConfig:
+    stdout.write(f"\n{label} provider\n")
+    for option in DEFAULT_PROVIDER_OPTIONS:
+        detail = option.base_url or "enter your own URL"
+        stdout.write(f"  {option.key}. {option.label} ({detail})\n")
+    selected = _ask(stdin, stdout, "Select provider", _default_provider_key(defaults))
+    option = _find_provider_option(selected) or ModelProviderOption(selected, selected, selected, defaults.base_url)
+
+    base_url = option.base_url
+    if option.key == "3":
+        base_url = _ask(stdin, stdout, f"{label} base URL", defaults.base_url)
+
+    api_key = _ask_api_key(stdin, stdout, f"{label} API key", defaults.api_key)
+    model = _ask(stdin, stdout, f"{label} model", defaults.model)
+    return ModelEndpointConfig(
+        role=defaults.role,
+        provider=option.provider,
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+    )
+
+
+def _find_provider_option(value: str) -> ModelProviderOption | None:
+    normalized = value.strip().lower()
+    for option in DEFAULT_PROVIDER_OPTIONS:
+        if normalized in {option.key, option.provider.lower(), option.label.lower()}:
+            return option
+    return None
+
+
+def _default_provider_key(defaults: ModelEndpointConfig) -> str:
+    for option in DEFAULT_PROVIDER_OPTIONS:
+        if defaults.provider.lower() == option.provider.lower() and (
+            not option.base_url or defaults.base_url.rstrip("/") == option.base_url.rstrip("/")
+        ):
+            return option.key
+    return "3"
 
 
 def _ask(stdin: TextIO, stdout: TextIO, label: str, default: str) -> str:
     suffix = f" [{default}]" if default else ""
     stdout.write(f"{label}{suffix}: ")
+    stdout.flush()
     value = stdin.readline()
     if value == "":
         stdout.write("\n")
@@ -122,72 +132,81 @@ def _ask(stdin: TextIO, stdout: TextIO, label: str, default: str) -> str:
     return value or default
 
 
-def _load_profile(path: Path) -> ConsoleProfile:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return ConsoleProfile.from_settings()
-    if not isinstance(raw, dict):
-        return ConsoleProfile.from_settings()
-    return ConsoleProfile.from_json(raw)
-
-
-def _save_profile(path: Path, profile: ConsoleProfile) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(profile.to_json(), indent=2), encoding="utf-8")
+def _ask_api_key(stdin: TextIO, stdout: TextIO, label: str, existing: str) -> str:
+    suffix = " [configured; press Enter to keep]" if existing else ""
+    stdout.write(f"{label}{suffix}: ")
+    stdout.flush()
+    value = stdin.readline()
+    if value == "":
+        stdout.write("\n")
+        return existing
+    value = value.strip()
+    return value or existing
 
 
 def _check_database(*, skip_connect: bool) -> ComponentStatus:
-    if not settings.postgres_dsn:
+    current = settings_snapshot()
+    if not current.postgres_dsn:
         return ComponentStatus("Database", "missing", "POSTGRES_DSN is not configured")
     if skip_connect:
-        return ComponentStatus("Database", "skipped", settings.postgres_dsn)
+        return ComponentStatus("Database", "skipped", current.postgres_dsn)
     try:
-        with get_engine().connect() as connection:
+        with get_engine(current).connect() as connection:
             connection.execute(text("SELECT 1"))
-        return ComponentStatus("Database", "ok", settings.postgres_dsn)
+        return ComponentStatus("Database", "ok", current.postgres_dsn)
     except Exception as exc:
         return ComponentStatus("Database", "failed", str(exc))
 
 
-def _check_model(profile: ConsoleProfile) -> ComponentStatus:
+def _check_models(model_config: ModelRuntimeConfig) -> list[ComponentStatus]:
+    return [
+        _check_model_endpoint("Chat provider", model_config.chat),
+        _check_model_endpoint("Embedding provider", model_config.embedding),
+        _check_model_endpoint("Rerank provider", model_config.rerank),
+    ]
+
+
+def _check_model_endpoint(name: str, endpoint: ModelEndpointConfig) -> ComponentStatus:
     supported = {"openai", "openai_compatible", "qwen", "dashscope"}
-    if profile.provider.strip().lower() not in supported:
-        return ComponentStatus("Model provider", "failed", f"unsupported provider: {profile.provider}")
-    if not profile.api_key_configured:
-        return ComponentStatus("Model provider", profile.provider, "API key not configured; demo replies only")
-    return ComponentStatus("Model provider", profile.provider, "ready")
+    if endpoint.provider.strip().lower() not in supported:
+        return ComponentStatus(name, "failed", f"unsupported provider: {endpoint.provider}")
+    if not endpoint.api_key_configured:
+        return ComponentStatus(name, endpoint.provider, "API key not configured; demo replies only")
+    return ComponentStatus(name, endpoint.provider, "ready")
 
 
 def _write_init_status(
     stdout: TextIO,
     database_status: ComponentStatus,
-    model_status: ComponentStatus,
-    profile: ConsoleProfile,
+    model_statuses: list[ComponentStatus],
+    model_config: ModelRuntimeConfig,
 ) -> None:
     stdout.write("\nInit checks\n")
     stdout.write(f"{database_status.name}: {database_status.state}\n")
     if database_status.detail:
         stdout.write(f"  {database_status.detail}\n")
-    stdout.write(f"{model_status.name}: {model_status.state}\n")
-    if model_status.detail:
-        stdout.write(f"  {model_status.detail}\n")
-    stdout.write(f"Active model: {profile.chat_model}\n")
-    stdout.write(f"Embedding model: {profile.embedding_model}\n\n")
+    for model_status in model_statuses:
+        stdout.write(f"{model_status.name}: {model_status.state}\n")
+        if model_status.detail:
+            stdout.write(f"  {model_status.detail}\n")
+    stdout.write(f"Active chat model: {model_config.chat.model}\n")
+    stdout.write(f"Embedding model: {model_config.embedding.model}\n")
+    stdout.write(f"Rerank model: {model_config.rerank.model}\n\n")
 
 
 def _run_chat_loop(
     *,
     stdin: TextIO,
     stdout: TextIO,
-    profile: ConsoleProfile,
+    model_config: ModelRuntimeConfig,
     database_status: ComponentStatus,
-    model_status: ComponentStatus,
+    model_statuses: list[ComponentStatus],
 ) -> None:
     stdout.write("Agent console\n")
     stdout.write("Type /help for commands, /exit to quit.\n")
     while True:
         stdout.write("You> ")
+        stdout.flush()
         raw = stdin.readline()
         if raw == "":
             stdout.write("\n")
@@ -204,14 +223,20 @@ def _run_chat_loop(
         if message == "/status":
             stdout.write("Initialized: yes\n")
             stdout.write(f"Database: {database_status.state}\n")
-            stdout.write(f"Model provider: {model_status.state}\n")
-            stdout.write(f"Active model: {profile.chat_model}\n")
+            for model_status in model_statuses:
+                stdout.write(f"{model_status.name}: {model_status.state}\n")
+            stdout.write(f"Active chat model: {model_config.chat.model}\n")
             continue
         if message == "/config":
-            stdout.write(f"provider={profile.provider}\n")
-            stdout.write(f"base_url={profile.base_url}\n")
-            stdout.write(f"chat_model={profile.chat_model}\n")
-            stdout.write(f"embedding_model={profile.embedding_model}\n")
-            stdout.write(f"api_key_configured={profile.api_key_configured}\n")
+            _write_endpoint_config(stdout, ModelRole.CHAT.value, model_config.chat)
+            _write_endpoint_config(stdout, ModelRole.EMBEDDING.value, model_config.embedding)
+            _write_endpoint_config(stdout, ModelRole.RERANK.value, model_config.rerank)
             continue
-        stdout.write(f"Agent: demo reply from {profile.chat_model}: {message}\n")
+        stdout.write(f"Agent: demo reply from {model_config.chat.model}: {message}\n")
+
+
+def _write_endpoint_config(stdout: TextIO, prefix: str, endpoint: ModelEndpointConfig) -> None:
+    stdout.write(f"{prefix}.provider={endpoint.provider}\n")
+    stdout.write(f"{prefix}.base_url={endpoint.base_url}\n")
+    stdout.write(f"{prefix}.model={endpoint.model}\n")
+    stdout.write(f"{prefix}.api_key_configured={endpoint.api_key_configured}\n")

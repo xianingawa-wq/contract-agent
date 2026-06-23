@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from contract_agent.provider.providers import LLMProvider, get_provider
+from contract_agent.provider.factory import create_model_provider_service
+from contract_agent.provider.interface import LLMProvider
 
 if TYPE_CHECKING:
     from langchain_core.embeddings import Embeddings
@@ -10,12 +11,12 @@ if TYPE_CHECKING:
 
 
 def get_chat_model() -> "ChatOpenAI":
-    return get_provider().chat_model()
+    return create_model_provider_service().create_chat_provider().chat_model()
 
 
 def get_embeddings() -> "Embeddings":
-    return get_provider().embeddings()
+    return create_model_provider_service().create_embedding_provider().embeddings()
 
 
 def get_llm_provider() -> LLMProvider:
-    return get_provider()
+    return create_model_provider_service().create_chat_provider()
