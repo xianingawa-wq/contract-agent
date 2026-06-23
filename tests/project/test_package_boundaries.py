@@ -1,5 +1,7 @@
 import unittest
+from pathlib import Path
 
+from contract_agent.parser import ContractParser, ParsedDocument, normalize_review_input
 from contract_agent.knowledge.rag.rerank.impl.qwen_endpoint import build_qwen_rerank_endpoint
 from contract_agent.knowledge.rag.rerank.impl.qwen_response_parser import parse_qwen_rerank_results
 from contract_agent.knowledge.rag.rerank.impl.qwen_transport import QwenRerankTransport
@@ -40,6 +42,48 @@ class PackageBoundaryTests(unittest.TestCase):
             QwenRerankTransport.__module__,
             "contract_agent.knowledge.rag.rerank.impl.qwen_transport",
         )
+
+    def test_parser_package_is_canonical_public_parser_api(self):
+        self.assertEqual(ContractParser.__module__, "contract_agent.parser.service")
+        self.assertEqual(ParsedDocument.__module__, "contract_agent.parser.models")
+        self.assertEqual(normalize_review_input.__module__, "contract_agent.parser.normalizer")
+
+    def test_parser_package_does_not_depend_on_rpc_review_service_or_agents(self):
+        root = Path(__file__).resolve().parents[2]
+        parser_dir = root / "contract_agent" / "parser"
+        forbidden = [
+            "contract_agent.agent_rpc",
+            "agent_pb2",
+            "HasField",
+            "contract_agent.services.review_service",
+            "contract_agent.agents",
+        ]
+
+        offenders = []
+        for path in parser_dir.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for marker in forbidden:
+                if marker in text:
+                    offenders.append(f"{path.relative_to(root)}:{marker}")
+
+        self.assertEqual(offenders, [])
+
+    def test_parser_modules_do_not_import_optional_converter_dependencies_at_top_level(self):
+        root = Path(__file__).resolve().parents[2]
+        parser_dir = root / "contract_agent" / "parser"
+        offenders = []
+        for path in parser_dir.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for forbidden in (
+                "import docling",
+                "from docling",
+                "import markitdown",
+                "from markitdown",
+            ):
+                if forbidden in text:
+                    offenders.append(f"{path.relative_to(root)}:{forbidden}")
+
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":

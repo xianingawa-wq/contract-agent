@@ -4,7 +4,13 @@ from contextlib import contextmanager
 from threading import RLock
 from typing import Iterator
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from contract_agent.config.config_parser import (
+    DEFAULT_ALLOWED_SUFFIXES,
+    DEFAULT_ENABLED_CONVERTERS,
+    DEFAULT_ENABLED_DETECTORS,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -42,6 +48,18 @@ def _int_value(value: str | None, default: str) -> int:
 
 def _float_value(value: str | None, default: str) -> float:
     return float(value or default)
+
+
+def _csv_list_value(value: str | None, default: list[str]) -> list[str]:
+    if value is None or value.strip() == "":
+        return list(default)
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _optional_int_value(value: str | None) -> int | None:
+    if value is None or value.strip() == "":
+        return None
+    return int(value)
 
 
 class Settings(BaseModel):
@@ -98,6 +116,38 @@ class Settings(BaseModel):
     max_redraft_chunk_chars: int = 12000
     stream_max_seconds: float = 24.0
     stream_max_chars: int = 900
+
+    parser_default_converter: str = "builtin"
+    parser_enabled_converters: list[str] = Field(
+        default_factory=lambda: DEFAULT_ENABLED_CONVERTERS.copy()
+    )
+    parser_fallback_order: list[str] = Field(
+        default_factory=lambda: DEFAULT_ENABLED_CONVERTERS.copy()
+    )
+    parser_allow_converter_fallback: bool = True
+    parser_strict_converter_availability: bool = False
+    parser_allowed_suffixes: list[str] = Field(
+        default_factory=lambda: DEFAULT_ALLOWED_SUFFIXES.copy()
+    )
+    parser_allow_path_input: bool = True
+    parser_allow_url_input: bool = False
+    parser_trusted_path_roots: list[str] = Field(default_factory=list)
+    parser_max_input_bytes: int | None = None
+    parser_preserve_raw_text: bool = True
+    parser_detector_profile: str = "builtin_zh_contract_v1"
+    parser_enabled_detectors: list[str] = Field(
+        default_factory=lambda: DEFAULT_ENABLED_DETECTORS.copy()
+    )
+    parser_detector_rules_path: str | None = None
+    parser_min_detector_confidence: float = 0.60
+    parser_store_detector_reasons: bool = True
+    parser_chunk_max_chars: int = 1200
+    parser_chunk_target_chars: int = 500
+    parser_min_header_confidence: float = 0.65
+    parser_markitdown_enabled: bool = False
+    parser_docling_enabled: bool = False
+    parser_docling_enable_ocr: bool = False
+    parser_docling_enable_remote_services: bool = False
 
 
 def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings:
@@ -198,6 +248,50 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
         max_redraft_chunk_chars=_int_value(_env(env, "MAX_REDRAFT_CHUNK_CHARS"), "12000"),
         stream_max_seconds=_float_value(_env(env, "STREAM_MAX_SECONDS"), "24.0"),
         stream_max_chars=_int_value(_env(env, "STREAM_MAX_CHARS"), "900"),
+        parser_default_converter=_env(env, "PARSER_DEFAULT_CONVERTER", "builtin") or "builtin",
+        parser_enabled_converters=_csv_list_value(
+            _env(env, "PARSER_ENABLED_CONVERTERS"), DEFAULT_ENABLED_CONVERTERS
+        ),
+        parser_fallback_order=_csv_list_value(
+            _env(env, "PARSER_FALLBACK_ORDER"), DEFAULT_ENABLED_CONVERTERS
+        ),
+        parser_allow_converter_fallback=_bool_value(
+            _env(env, "PARSER_ALLOW_CONVERTER_FALLBACK"), "true"
+        ),
+        parser_strict_converter_availability=_bool_value(
+            _env(env, "PARSER_STRICT_CONVERTER_AVAILABILITY"), "false"
+        ),
+        parser_allowed_suffixes=_csv_list_value(
+            _env(env, "PARSER_ALLOWED_SUFFIXES"), DEFAULT_ALLOWED_SUFFIXES
+        ),
+        parser_allow_path_input=_bool_value(_env(env, "PARSER_ALLOW_PATH_INPUT"), "true"),
+        parser_allow_url_input=_bool_value(_env(env, "PARSER_ALLOW_URL_INPUT"), "false"),
+        parser_trusted_path_roots=_csv_list_value(_env(env, "PARSER_TRUSTED_PATH_ROOTS"), []),
+        parser_max_input_bytes=_optional_int_value(_env(env, "PARSER_MAX_INPUT_BYTES")),
+        parser_preserve_raw_text=_bool_value(_env(env, "PARSER_PRESERVE_RAW_TEXT"), "true"),
+        parser_detector_profile=_env(env, "PARSER_DETECTOR_PROFILE", "builtin_zh_contract_v1")
+        or "builtin_zh_contract_v1",
+        parser_enabled_detectors=_csv_list_value(
+            _env(env, "PARSER_ENABLED_DETECTORS"), DEFAULT_ENABLED_DETECTORS
+        ),
+        parser_detector_rules_path=_env(env, "PARSER_DETECTOR_RULES_PATH"),
+        parser_min_detector_confidence=_float_value(
+            _env(env, "PARSER_MIN_DETECTOR_CONFIDENCE"), "0.60"
+        ),
+        parser_store_detector_reasons=_bool_value(
+            _env(env, "PARSER_STORE_DETECTOR_REASONS"), "true"
+        ),
+        parser_chunk_max_chars=_int_value(_env(env, "PARSER_CHUNK_MAX_CHARS"), "1200"),
+        parser_chunk_target_chars=_int_value(_env(env, "PARSER_CHUNK_TARGET_CHARS"), "500"),
+        parser_min_header_confidence=_float_value(
+            _env(env, "PARSER_MIN_HEADER_CONFIDENCE"), "0.65"
+        ),
+        parser_markitdown_enabled=_bool_value(_env(env, "PARSER_MARKITDOWN_ENABLED"), "false"),
+        parser_docling_enabled=_bool_value(_env(env, "PARSER_DOCLING_ENABLED"), "false"),
+        parser_docling_enable_ocr=_bool_value(_env(env, "PARSER_DOCLING_ENABLE_OCR"), "false"),
+        parser_docling_enable_remote_services=_bool_value(
+            _env(env, "PARSER_DOCLING_ENABLE_REMOTE_SERVICES"), "false"
+        ),
     )
 
 

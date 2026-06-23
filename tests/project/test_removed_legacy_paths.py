@@ -33,12 +33,28 @@ class RemovedLegacyPathTests(unittest.TestCase):
             "contract_agent.model_config.interface",
             "contract_agent.model_config.factory",
             "contract_agent.model_config.service",
+            "contract_agent.services.parser",
+            "contract_agent.services.chunker",
+            "contract_agent.schemas.document",
         ]
 
         for path in removed_paths:
             with self.subTest(path=path):
                 with self.assertRaises(ModuleNotFoundError):
                     importlib.import_module(path)
+
+    def test_service_and_schema_packages_do_not_export_legacy_parser_symbols(self):
+        import contract_agent.schemas as schemas
+        import contract_agent.services as services
+
+        for package, names in {
+            services: ["ContractParser", "ContractChunker"],
+            schemas: ["ParsedDocument", "DocumentMetadata", "DocumentSpan", "ClauseChunk"],
+        }.items():
+            for name in names:
+                with self.subTest(package=package.__name__, name=name):
+                    self.assertNotIn(name, package.__all__)
+                    self.assertFalse(hasattr(package, name))
 
     def test_runtime_environment_reads_stay_inside_config_package(self):
         root = Path(__file__).resolve().parents[1]

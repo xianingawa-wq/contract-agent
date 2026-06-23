@@ -2,22 +2,40 @@ from __future__ import annotations
 
 import re
 
-from contract_agent.schemas.document import ClauseChunk, DocumentSpan, ParsedDocument
+from contract_agent.config.config_parser import ParserConfig
+from contract_agent.parser.detectors.base import DetectorContext
+from contract_agent.parser.detectors.clause_header import ClauseHeaderDetector
+from contract_agent.parser.detectors.registry import RuleRegistry
+from contract_agent.parser.models import ClauseChunk, DetectorResult, DocumentSpan, ParsedDocument
 
 
 class ContractChunker:
-    def chunk(self, document: ParsedDocument) -> list[ClauseChunk]:
+    def __init__(self, parser_config: ParserConfig | None = None) -> None:
+        self.parser_config = parser_config or ParserConfig()
+
+    def chunk(
+        self,
+        document: ParsedDocument,
+        detector_results: list[DetectorResult] | None = None,
+    ) -> list[ClauseChunk]:
+        header_results = self._header_results(document, detector_results)
+        headers_by_span = {
+            span_id: result
+            for result in header_results
+            for span_id in result.span_ids
+            if result.confidence >= self.parser_config.min_header_confidence
+        }
         chunks: list[ClauseChunk] = []
         current: dict | None = None
         parent_clause_no: str | None = None
         parent_title: str | None = None
 
         for span in document.spans:
-            header = self._match_header(span.text)
-            if header:
+            header_result = headers_by_span.get(span.span_id)
+            if header_result:
                 if current:
                     chunks.append(self._to_chunk(current))
-                level, clause_no, section_title = header
+                level, clause_no, section_title = self._header_tuple(header_result)
                 if level == "clause":
                     parent_clause_no = clause_no
                     parent_title = section_title
@@ -39,20 +57,30 @@ class ContractChunker:
         self._link_neighbors(chunks)
         return self._split_long_chunks(chunks)
 
-    def _match_header(self, text: str) -> tuple[str, str, str] | None:
-        patterns = [
-            (r"^(第[一二三四五六七八九十百零〇]+条)\s*(.*)$", "clause"),
-            (r"^(\d+\.\d+(?:\.\d+)*)\s+(.*)$", "sub_clause"),
-            (r"^(（[一二三四五六七八九十百零〇]+）)\s*(.*)$", "sub_item"),
-            (r"^(\d+\.)\s*(.*)$", "sub_item"),
-        ]
-        for pattern, level in patterns:
-            match = re.match(pattern, text)
-            if match:
-                clause_no = match.group(1).strip()
-                title = (match.group(2) or clause_no).strip()
-                return level, clause_no, title
-        return None
+    def _header_results(
+        self,
+        document: ParsedDocument,
+        detector_results: list[DetectorResult] | None,
+    ) -> list[DetectorResult]:
+        if detector_results is not None:
+            return [
+                result
+                for result in detector_results
+                if result.detector_name == "clause_header" and result.result_type == "clause_header"
+            ]
+        registry = RuleRegistry.from_config(self.parser_config)
+        context = DetectorContext(
+            document=document,
+            config=self.parser_config,
+            registry=registry,
+        )
+        return ClauseHeaderDetector().detect(context)
+
+    def _header_tuple(self, result: DetectorResult) -> tuple[str, str, str]:
+        level = str(result.value.get("level") or "clause")
+        clause_no = str(result.value.get("clause_no") or "")
+        section_title = str(result.value.get("title") or clause_no)
+        return level, clause_no, section_title
 
     def _new_chunk(
         self,
@@ -81,19 +109,20 @@ class ContractChunker:
 
     def _link_neighbors(self, chunks: list[ClauseChunk]) -> None:
         for index, chunk in enumerate(chunks):
-            if index > 0:
-                chunk.prev_chunk_id = chunks[index - 1].chunk_id
-            if index + 1 < len(chunks):
-                chunk.next_chunk_id = chunks[index + 1].chunk_id
+            chunk.prev_chunk_id = chunks[index - 1].chunk_id if index > 0 else None
+            chunk.next_chunk_id = chunks[index + 1].chunk_id if index + 1 < len(chunks) else None
 
     def _split_long_chunks(self, chunks: list[ClauseChunk]) -> list[ClauseChunk]:
         refined: list[ClauseChunk] = []
         for chunk in chunks:
-            if len(chunk.source_text) <= 1200:
+            if len(chunk.source_text) <= self.parser_config.chunk_max_chars:
                 refined.append(chunk)
                 continue
 
-            parts = self._split_by_sentences(chunk.source_text, max_chars=500)
+            parts = self._split_by_sentences(
+                chunk.source_text,
+                max_chars=self.parser_config.chunk_target_chars,
+            )
             for index, part in enumerate(parts, start=1):
                 refined.append(
                     ClauseChunk(

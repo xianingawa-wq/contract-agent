@@ -11,6 +11,7 @@ The project contains the Python agent capabilities for parsing contracts, runnin
 - `contract_agent/config/`: YAML runtime configuration, role-based model profiles, and AppContext injection.
 - `contract_agent/runtime/`: database sessions and schema initialization.
 - `contract_agent/agent_rpc/`: gRPC service entrypoint.
+- `contract_agent/parser/`: closed contract parser package for text/file/path loading, metadata extraction, spans, and clause chunks.
 - `contract_agent/review/`: local rule-review facade used by the CLI.
 - `contract_agent/rulesets/`: built-in rule definitions consumed by the rule engine.
 - `contract_agent/knowledge/`: persisted knowledge metadata, ingestion, vector stores, retrieval, and reranking.

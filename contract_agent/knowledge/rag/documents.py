@@ -1,6 +1,6 @@
 from langchain_core.documents import Document
 
-from contract_agent.schemas.document import ParsedDocument
+from contract_agent.parser import ParsedDocument
 
 
 def build_chunk_documents(parsed_document: ParsedDocument, contract_type: str) -> list[Document]:

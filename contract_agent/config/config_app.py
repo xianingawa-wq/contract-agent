@@ -4,6 +4,13 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
+from contract_agent.config.config_parser import (
+    DEFAULT_ALLOWED_SUFFIXES,
+    DEFAULT_ENABLED_CONVERTERS,
+    DEFAULT_ENABLED_DETECTORS,
+    ParserConfig,
+    derive_effective_max_input_bytes,
+)
 from contract_agent.config.config_model import ModelEndpointConfig, ModelRole, ModelRuntimeConfig
 from contract_agent.config.config_multiagent import MultiAgentConfig
 from contract_agent.config.config_retrieval import RetrievalConfig
@@ -90,6 +97,47 @@ class LimitsSection(BaseModel):
     stream_max_chars: int = 900
 
 
+class ParserAdapterSection(BaseModel):
+    enabled: bool = False
+
+
+class DoclingAdapterSection(ParserAdapterSection):
+    enable_ocr: bool = False
+    enable_remote_services: bool = False
+
+
+class ParserDetectorsSection(BaseModel):
+    enabled: list[str] = Field(default_factory=lambda: DEFAULT_ENABLED_DETECTORS.copy())
+    profile: str = "builtin_zh_contract_v1"
+    rules_path: str | None = None
+    min_confidence: float = 0.60
+    store_reasons: bool = True
+
+
+class ParserChunkingSection(BaseModel):
+    max_chars: int = 1200
+    target_chars: int = 500
+    min_header_confidence: float = 0.65
+
+
+class ParserSection(BaseModel):
+    default_converter: str = "builtin"
+    enabled_converters: list[str] = Field(default_factory=lambda: DEFAULT_ENABLED_CONVERTERS.copy())
+    fallback_order: list[str] = Field(default_factory=lambda: DEFAULT_ENABLED_CONVERTERS.copy())
+    allow_converter_fallback: bool = True
+    strict_converter_availability: bool = False
+    allowed_suffixes: list[str] = Field(default_factory=lambda: DEFAULT_ALLOWED_SUFFIXES.copy())
+    allow_path_input: bool = True
+    allow_url_input: bool = False
+    trusted_path_roots: list[str] = Field(default_factory=list)
+    max_input_bytes: int | None = None
+    preserve_raw_text: bool = True
+    detectors: ParserDetectorsSection = Field(default_factory=ParserDetectorsSection)
+    chunking: ParserChunkingSection = Field(default_factory=ParserChunkingSection)
+    markitdown: ParserAdapterSection = Field(default_factory=ParserAdapterSection)
+    docling: DoclingAdapterSection = Field(default_factory=DoclingAdapterSection)
+
+
 class ProfileSection(BaseModel):
     path: str = str(PROJECT_ROOT / ".run" / "cli_profile.yaml")
 
@@ -104,6 +152,7 @@ class AppConfig(BaseModel):
     multiagent: MultiAgentConfig = Field(default_factory=MultiAgentConfig)
     grpc: GrpcSection = Field(default_factory=GrpcSection)
     limits: LimitsSection = Field(default_factory=LimitsSection)
+    parser: ParserSection = Field(default_factory=ParserSection)
     profile: ProfileSection = Field(default_factory=ProfileSection)
 
     def to_model_runtime_config(self) -> ModelRuntimeConfig:
@@ -126,6 +175,37 @@ class AppConfig(BaseModel):
         values = self.multiagent.__dict__.copy()
         values["milvus_retry_max"] = self.vector_store.milvus_retry_max
         return MultiAgentConfig(**values)
+
+    def to_parser_config(self) -> ParserConfig:
+        parser_limit = derive_effective_max_input_bytes(
+            parser_limit=self.parser.max_input_bytes,
+            upload_limit=self.limits.max_upload_size_bytes,
+        )
+        return ParserConfig(
+            default_converter=self.parser.default_converter,
+            enabled_converters=list(self.parser.enabled_converters),
+            fallback_order=list(self.parser.fallback_order),
+            allow_converter_fallback=self.parser.allow_converter_fallback,
+            strict_converter_availability=self.parser.strict_converter_availability,
+            allowed_suffixes=list(self.parser.allowed_suffixes),
+            allow_path_input=self.parser.allow_path_input,
+            allow_url_input=self.parser.allow_url_input,
+            trusted_path_roots=list(self.parser.trusted_path_roots),
+            max_input_bytes=parser_limit,
+            preserve_raw_text=self.parser.preserve_raw_text,
+            detector_profile=self.parser.detectors.profile,
+            enabled_detectors=list(self.parser.detectors.enabled),
+            detector_rules_path=self.parser.detectors.rules_path,
+            min_detector_confidence=self.parser.detectors.min_confidence,
+            store_detector_reasons=self.parser.detectors.store_reasons,
+            chunk_max_chars=self.parser.chunking.max_chars,
+            chunk_target_chars=self.parser.chunking.target_chars,
+            min_header_confidence=self.parser.chunking.min_header_confidence,
+            markitdown_enabled=self.parser.markitdown.enabled,
+            docling_enabled=self.parser.docling.enabled,
+            docling_enable_ocr=self.parser.docling.enable_ocr,
+            docling_enable_remote_services=self.parser.docling.enable_remote_services,
+        )
 
     def to_settings(self) -> Settings:
         return Settings(
@@ -174,6 +254,29 @@ class AppConfig(BaseModel):
             max_redraft_chunk_chars=self.limits.max_redraft_chunk_chars,
             stream_max_seconds=self.limits.stream_max_seconds,
             stream_max_chars=self.limits.stream_max_chars,
+            parser_default_converter=self.parser.default_converter,
+            parser_enabled_converters=list(self.parser.enabled_converters),
+            parser_fallback_order=list(self.parser.fallback_order),
+            parser_allow_converter_fallback=self.parser.allow_converter_fallback,
+            parser_strict_converter_availability=self.parser.strict_converter_availability,
+            parser_allowed_suffixes=list(self.parser.allowed_suffixes),
+            parser_allow_path_input=self.parser.allow_path_input,
+            parser_allow_url_input=self.parser.allow_url_input,
+            parser_trusted_path_roots=list(self.parser.trusted_path_roots),
+            parser_max_input_bytes=self.parser.max_input_bytes,
+            parser_preserve_raw_text=self.parser.preserve_raw_text,
+            parser_detector_profile=self.parser.detectors.profile,
+            parser_enabled_detectors=list(self.parser.detectors.enabled),
+            parser_detector_rules_path=self.parser.detectors.rules_path,
+            parser_min_detector_confidence=self.parser.detectors.min_confidence,
+            parser_store_detector_reasons=self.parser.detectors.store_reasons,
+            parser_chunk_max_chars=self.parser.chunking.max_chars,
+            parser_chunk_target_chars=self.parser.chunking.target_chars,
+            parser_min_header_confidence=self.parser.chunking.min_header_confidence,
+            parser_markitdown_enabled=self.parser.markitdown.enabled,
+            parser_docling_enabled=self.parser.docling.enabled,
+            parser_docling_enable_ocr=self.parser.docling.enable_ocr,
+            parser_docling_enable_remote_services=self.parser.docling.enable_remote_services,
         )
 
 
@@ -184,3 +287,4 @@ class AppContext:
     model_config: ModelRuntimeConfig
     retrieval_config: RetrievalConfig
     multiagent_config: MultiAgentConfig
+    parser_config: ParserConfig

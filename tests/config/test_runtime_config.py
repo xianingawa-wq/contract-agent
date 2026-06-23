@@ -1,4 +1,7 @@
 import unittest
+from pathlib import Path
+
+import yaml
 
 from contract_agent.config import ModelEndpointConfig, ModelRole, ModelRuntimeConfig
 from contract_agent.config import apply_model_runtime_config
@@ -9,6 +12,7 @@ from contract_agent.config import (
     settings_snapshot,
     temporary_settings,
 )
+from contract_agent.config.config_parser import ParserConfig
 
 
 class RuntimeConfigTests(unittest.TestCase):
@@ -29,6 +33,165 @@ class RuntimeConfigTests(unittest.TestCase):
 
             self.assertEqual(snapshot.chat_model, "snapshot-model")
             self.assertEqual(settings.chat_model, "mutated-model")
+
+    def test_parser_config_from_settings_snapshot_is_detached_from_global_mutations(self):
+        with temporary_settings(parser_chunk_max_chars=777):
+            snapshot = settings_snapshot()
+            parser_config = ParserConfig.from_settings(snapshot)
+            settings.parser_chunk_max_chars = 123
+
+            self.assertEqual(parser_config.chunk_max_chars, 777)
+            self.assertEqual(settings.parser_chunk_max_chars, 123)
+
+    def test_parser_env_overlays_settings(self):
+        settings_from_env = load_settings_from_env(
+            {
+                "PARSER_ENABLED_DETECTORS": "metadata,clause_header",
+                "PARSER_CHUNK_TARGET_CHARS": "256",
+                "PARSER_DOCLING_ENABLE_REMOTE_SERVICES": "true",
+            }
+        )
+
+        self.assertEqual(settings_from_env.parser_enabled_detectors, ["metadata", "clause_header"])
+        self.assertEqual(settings_from_env.parser_chunk_target_chars, 256)
+        self.assertTrue(settings_from_env.parser_docling_enable_remote_services)
+
+    def test_parser_example_fields_match_settings_and_parser_config(self):
+        field_map = {
+            "PARSER_DEFAULT_CONVERTER": (
+                ("default_converter",),
+                "parser_default_converter",
+                "default_converter",
+            ),
+            "PARSER_ENABLED_CONVERTERS": (
+                ("enabled_converters",),
+                "parser_enabled_converters",
+                "enabled_converters",
+            ),
+            "PARSER_FALLBACK_ORDER": (
+                ("fallback_order",),
+                "parser_fallback_order",
+                "fallback_order",
+            ),
+            "PARSER_ALLOW_CONVERTER_FALLBACK": (
+                ("allow_converter_fallback",),
+                "parser_allow_converter_fallback",
+                "allow_converter_fallback",
+            ),
+            "PARSER_STRICT_CONVERTER_AVAILABILITY": (
+                ("strict_converter_availability",),
+                "parser_strict_converter_availability",
+                "strict_converter_availability",
+            ),
+            "PARSER_ALLOWED_SUFFIXES": (
+                ("allowed_suffixes",),
+                "parser_allowed_suffixes",
+                "allowed_suffixes",
+            ),
+            "PARSER_ALLOW_PATH_INPUT": (
+                ("allow_path_input",),
+                "parser_allow_path_input",
+                "allow_path_input",
+            ),
+            "PARSER_ALLOW_URL_INPUT": (
+                ("allow_url_input",),
+                "parser_allow_url_input",
+                "allow_url_input",
+            ),
+            "PARSER_TRUSTED_PATH_ROOTS": (
+                ("trusted_path_roots",),
+                "parser_trusted_path_roots",
+                "trusted_path_roots",
+            ),
+            "PARSER_MAX_INPUT_BYTES": (
+                ("max_input_bytes",),
+                "parser_max_input_bytes",
+                "max_input_bytes",
+            ),
+            "PARSER_PRESERVE_RAW_TEXT": (
+                ("preserve_raw_text",),
+                "parser_preserve_raw_text",
+                "preserve_raw_text",
+            ),
+            "PARSER_ENABLED_DETECTORS": (
+                ("detectors", "enabled"),
+                "parser_enabled_detectors",
+                "enabled_detectors",
+            ),
+            "PARSER_DETECTOR_PROFILE": (
+                ("detectors", "profile"),
+                "parser_detector_profile",
+                "detector_profile",
+            ),
+            "PARSER_DETECTOR_RULES_PATH": (
+                ("detectors", "rules_path"),
+                "parser_detector_rules_path",
+                "detector_rules_path",
+            ),
+            "PARSER_MIN_DETECTOR_CONFIDENCE": (
+                ("detectors", "min_confidence"),
+                "parser_min_detector_confidence",
+                "min_detector_confidence",
+            ),
+            "PARSER_STORE_DETECTOR_REASONS": (
+                ("detectors", "store_reasons"),
+                "parser_store_detector_reasons",
+                "store_detector_reasons",
+            ),
+            "PARSER_CHUNK_MAX_CHARS": (
+                ("chunking", "max_chars"),
+                "parser_chunk_max_chars",
+                "chunk_max_chars",
+            ),
+            "PARSER_CHUNK_TARGET_CHARS": (
+                ("chunking", "target_chars"),
+                "parser_chunk_target_chars",
+                "chunk_target_chars",
+            ),
+            "PARSER_MIN_HEADER_CONFIDENCE": (
+                ("chunking", "min_header_confidence"),
+                "parser_min_header_confidence",
+                "min_header_confidence",
+            ),
+            "PARSER_MARKITDOWN_ENABLED": (
+                ("markitdown", "enabled"),
+                "parser_markitdown_enabled",
+                "markitdown_enabled",
+            ),
+            "PARSER_DOCLING_ENABLED": (
+                ("docling", "enabled"),
+                "parser_docling_enabled",
+                "docling_enabled",
+            ),
+            "PARSER_DOCLING_ENABLE_OCR": (
+                ("docling", "enable_ocr"),
+                "parser_docling_enable_ocr",
+                "docling_enable_ocr",
+            ),
+            "PARSER_DOCLING_ENABLE_REMOTE_SERVICES": (
+                ("docling", "enable_remote_services"),
+                "parser_docling_enable_remote_services",
+                "docling_enable_remote_services",
+            ),
+        }
+        env_keys = {
+            line.split("=", 1)[0]
+            for line in Path(".env.example").read_text(encoding="utf-8").splitlines()
+            if line.startswith("PARSER_")
+        }
+        parser_yaml = yaml.safe_load(Path("config.example.yaml").read_text(encoding="utf-8"))[
+            "parser"
+        ]
+
+        self.assertEqual(env_keys, set(field_map))
+        for env_key, (yaml_path, settings_field, parser_field) in field_map.items():
+            with self.subTest(env_key=env_key):
+                cursor = parser_yaml
+                for part in yaml_path:
+                    self.assertIn(part, cursor)
+                    cursor = cursor[part]
+                self.assertIn(settings_field, Settings.model_fields)
+                self.assertIn(parser_field, ParserConfig.model_fields)
 
     def test_apply_model_runtime_config_updates_related_aliases_together(self):
         config = ModelRuntimeConfig(

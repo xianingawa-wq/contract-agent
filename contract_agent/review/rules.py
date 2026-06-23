@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contract_agent.review.models import Finding, ReviewRequest, Severity
-from contract_agent.services.parser import ContractParser
+from contract_agent.parser import ContractParser
 from contract_agent.services.rule_engine import RuleEngine
 
 

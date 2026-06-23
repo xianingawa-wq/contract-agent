@@ -22,6 +22,7 @@ from contract_agent.config.config_model import (
     ModelRuntimeConfig,
 )
 from contract_agent.config.config_provider import LLMConfig
+from contract_agent.config.config_parser import ParserConfig
 from contract_agent.config.config_app import AppConfig, AppContext
 from contract_agent.config.config_loader import (
     DEFAULT_APP_CONFIG_PATH,
@@ -68,6 +69,7 @@ __all__ = [
     "ModelProviderOption",
     "ModelRole",
     "ModelRuntimeConfig",
+    "ParserConfig",
     "YamlModelProfileCodec",
     "YamlModelProfileStore",
     "apply_model_runtime_config",
