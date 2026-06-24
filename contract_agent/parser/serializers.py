@@ -76,6 +76,24 @@ def to_llm_context(document: ParsedDocument, *, max_chars: int | None = None) ->
 
 
 def to_rag_documents(document: ParsedDocument) -> list[dict[str, Any]]:
+    if document.clause_chunks:
+        return [
+            {
+                "page_content": chunk.source_text,
+                "metadata": {
+                    "doc_id": document.metadata.doc_id,
+                    "chunk_id": chunk.chunk_id,
+                    "chunk_level": chunk.chunk_level,
+                    "clause_no": chunk.clause_no,
+                    "section_title": chunk.section_title,
+                    "page_no": chunk.page_no,
+                    "source_path": document.metadata.source_path,
+                },
+            }
+            for chunk in document.clause_chunks
+            if chunk.source_text.strip()
+        ]
+
     if document.blocks:
         return [
             {
@@ -91,6 +109,7 @@ def to_rag_documents(document: ParsedDocument) -> list[dict[str, Any]]:
             for block in document.blocks
             if block.text.strip()
         ]
+
     return [
         {
             "page_content": chunk.source_text,
@@ -112,6 +131,17 @@ def to_evidence_json(document: ParsedDocument) -> dict[str, Any]:
             "metadata": document.metadata.model_dump(mode="json"),
             "blocks": [block.model_dump(mode="json") for block in document.blocks],
             "chunks": [chunk.model_dump(mode="json") for chunk in document.clause_chunks],
+            "tables": [table.model_dump(mode="json") for table in document.tables],
+            "figures": [figure.model_dump(mode="json") for figure in document.figures],
+            "definitions": [
+                definition.model_dump(mode="json") for definition in document.definitions
+            ],
+            "references": [reference.model_dump(mode="json") for reference in document.references],
+            "semantic_graph": (
+                document.semantic_graph.model_dump(mode="json")
+                if document.semantic_graph is not None
+                else None
+            ),
             "detector_results": [
                 result.model_dump(mode="json") for result in document.detector_results
             ],

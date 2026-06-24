@@ -239,29 +239,45 @@ def _append_span(
 
 
 def _table_rows(table: object) -> list[list[str]]:
+    from docx.table import _Cell
+
     rows: list[list[str]] = []
     for row in table.rows:
-        values = [_normalize_cell_text(cell.text) for cell in row.cells]
-        values = _dedupe_adjacent_cells(values)
-        if any(values):
+        values: list[str] = []
+        row_has_merge_placeholder = False
+        for cell_xml in row._tr.tc_lst:
+            if _is_vertical_merge_continuation(cell_xml):
+                values.extend([""] * _grid_span(cell_xml))
+                row_has_merge_placeholder = True
+                continue
+            cell = _Cell(cell_xml, table)
+            values.append(_normalize_cell_text(cell.text))
+            values.extend([""] * (_grid_span(cell_xml) - 1))
+        if any(values) or row_has_merge_placeholder:
             rows.append(values)
     return rows
 
 
+def _grid_span(cell_xml: object) -> int:
+    cell_properties = getattr(cell_xml, "tcPr", None)
+    grid_span = getattr(cell_properties, "gridSpan", None)
+    value = getattr(grid_span, "val", None)
+    try:
+        return max(int(value), 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def _is_vertical_merge_continuation(cell_xml: object) -> bool:
+    cell_properties = getattr(cell_xml, "tcPr", None)
+    vertical_merge = getattr(cell_properties, "vMerge", None)
+    if vertical_merge is None:
+        return False
+    return getattr(vertical_merge, "val", None) != "restart"
+
+
 def _normalize_cell_text(text: str) -> str:
     return " | ".join(normalize_text(part) for part in text.splitlines() if normalize_text(part))
-
-
-def _dedupe_adjacent_cells(values: list[str]) -> list[str]:
-    result: list[str] = []
-    previous = object()
-    for value in values:
-        if value and value == previous:
-            continue
-        result.append(value)
-        if value:
-            previous = value
-    return result
 
 
 def _table_text(rows: list[list[str]]) -> str:

@@ -24,18 +24,27 @@ class ConverterRouter:
         last_error: Exception | None = None
 
         for converter_name in config.fallback_order:
+            is_default_converter = converter_name == config.default_converter
             converter = self._converters.get(converter_name)
             if converter is None:
                 message = f"converter {converter_name} is not registered"
-                if config.strict_converter_availability:
+                if is_default_converter or config.strict_converter_availability:
+                    raise DocumentLoadError(message)
+                if not config.allow_converter_fallback:
                     raise DocumentLoadError(message)
                 warnings.append(message)
                 continue
             if not self._is_enabled_by_adapter_flag(converter_name, config):
-                warnings.append(f"converter {converter_name} is disabled by adapter flag")
+                message = f"converter {converter_name} is disabled by adapter flag"
+                if is_default_converter or not config.allow_converter_fallback:
+                    raise DocumentLoadError(message)
+                warnings.append(message)
                 continue
             if converter_name not in config.enabled_converters:
-                warnings.append(f"converter {converter_name} is not enabled")
+                message = f"converter {converter_name} is not enabled"
+                if is_default_converter or not config.allow_converter_fallback:
+                    raise DocumentLoadError(message)
+                warnings.append(message)
                 continue
 
             support = converter.supports(source, config)
@@ -43,7 +52,11 @@ class ConverterRouter:
                 message = (
                     f"converter {converter_name} unavailable: {support.reason or 'unsupported'}"
                 )
+                if is_default_converter:
+                    raise DocumentLoadError(message)
                 if config.strict_converter_availability and converter_name != "builtin":
+                    raise DocumentLoadError(message)
+                if not config.allow_converter_fallback:
                     raise DocumentLoadError(message)
                 warnings.append(message)
                 continue
@@ -64,6 +77,10 @@ class ConverterRouter:
             except Exception as exc:  # pragma: no cover - defensive converter boundary
                 last_error = DocumentLoadError(f"converter {converter_name} failed: {exc}")
 
+            if is_default_converter:
+                if isinstance(last_error, ParserError):
+                    raise last_error
+                raise DocumentLoadError(str(last_error))
             if not config.allow_converter_fallback:
                 if isinstance(last_error, ParserError):
                     raise last_error

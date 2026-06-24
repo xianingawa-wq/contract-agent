@@ -3,9 +3,14 @@ import unittest
 
 from contract_agent.parser import (
     BlockLocation,
+    ClauseChunk,
     DetectorResult,
     DocumentBlock,
+    DocumentDefinition,
     DocumentMetadata,
+    DocumentReference,
+    DocumentSemanticGraph,
+    DocumentTable,
     ParsedDocument,
 )
 from contract_agent.parser.serializers import (
@@ -74,12 +79,76 @@ class ParserSerializerTests(unittest.TestCase):
         self.assertEqual(rag_documents[1]["metadata"]["block_id"], "p1-b1")
         json.dumps(rag_documents, ensure_ascii=False)
 
+    def test_rag_documents_prefer_chunks_over_blocks_for_retrieval_granularity(self):
+        document = self.make_document()
+        document.clause_chunks = [
+            ClauseChunk(
+                chunk_id="chunk-p1-b1-part1",
+                chunk_level="sentence_group",
+                clause_no="第一条",
+                section_title="付款",
+                page_no=1,
+                start_offset=0,
+                end_offset=8,
+                source_text="甲方付款。",
+            ),
+            ClauseChunk(
+                chunk_id="chunk-p1-b1-part2",
+                chunk_level="sentence_group",
+                clause_no="第一条",
+                section_title="付款",
+                page_no=1,
+                start_offset=9,
+                end_offset=18,
+                source_text="乙方开票。",
+            ),
+        ]
+
+        rag_documents = to_rag_documents(document)
+
+        self.assertEqual(
+            [item["page_content"] for item in rag_documents], ["甲方付款。", "乙方开票。"]
+        )
+        self.assertEqual(rag_documents[0]["metadata"]["chunk_id"], "chunk-p1-b1-part1")
+        self.assertEqual(rag_documents[0]["metadata"]["section_title"], "付款")
+        self.assertNotIn("block_id", rag_documents[0]["metadata"])
+
     def test_evidence_json_is_json_safe_and_includes_detector_reasons(self):
         evidence = to_evidence_json(self.make_document())
 
         self.assertIn("blocks", evidence)
         self.assertIn("detector_results", evidence)
         self.assertEqual(evidence["detector_results"][0]["reason"], "命中条款标题规则")
+        json.dumps(evidence, ensure_ascii=False)
+
+    def test_evidence_json_includes_structured_extensions(self):
+        document = self.make_document()
+        document.tables = [
+            DocumentTable(table_id="table-1", page_no=1, rows=[["Project", "Review"]])
+        ]
+        document.definitions = [
+            DocumentDefinition(term="Contract", definition="Agreement", span_id="p1-b1")
+        ]
+        document.references = [
+            DocumentReference(
+                source_span_id="p1-b1",
+                target="Attachment A",
+                reference_type="attachment",
+                raw_text="See Attachment A",
+            )
+        ]
+        document.semantic_graph = DocumentSemanticGraph(
+            nodes=[{"id": "doc:demo", "type": "document", "label": "Demo"}],
+            edges=[],
+            metadata={"node_count": 1, "edge_count": 0},
+        )
+
+        evidence = to_evidence_json(document)
+
+        self.assertEqual(evidence["tables"][0]["table_id"], "table-1")
+        self.assertEqual(evidence["definitions"][0]["term"], "Contract")
+        self.assertEqual(evidence["references"][0]["target"], "Attachment A")
+        self.assertEqual(evidence["semantic_graph"]["nodes"][0]["id"], "doc:demo")
         json.dumps(evidence, ensure_ascii=False)
 
 

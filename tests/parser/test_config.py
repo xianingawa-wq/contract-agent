@@ -1,6 +1,11 @@
 import unittest
 
-from contract_agent.config import AppConfig, configure_runtime, load_settings_from_env
+from contract_agent.config import (
+    AppConfig,
+    configure_runtime,
+    load_settings_from_env,
+    temporary_settings,
+)
 from contract_agent.config.config_parser import ParserConfig
 from contract_agent.parser import ContractParser
 
@@ -68,7 +73,7 @@ class ParserConfigTests(unittest.TestCase):
             {
                 "limits": {"max_upload_size_bytes": 2048},
                 "parser": {
-                    "default_converter": "builtin",
+                    "default_converter": "docling",
                     "enabled_converters": ["builtin", "docling"],
                     "fallback_order": ["docling", "builtin"],
                     "max_input_bytes": 4096,
@@ -103,20 +108,22 @@ class ParserConfigTests(unittest.TestCase):
         self.assertTrue(parser_config.docling_enabled)
 
     def test_environment_overlay_and_app_context_include_parser_config(self):
-        context = configure_runtime(
-            AppConfig(),
-            environ={
-                "PARSER_ENABLED_CONVERTERS": "builtin,markitdown",
-                "PARSER_FALLBACK_ORDER": "markitdown,builtin",
-                "PARSER_MARKITDOWN_ENABLED": "true",
-                "PARSER_CHUNK_TARGET_CHARS": "256",
-            },
-        )
+        with temporary_settings():
+            context = configure_runtime(
+                AppConfig(),
+                environ={
+                    "PARSER_DEFAULT_CONVERTER": "markitdown",
+                    "PARSER_ENABLED_CONVERTERS": "builtin,markitdown",
+                    "PARSER_FALLBACK_ORDER": "markitdown,builtin",
+                    "PARSER_MARKITDOWN_ENABLED": "true",
+                    "PARSER_CHUNK_TARGET_CHARS": "256",
+                },
+            )
 
-        self.assertEqual(context.config.parser.enabled_converters, ["builtin", "markitdown"])
-        self.assertEqual(context.parser_config.fallback_order, ["markitdown", "builtin"])
-        self.assertTrue(context.parser_config.markitdown_enabled)
-        self.assertEqual(context.parser_config.chunk_target_chars, 256)
+            self.assertEqual(context.config.parser.enabled_converters, ["builtin", "markitdown"])
+            self.assertEqual(context.parser_config.fallback_order, ["markitdown", "builtin"])
+            self.assertTrue(context.parser_config.markitdown_enabled)
+            self.assertEqual(context.parser_config.chunk_target_chars, 256)
 
     def test_contract_parser_uses_injected_parser_config_without_global_mutation(self):
         parser = ContractParser(
@@ -134,6 +141,38 @@ class ParserConfigTests(unittest.TestCase):
                 enabled_converters=["builtin", "markitdown"],
                 fallback_order=["builtin"],
             )
+
+    def test_parser_config_rejects_fallback_order_that_does_not_start_with_default(self):
+        with self.assertRaisesRegex(ValueError, "default_converter"):
+            ParserConfig(
+                default_converter="markitdown",
+                enabled_converters=["builtin", "markitdown"],
+                fallback_order=["builtin", "markitdown"],
+                markitdown_enabled=True,
+            )
+
+    def test_parser_config_rejects_optional_converter_enabled_without_adapter_flag(self):
+        cases = [
+            (
+                "markitdown",
+                {"markitdown_enabled": False},
+                "parser.markitdown_enabled",
+            ),
+            (
+                "docling",
+                {"docling_enabled": False},
+                "parser.docling_enabled",
+            ),
+        ]
+        for converter, flags, message in cases:
+            with self.subTest(converter=converter):
+                with self.assertRaisesRegex(ValueError, message):
+                    ParserConfig(
+                        default_converter=converter,
+                        enabled_converters=[converter, "builtin"],
+                        fallback_order=[converter, "builtin"],
+                        **flags,
+                    )
 
     def test_parser_config_rejects_fallback_converter_not_enabled(self):
         with self.assertRaisesRegex(ValueError, "enabled_converters"):
@@ -154,6 +193,10 @@ class ParserConfigTests(unittest.TestCase):
     def test_parser_config_rejects_chunk_target_above_max(self):
         with self.assertRaisesRegex(ValueError, "chunk_target_chars"):
             ParserConfig(chunk_max_chars=100, chunk_target_chars=200)
+
+    def test_parser_config_rejects_unimplemented_url_input(self):
+        with self.assertRaisesRegex(ValueError, "allow_url_input"):
+            ParserConfig(allow_url_input=True)
 
     def test_parser_config_rejects_unimplemented_docling_options(self):
         for option in ("docling_enable_ocr", "docling_enable_remote_services"):

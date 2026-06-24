@@ -57,6 +57,8 @@ class ParserConfig(BaseModel):
             raise ValueError("parser.fallback_order must be non-empty")
         if self.default_converter not in self.fallback_order:
             raise ValueError("parser.default_converter must be present in fallback_order")
+        if self.fallback_order[0] != self.default_converter:
+            raise ValueError("parser.fallback_order must start with parser.default_converter")
         missing_enabled = [
             converter
             for converter in self.fallback_order
@@ -66,6 +68,14 @@ class ParserConfig(BaseModel):
             raise ValueError(
                 "parser.fallback_order converters must be present in enabled_converters: "
                 + ", ".join(missing_enabled)
+            )
+        if "markitdown" in self.enabled_converters and not self.markitdown_enabled:
+            raise ValueError(
+                "parser.markitdown_enabled must be true when markitdown converter is enabled"
+            )
+        if "docling" in self.enabled_converters and not self.docling_enabled:
+            raise ValueError(
+                "parser.docling_enabled must be true when docling converter is enabled"
             )
         if self.chunk_max_chars <= 0 or self.chunk_target_chars <= 0:
             raise ValueError("parser chunk sizes must be positive")
@@ -79,6 +89,8 @@ class ParserConfig(BaseModel):
             raise ValueError("parser.min_detector_confidence must be between 0 and 1")
         if not 0 <= self.min_header_confidence <= 1:
             raise ValueError("parser.min_header_confidence must be between 0 and 1")
+        if self.allow_url_input:
+            raise ValueError("parser.allow_url_input is reserved until URL input is implemented")
         if self.docling_enable_ocr:
             raise ValueError(
                 "parser.docling_enable_ocr is reserved until the Docling adapter maps OCR options"
