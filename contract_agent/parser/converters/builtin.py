@@ -7,6 +7,7 @@ from contract_agent.parser.metadata import build_metadata
 from contract_agent.parser.models import (
     BlockLocation,
     DocumentBlock,
+    DocumentTable,
     ParsedDocument,
 )
 
@@ -55,8 +56,9 @@ def _document_from_loaded(file_name: str, loaded: LoadedDocumentContent) -> Pars
     blocks = [
         DocumentBlock(
             block_id=span.span_id,
-            block_type="paragraph",
+            block_type=loaded.block_types.get(span.span_id, "paragraph"),
             text=span.text,
+            markdown=loaded.block_markdown.get(span.span_id),
             location=BlockLocation(
                 page_no=span.page_no,
                 block_index=span.block_index,
@@ -65,14 +67,27 @@ def _document_from_loaded(file_name: str, loaded: LoadedDocumentContent) -> Pars
                 span_ids=[span.span_id],
                 source_path=loaded.source_path,
             ),
+            metadata=loaded.block_metadata.get(span.span_id, {}),
         )
         for span in loaded.spans
+    ]
+    tables = [
+        DocumentTable(
+            table_id=table.table_id,
+            page_no=table.page_no,
+            span_ids=list(table.span_ids),
+            caption=table.caption,
+            rows=[list(row) for row in table.rows],
+            metadata={**table.metadata, "markdown": table.markdown},
+        )
+        for table in loaded.tables
     ]
     return ParsedDocument(
         metadata=metadata,
         raw_text=loaded.raw_text,
         spans=loaded.spans,
         blocks=blocks,
+        tables=tables,
         html_content=loaded.html_content,
         conversion_metadata={"converter": "builtin"},
     )

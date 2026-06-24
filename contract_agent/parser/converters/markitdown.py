@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import importlib
 import importlib.util
 
 from contract_agent.config.config_parser import ParserConfig
 from contract_agent.parser.converters.base import ConversionResult, ConverterSupport, ParseSource
+from contract_agent.parser.converters.markdown import document_from_markdown
+from contract_agent.parser.converters.source import local_converter_source
 from contract_agent.parser.exceptions import DocumentLoadError
 
 
@@ -19,7 +22,38 @@ class MarkItDownConverter:
 
     def convert(self, source: ParseSource, config: ParserConfig) -> ConversionResult:
         try:
-            __import__("markitdown")
+            module = importlib.import_module("markitdown")
         except Exception as exc:
             raise DocumentLoadError(f"MarkItDown adapter 依赖不可用：{exc}") from exc
-        raise DocumentLoadError("MarkItDown adapter 壳已启用，但第一阶段尚未接入真实转换。")
+
+        converter_cls = getattr(module, "MarkItDown", None)
+        if converter_cls is None:
+            raise DocumentLoadError("MarkItDown adapter 未找到 MarkItDown 入口。")
+
+        with local_converter_source(source) as input_path:
+            result = converter_cls().convert(input_path)
+
+        markdown = _markdown_from_result(result)
+        document = document_from_markdown(
+            markdown,
+            file_name=source.file_name,
+            source_path=source.source_path,
+            converter_name=self.name,
+        )
+        return ConversionResult(
+            document=document,
+            converter_name=self.name,
+            metadata={"converter": self.name, "source_kind": source.kind},
+        )
+
+
+def _markdown_from_result(result: object) -> str:
+    markdown = getattr(result, "text_content", None)
+    if markdown is None:
+        markdown = getattr(result, "markdown", None)
+    if markdown is None:
+        markdown = str(result)
+    text = str(markdown).strip()
+    if not text:
+        raise DocumentLoadError("MarkItDown adapter 未返回可解析内容。")
+    return text

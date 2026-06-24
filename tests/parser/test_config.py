@@ -83,7 +83,7 @@ class ParserConfigTests(unittest.TestCase):
                         "target_chars": 300,
                         "min_header_confidence": 0.7,
                     },
-                    "docling": {"enabled": True, "enable_ocr": True},
+                    "docling": {"enabled": True},
                 },
             }
         )
@@ -101,7 +101,6 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(parser_config.chunk_target_chars, 300)
         self.assertEqual(parser_config.min_header_confidence, 0.7)
         self.assertTrue(parser_config.docling_enabled)
-        self.assertTrue(parser_config.docling_enable_ocr)
 
     def test_environment_overlay_and_app_context_include_parser_config(self):
         context = configure_runtime(
@@ -127,6 +126,46 @@ class ParserConfigTests(unittest.TestCase):
 
         self.assertEqual(parser.parser_config.chunk_max_chars, 20)
         self.assertGreater(len(document.clause_chunks), 1)
+
+    def test_parser_config_rejects_converter_order_that_hides_default(self):
+        with self.assertRaisesRegex(ValueError, "fallback_order"):
+            ParserConfig(
+                default_converter="markitdown",
+                enabled_converters=["builtin", "markitdown"],
+                fallback_order=["builtin"],
+            )
+
+    def test_parser_config_rejects_fallback_converter_not_enabled(self):
+        with self.assertRaisesRegex(ValueError, "enabled_converters"):
+            ParserConfig(
+                default_converter="builtin",
+                enabled_converters=["builtin"],
+                fallback_order=["builtin", "docling"],
+            )
+
+    def test_parser_config_rejects_empty_fallback_order(self):
+        with self.assertRaisesRegex(ValueError, "fallback_order"):
+            ParserConfig(
+                default_converter="builtin",
+                enabled_converters=["builtin"],
+                fallback_order=[],
+            )
+
+    def test_parser_config_rejects_chunk_target_above_max(self):
+        with self.assertRaisesRegex(ValueError, "chunk_target_chars"):
+            ParserConfig(chunk_max_chars=100, chunk_target_chars=200)
+
+    def test_parser_config_rejects_unimplemented_docling_options(self):
+        for option in ("docling_enable_ocr", "docling_enable_remote_services"):
+            with self.subTest(option=option):
+                with self.assertRaisesRegex(ValueError, option):
+                    ParserConfig(
+                        default_converter="docling",
+                        enabled_converters=["docling"],
+                        fallback_order=["docling"],
+                        docling_enabled=True,
+                        **{option: True},
+                    )
 
 
 if __name__ == "__main__":

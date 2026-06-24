@@ -41,6 +41,7 @@ class ParserConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_converter_settings(self) -> "ParserConfig":
+        self.default_converter = str(self.default_converter).strip()
         self.enabled_converters = _dedupe_non_empty(self.enabled_converters)
         self.fallback_order = _dedupe_non_empty(self.fallback_order)
         self.enabled_detectors = _dedupe_non_empty(self.enabled_detectors)
@@ -48,16 +49,44 @@ class ParserConfig(BaseModel):
         self.trusted_path_roots = [root for root in self.trusted_path_roots if root]
         if self.detector_rules_path == "":
             self.detector_rules_path = None
+        if not self.default_converter:
+            raise ValueError("parser.default_converter must be non-empty")
         if self.default_converter not in self.enabled_converters:
             raise ValueError("parser.default_converter must be present in enabled_converters")
+        if not self.fallback_order:
+            raise ValueError("parser.fallback_order must be non-empty")
+        if self.default_converter not in self.fallback_order:
+            raise ValueError("parser.default_converter must be present in fallback_order")
+        missing_enabled = [
+            converter
+            for converter in self.fallback_order
+            if converter not in self.enabled_converters
+        ]
+        if missing_enabled:
+            raise ValueError(
+                "parser.fallback_order converters must be present in enabled_converters: "
+                + ", ".join(missing_enabled)
+            )
         if self.chunk_max_chars <= 0 or self.chunk_target_chars <= 0:
             raise ValueError("parser chunk sizes must be positive")
+        if self.chunk_target_chars > self.chunk_max_chars:
+            raise ValueError(
+                "parser.chunk_target_chars must be less than or equal to chunk_max_chars"
+            )
         if self.max_input_bytes is not None and self.max_input_bytes <= 0:
             raise ValueError("parser.max_input_bytes must be positive when set")
         if not 0 <= self.min_detector_confidence <= 1:
             raise ValueError("parser.min_detector_confidence must be between 0 and 1")
         if not 0 <= self.min_header_confidence <= 1:
             raise ValueError("parser.min_header_confidence must be between 0 and 1")
+        if self.docling_enable_ocr:
+            raise ValueError(
+                "parser.docling_enable_ocr is reserved until the Docling adapter maps OCR options"
+            )
+        if self.docling_enable_remote_services:
+            raise ValueError(
+                "parser.docling_enable_remote_services is reserved until remote Docling services are explicitly supported"
+            )
         return self
 
     @classmethod

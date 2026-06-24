@@ -1,12 +1,23 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 
 from contract_agent.parser.exceptions import DocumentLoadError, DocumentParseError
 from contract_agent.parser.models import DocumentSpan
+
+
+@dataclass(frozen=True)
+class LoadedTableContent:
+    table_id: str
+    page_no: int | None
+    span_ids: list[str]
+    rows: list[list[str]]
+    markdown: str
+    caption: str | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -16,6 +27,10 @@ class LoadedDocumentContent:
     html_content: str
     file_type: str
     source_path: str
+    block_types: dict[str, str] = field(default_factory=dict)
+    block_markdown: dict[str, str] = field(default_factory=dict)
+    block_metadata: dict[str, dict[str, object]] = field(default_factory=dict)
+    tables: list[LoadedTableContent] = field(default_factory=list)
 
 
 def normalize_text(text: str) -> str:
@@ -79,8 +94,9 @@ def load_bytes(
         raw_text, spans = _parse_txt_bytes(content)
         html_content = ""
     elif suffix == ".docx":
-        raw_text, spans = _parse_docx_bytes(content)
-        html_content = _docx_to_html(content)
+        loaded = _parse_docx_bytes(content, source_path=source_path or file_name)
+        _ensure_parseable(loaded.raw_text, loaded.spans)
+        return loaded
     elif suffix == ".pdf":
         raw_text, spans = _parse_pdf_bytes(content)
         html_content = ""
@@ -116,9 +132,11 @@ def _parse_txt_bytes(content: bytes) -> tuple[str, list[DocumentSpan]]:
     raise DocumentLoadError("无法使用 utf-8、utf-8-sig 或 gb18030 解码文本文件。") from last_error
 
 
-def _parse_docx_bytes(content: bytes) -> tuple[str, list[DocumentSpan]]:
+def _parse_docx_bytes(content: bytes, *, source_path: str) -> LoadedDocumentContent:
     try:
         from docx import Document
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
     except Exception as exc:  # pragma: no cover - depends on optional runtime installation
         raise DocumentLoadError(f"读取 docx 依赖不可用：{exc}") from exc
 
@@ -127,8 +145,144 @@ def _parse_docx_bytes(content: bytes) -> tuple[str, list[DocumentSpan]]:
     except Exception as exc:
         raise DocumentLoadError(f"读取 docx 文件失败：{exc}") from exc
 
-    blocks = [paragraph.text.strip() for paragraph in doc.paragraphs if paragraph.text.strip()]
-    return build_spans_from_blocks(blocks, page_no=1)
+    spans: list[DocumentSpan] = []
+    raw_parts: list[str] = []
+    block_types: dict[str, str] = {}
+    block_markdown: dict[str, str] = {}
+    block_metadata: dict[str, dict[str, object]] = {}
+    tables: list[LoadedTableContent] = []
+    cursor = 0
+    block_index = 0
+    page_no = 1
+
+    for child in doc.element.body.iterchildren():
+        if child.tag.endswith("}p"):
+            paragraph = Paragraph(child, doc)
+            text = normalize_text(paragraph.text)
+            if not text:
+                continue
+            span, cursor = _append_span(
+                spans,
+                raw_parts,
+                text=text,
+                page_no=page_no,
+                block_index=block_index,
+                cursor=cursor,
+            )
+            block_types[span.span_id] = "paragraph"
+            block_index += 1
+        elif child.tag.endswith("}tbl"):
+            table = Table(child, doc)
+            rows = _table_rows(table)
+            if not rows:
+                continue
+            text = _table_text(rows)
+            markdown = _table_markdown(rows)
+            span, cursor = _append_span(
+                spans,
+                raw_parts,
+                text=text,
+                page_no=page_no,
+                block_index=block_index,
+                cursor=cursor,
+            )
+            table_id = f"table-{len(tables) + 1}"
+            block_types[span.span_id] = "table"
+            block_markdown[span.span_id] = markdown
+            block_metadata[span.span_id] = {"table_id": table_id, "row_count": len(rows)}
+            tables.append(
+                LoadedTableContent(
+                    table_id=table_id,
+                    page_no=page_no,
+                    span_ids=[span.span_id],
+                    rows=rows,
+                    markdown=markdown,
+                )
+            )
+            block_index += 1
+
+    return LoadedDocumentContent(
+        raw_text="\n".join(raw_parts),
+        spans=spans,
+        html_content=_docx_to_html(content),
+        file_type="docx",
+        source_path=source_path,
+        block_types=block_types,
+        block_markdown=block_markdown,
+        block_metadata=block_metadata,
+        tables=tables,
+    )
+
+
+def _append_span(
+    spans: list[DocumentSpan],
+    raw_parts: list[str],
+    *,
+    text: str,
+    page_no: int | None,
+    block_index: int,
+    cursor: int,
+) -> tuple[DocumentSpan, int]:
+    start_offset = cursor
+    end_offset = start_offset + len(text)
+    span = DocumentSpan(
+        span_id=f"p{page_no or 0}-b{block_index}",
+        page_no=page_no,
+        block_index=block_index,
+        start_offset=start_offset,
+        end_offset=end_offset,
+        text=text,
+    )
+    spans.append(span)
+    raw_parts.append(text)
+    return span, end_offset + 1
+
+
+def _table_rows(table: object) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for row in table.rows:
+        values = [_normalize_cell_text(cell.text) for cell in row.cells]
+        values = _dedupe_adjacent_cells(values)
+        if any(values):
+            rows.append(values)
+    return rows
+
+
+def _normalize_cell_text(text: str) -> str:
+    return " | ".join(normalize_text(part) for part in text.splitlines() if normalize_text(part))
+
+
+def _dedupe_adjacent_cells(values: list[str]) -> list[str]:
+    result: list[str] = []
+    previous = object()
+    for value in values:
+        if value and value == previous:
+            continue
+        result.append(value)
+        if value:
+            previous = value
+    return result
+
+
+def _table_text(rows: list[list[str]]) -> str:
+    return "\n".join(" | ".join(cell for cell in row if cell) for row in rows)
+
+
+def _table_markdown(rows: list[list[str]]) -> str:
+    width = max(len(row) for row in rows)
+    normalized = [row + [""] * (width - len(row)) for row in rows]
+    separator = ["---"] * width
+    lines = [_markdown_row(normalized[0]), _markdown_row(separator)]
+    lines.extend(_markdown_row(row) for row in normalized[1:])
+    return "\n".join(lines)
+
+
+def _markdown_row(row: list[str]) -> str:
+    return "| " + " | ".join(_escape_markdown_cell(cell) for cell in row) + " |"
+
+
+def _escape_markdown_cell(text: str) -> str:
+    return text.replace("|", "\\|")
 
 
 def _parse_pdf_bytes(content: bytes) -> tuple[str, list[DocumentSpan]]:

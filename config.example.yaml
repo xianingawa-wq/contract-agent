@@ -109,6 +109,7 @@ parser:
     enabled: false
   docling:
     enabled: false
+    # Reserved until the adapter maps these options; true fails fast today.
     enable_ocr: false
     enable_remote_services: false
 

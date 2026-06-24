@@ -1,14 +1,18 @@
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 
+from docx import Document
+
+from contract_agent.config.config_parser import ParserConfig
 from contract_agent.parser import (
     ContractParser,
     DocumentLoadError,
     DocumentParseError,
     UnsupportedFileType,
+    to_rag_documents,
 )
-from contract_agent.config.config_parser import ParserConfig
 
 
 class ContractParserServiceTests(unittest.TestCase):
@@ -37,6 +41,37 @@ class ContractParserServiceTests(unittest.TestCase):
         self.assertEqual(utf8.raw_text, "第一条 付款")
         self.assertEqual(utf8_sig.raw_text, "第一条 付款")
         self.assertEqual(gb18030.raw_text, "第一条 付款")
+
+    def test_parse_docx_preserves_table_content_in_dom_markdown_chunks_and_rag(self):
+        docx = Document()
+        docx.add_paragraph("Project Application")
+        table = docx.add_table(rows=3, cols=2)
+        table.cell(0, 0).text = "Project Name"
+        table.cell(0, 1).text = "Contract review with MCP and RAG"
+        table.cell(1, 0).text = "Project Type"
+        table.cell(1, 1).text = "Software"
+        table.cell(2, 0).text = "Reason"
+        table.cell(2, 1).text = "Improve contract review quality"
+        buffer = BytesIO()
+        docx.save(buffer)
+
+        document = ContractParser().parse_bytes("project.docx", buffer.getvalue())
+
+        self.assertIn("Project Name", document.raw_text)
+        self.assertIn("Contract review with MCP and RAG", document.raw_text)
+        self.assertEqual(len(document.tables), 1)
+        self.assertEqual(
+            document.tables[0].rows[0],
+            ["Project Name", "Contract review with MCP and RAG"],
+        )
+        table_blocks = [block for block in document.blocks if block.block_type == "table"]
+        self.assertEqual(len(table_blocks), 1)
+        self.assertIn("| Project Name |", table_blocks[0].markdown or "")
+        self.assertIn("Project Type | Software", document.markdown_content)
+        self.assertTrue(any("Reason" in chunk.source_text for chunk in document.clause_chunks))
+        self.assertTrue(
+            any("Project Name" in item["page_content"] for item in to_rag_documents(document))
+        )
 
     def test_parse_path_delegates_to_bytes_loader(self):
         with tempfile.TemporaryDirectory() as tmp:
