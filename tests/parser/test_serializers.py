@@ -4,7 +4,6 @@ import unittest
 from contract_agent.parser import (
     BlockLocation,
     ClauseChunk,
-    DetectorResult,
     DocumentBlock,
     DocumentDefinition,
     DocumentMetadata,
@@ -51,18 +50,6 @@ class ParserSerializerTests(unittest.TestCase):
                     metadata={"clause_no": "第一条"},
                 ),
             ],
-            detector_results=[
-                DetectorResult(
-                    result_id="r1",
-                    detector_name="clause_header",
-                    rule_id="clause.header.zh.article.v1",
-                    result_type="clause_header",
-                    value={"clause_no": "第一条", "title": "付款"},
-                    block_ids=["p1-b1"],
-                    confidence=0.9,
-                    reason="命中条款标题规则",
-                )
-            ],
         )
 
     def test_plain_text_markdown_llm_context_and_rag_outputs_use_blocks(self):
@@ -78,6 +65,12 @@ class ParserSerializerTests(unittest.TestCase):
         self.assertEqual(rag_documents[0]["metadata"]["doc_id"], "doc-1")
         self.assertEqual(rag_documents[1]["metadata"]["block_id"], "p1-b1")
         json.dumps(rag_documents, ensure_ascii=False)
+
+    def test_to_markdown_returns_preserved_markdown_content_when_available(self):
+        document = self.make_document()
+        document.markdown_content = "# Preserved\n\n| A | B |\n"
+
+        self.assertEqual(to_markdown(document), "# Preserved\n\n| A | B |\n")
 
     def test_rag_documents_prefer_chunks_over_blocks_for_retrieval_granularity(self):
         document = self.make_document()
@@ -113,12 +106,11 @@ class ParserSerializerTests(unittest.TestCase):
         self.assertEqual(rag_documents[0]["metadata"]["section_title"], "付款")
         self.assertNotIn("block_id", rag_documents[0]["metadata"])
 
-    def test_evidence_json_is_json_safe_and_includes_detector_reasons(self):
+    def test_evidence_json_is_json_safe_without_detector_output(self):
         evidence = to_evidence_json(self.make_document())
 
         self.assertIn("blocks", evidence)
-        self.assertIn("detector_results", evidence)
-        self.assertEqual(evidence["detector_results"][0]["reason"], "命中条款标题规则")
+        self.assertNotIn("detector_results", evidence)
         json.dumps(evidence, ensure_ascii=False)
 
     def test_evidence_json_includes_structured_extensions(self):

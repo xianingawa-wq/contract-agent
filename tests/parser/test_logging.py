@@ -4,17 +4,20 @@ from contract_agent.parser import ContractParser
 
 
 class ParserLoggingTests(unittest.TestCase):
-    def test_parser_logs_convert_and_detector_events_with_internal_prefixes(self):
+    def test_parser_logs_service_router_backend_chunk_and_output_events(self):
         parser = ContractParser()
 
         with self.assertLogs("contract_agent.parser", level="INFO") as captured:
             parser.parse_text("Contract\n1.1 Payment", "inline.txt")
 
         messages = "\n".join(captured.output)
-        self.assertIn("[Parser][Convert]", messages)
-        self.assertIn("[Parser][Detector]", messages)
-        self.assertIn("converter=builtin", messages)
-        self.assertIn("results=", messages)
+        self.assertIn("[Parser][Service]", messages)
+        self.assertIn("[Parser][Router]", messages)
+        self.assertIn("[Parser][Chunk]", messages)
+        self.assertIn("[Parser][Output]", messages)
+        self.assertIn("backend=builtin", messages)
+        self.assertIn("chunks=", messages)
+        self.assertNotIn("[Parser][Detector]", messages)
         self.assertNotIn("[Parser][Info]", messages)
 
 

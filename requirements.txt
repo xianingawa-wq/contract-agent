@@ -8,12 +8,12 @@ langchain-community==0.3.27
 langchain-openai==0.3.32
 langgraph==0.2.60
 openai==1.101.0
-pymilvus==2.5.8
+pymilvus==3.0.0
 psycopg[binary]==3.2.9
 sqlalchemy==2.0.43
 alembic==1.16.5
-grpcio==1.66.2
-grpcio-tools==1.66.2
+grpcio==1.81.1
+grpcio-tools==1.81.1
 mammoth==1.12.0
 redis==5.0.8
 pydantic==2.11.7

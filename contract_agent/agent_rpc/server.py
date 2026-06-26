@@ -27,6 +27,7 @@ from contract_agent.parser import (
     normalize_review_input,
     to_evidence_json,
     to_llm_context,
+    to_rag_documents,
 )
 from contract_agent.schemas.chat import ChatRequest
 from contract_agent.schemas.review import ReviewRequest
@@ -140,9 +141,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             "document_blocks": [
                 block.model_dump(mode="json") for block in normalized.document.blocks
             ],
-            "detector_results": [
-                result.model_dump(mode="json") for result in normalized.document.detector_results
-            ],
+            "rag_documents": to_rag_documents(normalized.document),
             "llm_context": to_llm_context(normalized.document),
             "evidence_json": to_evidence_json(normalized.document),
             "contract_type": normalized.contract_type,

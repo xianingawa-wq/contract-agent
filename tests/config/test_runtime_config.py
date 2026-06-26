@@ -48,12 +48,16 @@ class RuntimeConfigTests(unittest.TestCase):
             {
                 "PARSER_ENABLED_DETECTORS": "metadata,clause_header",
                 "PARSER_CHUNK_TARGET_CHARS": "256",
+                "PARSER_DOCLING_OCR_LANG": "chinese,en",
+                "PARSER_DOCLING_COMPACT_TABLES": "false",
                 "PARSER_DOCLING_ENABLE_REMOTE_SERVICES": "true",
             }
         )
 
         self.assertEqual(settings_from_env.parser_enabled_detectors, ["metadata", "clause_header"])
         self.assertEqual(settings_from_env.parser_chunk_target_chars, 256)
+        self.assertEqual(settings_from_env.parser_docling_ocr_lang, ["chinese", "en"])
+        self.assertFalse(settings_from_env.parser_docling_compact_tables)
         self.assertTrue(settings_from_env.parser_docling_enable_remote_services)
 
     def test_parser_example_fields_match_settings_and_parser_config(self):
@@ -167,6 +171,36 @@ class RuntimeConfigTests(unittest.TestCase):
                 ("docling", "enable_ocr"),
                 "parser_docling_enable_ocr",
                 "docling_enable_ocr",
+            ),
+            "PARSER_DOCLING_OCR_LANG": (
+                ("docling", "ocr_lang"),
+                "parser_docling_ocr_lang",
+                "docling_ocr_lang",
+            ),
+            "PARSER_DOCLING_FORCE_FULL_PAGE_OCR": (
+                ("docling", "force_full_page_ocr"),
+                "parser_docling_force_full_page_ocr",
+                "docling_force_full_page_ocr",
+            ),
+            "PARSER_DOCLING_BITMAP_AREA_THRESHOLD": (
+                ("docling", "bitmap_area_threshold"),
+                "parser_docling_bitmap_area_threshold",
+                "docling_bitmap_area_threshold",
+            ),
+            "PARSER_DOCLING_TEXT_SCORE": (
+                ("docling", "text_score"),
+                "parser_docling_text_score",
+                "docling_text_score",
+            ),
+            "PARSER_DOCLING_DO_TABLE_STRUCTURE": (
+                ("docling", "do_table_structure"),
+                "parser_docling_do_table_structure",
+                "docling_do_table_structure",
+            ),
+            "PARSER_DOCLING_COMPACT_TABLES": (
+                ("docling", "compact_tables"),
+                "parser_docling_compact_tables",
+                "docling_compact_tables",
             ),
             "PARSER_DOCLING_ENABLE_REMOTE_SERVICES": (
                 ("docling", "enable_remote_services"),

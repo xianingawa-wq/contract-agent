@@ -5,11 +5,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from contract_agent.parser.converters.base import ParseSource
+from contract_agent.parser.parser_source import ParserSource
 
 
 @contextmanager
-def local_converter_source(source: ParseSource) -> Iterator[str]:
+def local_parser_source(source: ParserSource) -> Iterator[str]:
     if source.kind == "path":
         yield str(Path(source.local_path or source.source_path).expanduser().resolve())
         return

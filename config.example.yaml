@@ -110,8 +110,14 @@ parser:
     enabled: false
   docling:
     enabled: false
-    # Reserved until the adapter maps these options; true fails fast today.
-    enable_ocr: false
+    enable_ocr: true
+    ocr_lang:
+      - chinese
+    force_full_page_ocr: true
+    bitmap_area_threshold: 0.02
+    text_score: 0.35
+    do_table_structure: true
+    compact_tables: true
     enable_remote_services: false
 
 profile:

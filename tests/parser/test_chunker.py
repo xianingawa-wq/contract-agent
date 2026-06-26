@@ -2,7 +2,7 @@ import unittest
 
 from contract_agent.config.config_parser import ParserConfig
 from contract_agent.parser import DocumentMetadata, DocumentSpan, ParsedDocument
-from contract_agent.parser.chunker import ContractChunker
+from contract_agent.parser.parsed.markdown_chunker import ContractChunker
 
 
 def document_from_lines(lines: list[str]) -> ParsedDocument:
@@ -33,27 +33,16 @@ def document_from_lines(lines: list[str]) -> ParsedDocument:
 
 
 class ContractChunkerTests(unittest.TestCase):
-    def test_splits_chinese_clause_numeric_levels_and_sub_items(self):
-        document = document_from_lines(
-            [
-                "合同前言",
-                "第一条 付款",
-                "甲方应付款。",
-                "1.1 支付时间",
-                "付款期限为5日。",
-                "（一）支付方式",
-                "银行转账。",
-            ]
+    def test_chunks_each_span_without_detector_dependency(self):
+        chunks = ContractChunker().chunk(
+            document_from_lines(["合同前言", "第一条 付款", "甲方应付款。"])
         )
 
-        chunks = ContractChunker().chunk(document)
-
+        self.assertEqual([chunk.chunk_level for chunk in chunks], ["span", "span", "span"])
         self.assertEqual(
-            [chunk.chunk_level for chunk in chunks], ["preface", "clause", "sub_clause", "sub_item"]
+            [chunk.source_text for chunk in chunks], ["合同前言", "第一条 付款", "甲方应付款。"]
         )
-        self.assertEqual(chunks[1].clause_no, "第一条")
-        self.assertEqual(chunks[2].parent_clause_no, "第一条")
-        self.assertEqual(chunks[3].parent_clause_no, "第一条")
+        self.assertTrue(all(chunk.section_title for chunk in chunks))
 
     def test_prev_next_links_are_correct(self):
         chunks = ContractChunker().chunk(
@@ -65,9 +54,9 @@ class ContractChunkerTests(unittest.TestCase):
         self.assertEqual(chunks[1].prev_chunk_id, chunks[0].chunk_id)
         self.assertIsNone(chunks[-1].next_chunk_id)
 
-    def test_long_clause_split_keeps_neighbor_links(self):
-        long_text = "。".join(["长句"] * 700) + "。"
-        chunks = ContractChunker().chunk(document_from_lines(["第一条 长条款", long_text]))
+    def test_long_chunk_split_keeps_neighbor_links(self):
+        long_text = "Long sentence. " * 700
+        chunks = ContractChunker().chunk(document_from_lines([long_text]))
 
         self.assertGreater(len(chunks), 1)
         self.assertTrue(all(chunk.chunk_level == "sentence_group" for chunk in chunks))
@@ -77,9 +66,9 @@ class ContractChunkerTests(unittest.TestCase):
         self.assertIsNone(chunks[-1].next_chunk_id)
 
     def test_chunk_thresholds_come_from_parser_config(self):
-        long_text = "。".join(["长句"] * 30) + "。"
+        long_text = "Long. " * 30
         chunks = ContractChunker(ParserConfig(chunk_max_chars=20, chunk_target_chars=10)).chunk(
-            document_from_lines(["第一条 长条款", long_text])
+            document_from_lines([long_text])
         )
 
         self.assertGreater(len(chunks), 1)

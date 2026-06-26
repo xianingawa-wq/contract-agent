@@ -146,7 +146,13 @@ class Settings(BaseModel):
     parser_min_header_confidence: float = 0.65
     parser_markitdown_enabled: bool = False
     parser_docling_enabled: bool = False
-    parser_docling_enable_ocr: bool = False
+    parser_docling_enable_ocr: bool = True
+    parser_docling_ocr_lang: list[str] = Field(default_factory=lambda: ["chinese"])
+    parser_docling_force_full_page_ocr: bool = True
+    parser_docling_bitmap_area_threshold: float = 0.02
+    parser_docling_text_score: float = 0.35
+    parser_docling_do_table_structure: bool = True
+    parser_docling_compact_tables: bool = True
     parser_docling_enable_remote_services: bool = False
 
 
@@ -288,7 +294,21 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
         ),
         parser_markitdown_enabled=_bool_value(_env(env, "PARSER_MARKITDOWN_ENABLED"), "false"),
         parser_docling_enabled=_bool_value(_env(env, "PARSER_DOCLING_ENABLED"), "false"),
-        parser_docling_enable_ocr=_bool_value(_env(env, "PARSER_DOCLING_ENABLE_OCR"), "false"),
+        parser_docling_enable_ocr=_bool_value(_env(env, "PARSER_DOCLING_ENABLE_OCR"), "true"),
+        parser_docling_ocr_lang=_csv_list_value(_env(env, "PARSER_DOCLING_OCR_LANG"), ["chinese"]),
+        parser_docling_force_full_page_ocr=_bool_value(
+            _env(env, "PARSER_DOCLING_FORCE_FULL_PAGE_OCR"), "true"
+        ),
+        parser_docling_bitmap_area_threshold=_float_value(
+            _env(env, "PARSER_DOCLING_BITMAP_AREA_THRESHOLD"), "0.02"
+        ),
+        parser_docling_text_score=_float_value(_env(env, "PARSER_DOCLING_TEXT_SCORE"), "0.35"),
+        parser_docling_do_table_structure=_bool_value(
+            _env(env, "PARSER_DOCLING_DO_TABLE_STRUCTURE"), "true"
+        ),
+        parser_docling_compact_tables=_bool_value(
+            _env(env, "PARSER_DOCLING_COMPACT_TABLES"), "true"
+        ),
         parser_docling_enable_remote_services=_bool_value(
             _env(env, "PARSER_DOCLING_ENABLE_REMOTE_SERVICES"), "false"
         ),

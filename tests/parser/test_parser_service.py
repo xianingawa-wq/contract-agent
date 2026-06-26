@@ -1,7 +1,11 @@
+import importlib.machinery
+import sys
 import tempfile
+import types
 import unittest
 from io import BytesIO
 from pathlib import Path
+from unittest.mock import patch
 
 from docx import Document
 
@@ -22,7 +26,7 @@ from contract_agent.parser import (
 
 
 class ContractParserServiceTests(unittest.TestCase):
-    def test_parse_text_generates_metadata_spans_and_clause_chunks(self):
+    def test_parse_text_generates_metadata_spans_and_chunks_without_detectors(self):
         document = ContractParser().parse_text("第一条 付款\n甲方应支付价款。", "inline.txt")
 
         self.assertEqual(document.metadata.file_name, "inline.txt")
@@ -31,11 +35,16 @@ class ContractParserServiceTests(unittest.TestCase):
         self.assertEqual(document.schema_version, "2.0")
         self.assertGreaterEqual(len(document.spans), 2)
         self.assertEqual(len(document.blocks), len(document.spans))
-        self.assertTrue(document.detector_results)
-        self.assertIn("converter", document.conversion_metadata)
+        self.assertFalse(hasattr(document, "detector_results"))
+        self.assertIn("parser_backend", document.conversion_metadata)
         self.assertIn("第一条 付款", document.markdown_content)
         self.assertTrue(document.clause_chunks)
-        self.assertEqual(document.clause_chunks[0].section_title, "付款")
+        self.assertTrue(
+            any("甲方应支付价款" in chunk.source_text for chunk in document.clause_chunks)
+        )
+        self.assertTrue(
+            any("甲方应支付价款" in item["page_content"] for item in to_rag_documents(document))
+        )
 
     def test_parse_bytes_supports_txt_encodings(self):
         parser = ContractParser()
@@ -249,6 +258,139 @@ class ContractParserServiceTests(unittest.TestCase):
         self.assertEqual(document.metadata.file_name, "contract.txt")
         self.assertEqual(document.raw_text, "第一条 付款")
 
+    def test_convert_to_markdown_exposes_exact_docling_markdown_before_parsing(self):
+        markdown = "# Contract\n\n| Key | Value |\n| --- | --- |\n"
+
+        class FakeDoclingDocument:
+            def export_to_markdown(self, **kwargs: object) -> str:
+                return markdown
+
+        class FakeBackendResult:
+            document = FakeDoclingDocument()
+
+        class FakeDocumentConverter:
+            def __init__(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+
+            def convert(self, source: str) -> FakeBackendResult:
+                return FakeBackendResult()
+
+        config = ParserConfig(
+            default_converter="docling",
+            enabled_converters=["docling"],
+            fallback_order=["docling"],
+            docling_enabled=True,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "contract.pdf"
+            path.write_bytes(b"fake")
+            with (
+                _fake_docling_modules(FakeDocumentConverter),
+                patch("importlib.util.find_spec", return_value=_module_spec("docling")),
+            ):
+                parser = ContractParser(parser_config=config)
+                markdown_document = parser.convert_to_markdown(path)
+                parsed_document = parser.parse_markdown(markdown_document)
+
+        self.assertEqual(markdown_document.markdown_content, markdown)
+        self.assertEqual(markdown_document.backend_name, "docling")
+        self.assertEqual(parsed_document.markdown_content, markdown)
+
+    def test_parse_path_routes_file_through_docling_backend_and_outputs_chunks_for_rag(self):
+        class FakeCell:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        class FakeTableData:
+            grid = [[FakeCell("Key"), FakeCell("Value")], [FakeCell("Project"), FakeCell("Alpha")]]
+
+        class FakeTable:
+            self_ref = "#/tables/0"
+            data = FakeTableData()
+            prov = []
+
+            def caption_text(self, document: object) -> str:
+                return "Project table"
+
+            def export_to_markdown(self, document: object) -> str:
+                return "| Key | Value |\n| --- | --- |\n| Project | Alpha |"
+
+        class FakeDoclingDocument:
+            tables = [FakeTable()]
+
+            def export_to_markdown(self, **kwargs: object) -> str:
+                return "# Contract\n\n| Key | Value |\n| --- | --- |\n| Project | Alpha |"
+
+        class FakeBackendResult:
+            document = FakeDoclingDocument()
+
+        class FakeDocumentConverter:
+            def __init__(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+
+            def convert(self, source: str) -> FakeBackendResult:
+                return FakeBackendResult()
+
+        config = ParserConfig(
+            default_converter="docling",
+            enabled_converters=["docling"],
+            fallback_order=["docling"],
+            docling_enabled=True,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "contract.pdf"
+            path.write_bytes(b"fake")
+            with (
+                _fake_docling_modules(FakeDocumentConverter),
+                patch("importlib.util.find_spec", return_value=_module_spec("docling")),
+            ):
+                document = ContractParser(parser_config=config).parse_path(path)
+
+        self.assertEqual(document.conversion_metadata["parser_backend"], "docling")
+        self.assertEqual(document.tables[0].rows, [["Key", "Value"], ["Project", "Alpha"]])
+        self.assertTrue(document.clause_chunks)
+        self.assertTrue(any("Alpha" in chunk.source_text for chunk in document.clause_chunks))
+        self.assertTrue(any("Alpha" in item["page_content"] for item in to_rag_documents(document)))
+
+    def test_parse_path_routes_legacy_doc_file_through_markitdown_backend(self):
+        markdown = "# Legacy Contract\n\n| Key | Value |\n| --- | --- |\n| Project | Beta |\n"
+
+        class FakeResult:
+            text_content = markdown
+
+        class FakeMarkItDown:
+            def convert(self, source: str) -> FakeResult:
+                self.source = source
+                return FakeResult()
+
+        module = types.ModuleType("markitdown")
+        module.MarkItDown = FakeMarkItDown
+        config = ParserConfig(
+            default_converter="markitdown",
+            enabled_converters=["markitdown"],
+            fallback_order=["markitdown"],
+            markitdown_enabled=True,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "legacy.doc"
+            path.write_bytes(b"fake legacy doc")
+            with (
+                patch.dict(sys.modules, {"markitdown": module}),
+                patch("importlib.util.find_spec", return_value=_module_spec("markitdown")),
+            ):
+                parser = ContractParser(parser_config=config)
+                markdown_document = parser.convert_to_markdown(path)
+                document = parser.parse_markdown(markdown_document)
+
+        self.assertEqual(markdown_document.backend_name, "markitdown")
+        self.assertEqual(markdown_document.markdown_content, markdown)
+        self.assertEqual(document.markdown_content, markdown)
+        self.assertEqual(document.tables[0].rows, [["Key", "Value"], ["Project", "Beta"]])
+        self.assertTrue(any("Beta" in item["page_content"] for item in to_rag_documents(document)))
+
     def test_parse_text_obeys_max_input_bytes(self):
         parser = ContractParser(parser_config=ParserConfig(max_input_bytes=8))
 
@@ -270,3 +412,68 @@ class ContractParserServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _module_spec(name: str) -> importlib.machinery.ModuleSpec:
+    return importlib.machinery.ModuleSpec(name, loader=None)
+
+
+def _fake_docling_modules(document_converter_cls: type):
+    package = types.ModuleType("docling")
+    module = types.ModuleType("docling.document_converter")
+    base_models = types.ModuleType("docling.datamodel.base_models")
+    pipeline_options = types.ModuleType("docling.datamodel.pipeline_options")
+
+    class FakeInputFormat:
+        PDF = "pdf"
+
+    class RapidOcrOptions:
+        def __init__(
+            self,
+            *,
+            lang: list[str],
+            force_full_page_ocr: bool,
+            bitmap_area_threshold: float,
+            text_score: float,
+        ) -> None:
+            self.lang = lang
+            self.force_full_page_ocr = force_full_page_ocr
+            self.bitmap_area_threshold = bitmap_area_threshold
+            self.text_score = text_score
+
+    class FakePdfPipelineOptions:
+        def __init__(
+            self,
+            *,
+            do_ocr: bool,
+            ocr_options: RapidOcrOptions,
+            do_table_structure: bool,
+            ocr_batch_size: int,
+            layout_batch_size: int,
+            table_batch_size: int,
+        ) -> None:
+            self.do_ocr = do_ocr
+            self.ocr_options = ocr_options
+            self.do_table_structure = do_table_structure
+            self.ocr_batch_size = ocr_batch_size
+            self.layout_batch_size = layout_batch_size
+            self.table_batch_size = table_batch_size
+
+    class FakePdfFormatOption:
+        def __init__(self, *, pipeline_options: FakePdfPipelineOptions) -> None:
+            self.pipeline_options = pipeline_options
+
+    module.DocumentConverter = document_converter_cls
+    module.PdfFormatOption = FakePdfFormatOption
+    base_models.InputFormat = FakeInputFormat
+    pipeline_options.PdfPipelineOptions = FakePdfPipelineOptions
+    pipeline_options.RapidOcrOptions = RapidOcrOptions
+    return patch.dict(
+        sys.modules,
+        {
+            "docling": package,
+            "docling.document_converter": module,
+            "docling.datamodel.base_models": base_models,
+            "docling.datamodel.pipeline_options": pipeline_options,
+        },
+    )

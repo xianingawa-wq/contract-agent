@@ -1,5 +1,5 @@
-from contract_agent.parser.chunker import ContractChunker
-from contract_agent.parser.exceptions import (
+from contract_agent.parser.parsed.markdown_chunker import ContractChunker
+from contract_agent.parser.exception import (
     DocumentLoadError,
     DocumentParseError,
     ParserError,
@@ -10,7 +10,6 @@ from contract_agent.parser.models import (
     BlockConfidence,
     BlockLocation,
     ClauseChunk,
-    DetectorResult,
     DocumentBlock,
     DocumentDefinition,
     DocumentFigure,
@@ -23,7 +22,12 @@ from contract_agent.parser.models import (
     ParseResponse,
 )
 from contract_agent.config.config_parser import ParserConfig
-from contract_agent.parser.normalizer import ParsedReviewInput, normalize_review_input
+from contract_agent.parser.markdown_document import MarkdownDocument
+from contract_agent.parser.parser_source import ParserSource
+from contract_agent.parser.review_input_normalizer import (
+    ParsedReviewInput,
+    normalize_review_input,
+)
 from contract_agent.parser.serializers import (
     to_evidence_json,
     to_llm_context,
@@ -31,7 +35,7 @@ from contract_agent.parser.serializers import (
     to_plain_text,
     to_rag_documents,
 )
-from contract_agent.parser.service import ContractParser
+from contract_agent.parser.contract_parser_service import ContractParser
 
 __all__ = [
     "ClauseChunk",
@@ -39,7 +43,7 @@ __all__ = [
     "BlockLocation",
     "ContractChunker",
     "ContractParser",
-    "DetectorResult",
+    "MarkdownDocument",
     "DocumentBlock",
     "DocumentDefinition",
     "DocumentFigure",
@@ -52,6 +56,7 @@ __all__ = [
     "DocumentTable",
     "ParsedDocument",
     "ParsedReviewInput",
+    "ParserSource",
     "ParseResponse",
     "ParserConfig",
     "ParserError",

@@ -102,7 +102,13 @@ class ParserAdapterSection(BaseModel):
 
 
 class DoclingAdapterSection(ParserAdapterSection):
-    enable_ocr: bool = False
+    enable_ocr: bool = True
+    ocr_lang: list[str] = Field(default_factory=lambda: ["chinese"])
+    force_full_page_ocr: bool = True
+    bitmap_area_threshold: float = 0.02
+    text_score: float = 0.35
+    do_table_structure: bool = True
+    compact_tables: bool = True
     enable_remote_services: bool = False
 
 
@@ -204,6 +210,12 @@ class AppConfig(BaseModel):
             markitdown_enabled=self.parser.markitdown.enabled,
             docling_enabled=self.parser.docling.enabled,
             docling_enable_ocr=self.parser.docling.enable_ocr,
+            docling_ocr_lang=list(self.parser.docling.ocr_lang),
+            docling_force_full_page_ocr=self.parser.docling.force_full_page_ocr,
+            docling_bitmap_area_threshold=self.parser.docling.bitmap_area_threshold,
+            docling_text_score=self.parser.docling.text_score,
+            docling_do_table_structure=self.parser.docling.do_table_structure,
+            docling_compact_tables=self.parser.docling.compact_tables,
             docling_enable_remote_services=self.parser.docling.enable_remote_services,
         )
 
@@ -276,6 +288,12 @@ class AppConfig(BaseModel):
             parser_markitdown_enabled=self.parser.markitdown.enabled,
             parser_docling_enabled=self.parser.docling.enabled,
             parser_docling_enable_ocr=self.parser.docling.enable_ocr,
+            parser_docling_ocr_lang=list(self.parser.docling.ocr_lang),
+            parser_docling_force_full_page_ocr=self.parser.docling.force_full_page_ocr,
+            parser_docling_bitmap_area_threshold=self.parser.docling.bitmap_area_threshold,
+            parser_docling_text_score=self.parser.docling.text_score,
+            parser_docling_do_table_structure=self.parser.docling.do_table_structure,
+            parser_docling_compact_tables=self.parser.docling.compact_tables,
             parser_docling_enable_remote_services=self.parser.docling.enable_remote_services,
         )
 

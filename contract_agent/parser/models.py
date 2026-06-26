@@ -116,25 +116,6 @@ class DocumentSemanticGraph(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class DetectorResult(BaseModel):
-    result_id: str
-    detector_name: str
-    rule_id: str | None = None
-    result_type: str
-    value: dict[str, Any]
-    block_ids: list[str] = Field(default_factory=list)
-    span_ids: list[str] = Field(default_factory=list)
-    confidence: float
-    reason: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("value", "metadata")
-    @classmethod
-    def _dict_fields_must_be_json_safe(cls, value: dict[str, Any]) -> dict[str, Any]:
-        _ensure_json_safe(value)
-        return value
-
-
 class ParsedDocument(BaseModel):
     schema_version: str = "2.0"
     metadata: DocumentMetadata
@@ -151,7 +132,6 @@ class ParsedDocument(BaseModel):
     definitions: list[DocumentDefinition] = Field(default_factory=list)
     references: list[DocumentReference] = Field(default_factory=list)
     semantic_graph: DocumentSemanticGraph | None = None
-    detector_results: list[DetectorResult] = Field(default_factory=list)
     conversion_metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("conversion_metadata")

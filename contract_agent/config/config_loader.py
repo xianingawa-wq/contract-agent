@@ -485,6 +485,48 @@ def _apply_environment_overlay(
     copy(
         environ,
         data,
+        ("parser", "docling", "ocr_lang"),
+        settings.parser_docling_ocr_lang,
+        "PARSER_DOCLING_OCR_LANG",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "force_full_page_ocr"),
+        settings.parser_docling_force_full_page_ocr,
+        "PARSER_DOCLING_FORCE_FULL_PAGE_OCR",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "bitmap_area_threshold"),
+        settings.parser_docling_bitmap_area_threshold,
+        "PARSER_DOCLING_BITMAP_AREA_THRESHOLD",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "text_score"),
+        settings.parser_docling_text_score,
+        "PARSER_DOCLING_TEXT_SCORE",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "do_table_structure"),
+        settings.parser_docling_do_table_structure,
+        "PARSER_DOCLING_DO_TABLE_STRUCTURE",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "compact_tables"),
+        settings.parser_docling_compact_tables,
+        "PARSER_DOCLING_COMPACT_TABLES",
+    )
+    copy(
+        environ,
+        data,
         ("parser", "docling", "enable_remote_services"),
         settings.parser_docling_enable_remote_services,
         "PARSER_DOCLING_ENABLE_REMOTE_SERVICES",

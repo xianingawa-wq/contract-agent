@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 DEFAULT_ENABLED_CONVERTERS = ["builtin"]
-DEFAULT_ALLOWED_SUFFIXES = [".txt", ".docx", ".pdf"]
+DEFAULT_ALLOWED_SUFFIXES = [".txt", ".doc", ".docx", ".pdf"]
 DEFAULT_ENABLED_DETECTORS = ["metadata", "clause_header", "definition", "reference"]
 
 
@@ -36,7 +36,13 @@ class ParserConfig(BaseModel):
 
     markitdown_enabled: bool = False
     docling_enabled: bool = False
-    docling_enable_ocr: bool = False
+    docling_enable_ocr: bool = True
+    docling_ocr_lang: list[str] = Field(default_factory=lambda: ["chinese"])
+    docling_force_full_page_ocr: bool = True
+    docling_bitmap_area_threshold: float = 0.02
+    docling_text_score: float = 0.35
+    docling_do_table_structure: bool = True
+    docling_compact_tables: bool = True
     docling_enable_remote_services: bool = False
 
     @model_validator(mode="after")
@@ -46,6 +52,7 @@ class ParserConfig(BaseModel):
         self.fallback_order = _dedupe_non_empty(self.fallback_order)
         self.enabled_detectors = _dedupe_non_empty(self.enabled_detectors)
         self.allowed_suffixes = [_normalize_suffix(suffix) for suffix in self.allowed_suffixes]
+        self.docling_ocr_lang = _dedupe_non_empty(self.docling_ocr_lang)
         self.trusted_path_roots = [root for root in self.trusted_path_roots if root]
         if self.detector_rules_path == "":
             self.detector_rules_path = None
@@ -91,10 +98,12 @@ class ParserConfig(BaseModel):
             raise ValueError("parser.min_header_confidence must be between 0 and 1")
         if self.allow_url_input:
             raise ValueError("parser.allow_url_input is reserved until URL input is implemented")
-        if self.docling_enable_ocr:
-            raise ValueError(
-                "parser.docling_enable_ocr is reserved until the Docling adapter maps OCR options"
-            )
+        if self.docling_enable_ocr and not self.docling_ocr_lang:
+            raise ValueError("parser.docling_ocr_lang must be non-empty when OCR is enabled")
+        if not 0 <= self.docling_bitmap_area_threshold <= 1:
+            raise ValueError("parser.docling_bitmap_area_threshold must be between 0 and 1")
+        if not 0 <= self.docling_text_score <= 1:
+            raise ValueError("parser.docling_text_score must be between 0 and 1")
         if self.docling_enable_remote_services:
             raise ValueError(
                 "parser.docling_enable_remote_services is reserved until remote Docling services are explicitly supported"
@@ -130,6 +139,12 @@ class ParserConfig(BaseModel):
             markitdown_enabled=settings.parser_markitdown_enabled,
             docling_enabled=settings.parser_docling_enabled,
             docling_enable_ocr=settings.parser_docling_enable_ocr,
+            docling_ocr_lang=list(settings.parser_docling_ocr_lang),
+            docling_force_full_page_ocr=settings.parser_docling_force_full_page_ocr,
+            docling_bitmap_area_threshold=settings.parser_docling_bitmap_area_threshold,
+            docling_text_score=settings.parser_docling_text_score,
+            docling_do_table_structure=settings.parser_docling_do_table_structure,
+            docling_compact_tables=settings.parser_docling_compact_tables,
             docling_enable_remote_services=settings.parser_docling_enable_remote_services,
         )
 

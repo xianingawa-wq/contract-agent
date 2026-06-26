@@ -19,7 +19,7 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(config.fallback_order, ["builtin"])
         self.assertTrue(config.allow_converter_fallback)
         self.assertFalse(config.strict_converter_availability)
-        self.assertEqual(config.allowed_suffixes, [".txt", ".docx", ".pdf"])
+        self.assertEqual(config.allowed_suffixes, [".txt", ".doc", ".docx", ".pdf"])
         self.assertTrue(config.allow_path_input)
         self.assertFalse(config.allow_url_input)
         self.assertEqual(config.trusted_path_roots, [])
@@ -38,7 +38,13 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(config.min_header_confidence, 0.65)
         self.assertFalse(config.markitdown_enabled)
         self.assertFalse(config.docling_enabled)
-        self.assertFalse(config.docling_enable_ocr)
+        self.assertTrue(config.docling_enable_ocr)
+        self.assertEqual(config.docling_ocr_lang, ["chinese"])
+        self.assertTrue(config.docling_force_full_page_ocr)
+        self.assertEqual(config.docling_bitmap_area_threshold, 0.02)
+        self.assertEqual(config.docling_text_score, 0.35)
+        self.assertTrue(config.docling_do_table_structure)
+        self.assertTrue(config.docling_compact_tables)
         self.assertFalse(config.docling_enable_remote_services)
 
     def test_settings_env_parser_values_parse_lists_numbers_booleans_and_empty_optionals(self):
@@ -198,17 +204,26 @@ class ParserConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "allow_url_input"):
             ParserConfig(allow_url_input=True)
 
-    def test_parser_config_rejects_unimplemented_docling_options(self):
-        for option in ("docling_enable_ocr", "docling_enable_remote_services"):
-            with self.subTest(option=option):
-                with self.assertRaisesRegex(ValueError, option):
-                    ParserConfig(
-                        default_converter="docling",
-                        enabled_converters=["docling"],
-                        fallback_order=["docling"],
-                        docling_enabled=True,
-                        **{option: True},
-                    )
+    def test_parser_config_rejects_unimplemented_docling_remote_services(self):
+        with self.assertRaisesRegex(ValueError, "docling_enable_remote_services"):
+            ParserConfig(
+                default_converter="docling",
+                enabled_converters=["docling"],
+                fallback_order=["docling"],
+                docling_enabled=True,
+                docling_enable_remote_services=True,
+            )
+
+    def test_parser_config_rejects_invalid_docling_quality_options(self):
+        cases = [
+            {"docling_ocr_lang": []},
+            {"docling_bitmap_area_threshold": -0.1},
+            {"docling_text_score": 1.2},
+        ]
+        for values in cases:
+            with self.subTest(values=values):
+                with self.assertRaises(ValueError):
+                    ParserConfig(**values)
 
 
 if __name__ == "__main__":

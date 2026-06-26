@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from contract_agent.logger.base import ComponentLogger, LogEvent, get_component_logger
 
 
 PARSER_LOGGER_NAME = "contract_agent.parser"
-ParserLogStage = Literal["Convert", "Detector"]
+ParserLogStage = str
 
 
 def get_parser_logger() -> ComponentLogger:

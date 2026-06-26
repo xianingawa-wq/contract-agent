@@ -10,7 +10,7 @@ from contract_agent.parser import (
     ReviewInputError,
     normalize_review_input,
 )
-import contract_agent.parser.normalizer as normalizer_module
+import contract_agent.parser.review_input_normalizer as normalizer_module
 
 
 class ReviewInputNormalizerTests(unittest.TestCase):

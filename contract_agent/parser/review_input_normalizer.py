@@ -5,9 +5,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from contract_agent.parser.exceptions import ParserError, ReviewInputError
+from contract_agent.parser.exception import ParserError, ReviewInputError
 from contract_agent.parser.models import ParsedDocument
-from contract_agent.parser.service import ContractParser
+from contract_agent.parser.contract_parser_service import ContractParser
 
 
 ReviewSourceKind = Literal["text", "bytes", "path", "grpc_file"]
