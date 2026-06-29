@@ -151,6 +151,34 @@ class ParserBackendRouterTests(unittest.TestCase):
         self.assertEqual(backend.seen_local_path, path.resolve())
         self.assertTrue(str(backend.seen_source_path).startswith("local:"))
 
+    def test_path_input_validates_suffix_from_resolved_path_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "contract.txt"
+            path.write_text("body", encoding="utf-8")
+            backend = RecordingPathBackend()
+            router = ParserBackendRouter([backend])
+            config = ParserConfig(
+                default_converter="recording",
+                enabled_converters=["recording"],
+                fallback_order=["recording"],
+                allow_path_input=True,
+                trusted_path_roots=[str(root)],
+                allowed_suffixes=[".txt"],
+            )
+            source = ParserSource(
+                kind="path",
+                file_name="",
+                local_path=path,
+                source_path=str(path),
+                file_type="",
+            )
+
+            router.convert(source, config)
+
+        self.assertEqual(backend.seen_local_path, path.resolve())
+        self.assertTrue(str(backend.seen_source_path).startswith("local:"))
+
     def test_path_input_validates_resolved_path_suffix_after_redaction(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -139,18 +139,11 @@ class ParserBackendRouter:
     parse = convert
 
     def _validate_source(self, source: ParserSource, config: ParserConfig) -> ParserSource:
-        suffix = f".{source.file_type}" if source.file_type else ""
         if source.kind == "text":
             text_size = len((source.text or "").encode("utf-8"))
             if config.max_input_bytes is not None and text_size > config.max_input_bytes:
                 raise DocumentLoadError("文本大小超过 parser.max_input_bytes 限制。")
             return source
-
-        if source.kind != "text":
-            if not suffix:
-                raise DocumentLoadError("缺少文件名或文件后缀，无法判断文件类型。")
-            if suffix.lower() not in config.allowed_suffixes:
-                raise UnsupportedFileType(f"不支持的文件类型：{suffix or '未知'}")
 
         if source.kind == "path":
             if not config.allow_path_input:
@@ -177,6 +170,13 @@ class ParserBackendRouter:
                 raise DocumentLoadError("缺少文件名或文件后缀，无法判断文件类型。")
             if suffix.lower() not in config.allowed_suffixes:
                 raise UnsupportedFileType(f"不支持的文件类型：{suffix or '未知'}")
+            return source
+
+        suffix = f".{source.file_type}" if source.file_type else ""
+        if not suffix:
+            raise DocumentLoadError("缺少文件名或文件后缀，无法判断文件类型。")
+        if suffix.lower() not in config.allowed_suffixes:
+            raise UnsupportedFileType(f"不支持的文件类型：{suffix or '未知'}")
 
         if source.kind == "bytes":
             content_size = len(source.content or b"")

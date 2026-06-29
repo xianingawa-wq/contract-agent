@@ -1,7 +1,7 @@
 import json
 import math
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from contract_agent.parser import (
     BlockConfidence,
@@ -16,7 +16,7 @@ from contract_agent.parser import (
     ParsedDocument,
 )
 from contract_agent.parser.markdown_document import MarkdownDocument
-from contract_agent.parser.parser_source import ParserSource
+from contract_agent.parser.parser_source import ParserSource, _local_source_path
 
 
 def make_document() -> ParsedDocument:
@@ -263,6 +263,12 @@ class ParserModelTests(unittest.TestCase):
         self.assertEqual(source.file_name, "contract\nsecret.txt")
         self.assertIn("contract_secret.txt", source.source_path)
         self.assertNotIn("\n", source.source_path)
+
+    def test_local_source_path_sanitizes_posix_filename_separators(self):
+        source_path = _local_source_path(PurePosixPath("contract\\secret.txt"))
+
+        self.assertIn("contract_secret.txt", source_path)
+        self.assertNotIn("\\", source_path)
 
     def test_parser_source_from_path_distinguishes_same_name_files(self):
         first = ParserSource.from_path(Path("first") / "contract.txt")

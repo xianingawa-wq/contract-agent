@@ -79,5 +79,5 @@ def _file_type(file_name: str, *, default: str | None = None) -> str:
 
 def _local_source_path(path: Path) -> str:
     digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:12]
-    safe_name = "".join("_" if char in "\r\n\t" else char for char in path.name).strip()
+    safe_name = "".join("_" if char in "\r\n\t/\\" else char for char in path.name).strip()
     return f"local:{digest}:{safe_name or 'source'}"
