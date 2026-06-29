@@ -31,6 +31,17 @@ class ParserBackendImplTests(unittest.TestCase):
         self.assertFalse(text_support.supported)
         self.assertFalse(docx_support.supported)
 
+    def test_docling_support_normalizes_dotted_file_type(self):
+        backend = DoclingParserImpl()
+        config = ParserConfig(docling_enabled=True)
+        source = ParserSource.from_bytes("contract.pdf", b"fake")
+        source.file_type = " .PDF "
+
+        with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
+            support = backend.supports(source, config)
+
+        self.assertTrue(support.supported)
+
     def test_docling_non_pdf_sources_can_fallback_when_dependency_missing(self):
         backend = DoclingParserImpl()
         config = ParserConfig(docling_enabled=True)
@@ -319,7 +330,8 @@ class ParserBackendImplTests(unittest.TestCase):
                 '<math><mi onclick="bad">x</mi></math>'
                 '<iframe src="https://evil.example"></iframe>'
                 '<object data="https://evil.example"></object>'
-                '<embed src="https://evil.example">'
+                '<embed src="https://evil.example">hidden</embed>'
+                "</p><span/>"
                 '<p>safe <a href="https://example.com" title="ok">link</a></p>'
             )
 
@@ -335,6 +347,7 @@ class ParserBackendImplTests(unittest.TestCase):
         self.assertEqual(
             html,
             '<p>ok</p><img src="x"><a>bad</a><a>encoded</a>'
+            "<span></span>"
             '<p>safe <a href="https://example.com" title="ok">link</a></p>',
         )
 

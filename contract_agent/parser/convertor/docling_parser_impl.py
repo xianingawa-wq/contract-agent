@@ -27,8 +27,9 @@ class DoclingParserImpl:
                 supported=False,
                 reason="docling remote services are disabled by parser safety policy",
             )
-        suffix = f".{source.file_type}" if source.file_type else ""
-        if source.kind == "text" or suffix.lower() != ".pdf":
+        normalized_file_type = (source.file_type or "").strip().lower().lstrip(".")
+        suffix = f".{normalized_file_type}" if normalized_file_type else ""
+        if source.kind == "text" or suffix != ".pdf":
             return ParserBackendSupport(
                 supported=False,
                 reason=f"docling backend supports PDF input only: {suffix or source.kind}",

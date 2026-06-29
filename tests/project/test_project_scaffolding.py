@@ -16,7 +16,13 @@ class ProjectScaffoldingTests(unittest.TestCase):
         self.assertTrue(pyproject_dependencies.issubset(requirements))
 
     def test_protobuf_runtime_matches_generated_grpc_code(self):
-        expected = "protobuf==6.33.5"
+        generated = Path("contract_agent/agent_rpc/agent_pb2.py").read_text(encoding="utf-8")
+        version_line = next(
+            line
+            for line in generated.splitlines()
+            if line.startswith("# Protobuf Python Version: ")
+        )
+        expected = f"protobuf=={version_line.removeprefix('# Protobuf Python Version: ')}"
         pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
         requirements = {
             line.strip()

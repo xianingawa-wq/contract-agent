@@ -261,7 +261,6 @@ _ALLOWED_HTML_TAGS = {
 }
 _VOID_HTML_TAGS = {"br", "hr", "img"}
 _DROP_HTML_CONTENT_TAGS = {"embed", "iframe", "math", "object", "script", "style", "svg"}
-_DROP_SELF_CONTAINED_HTML_TAGS = {"embed"}
 _GLOBAL_HTML_ATTRS = {"title"}
 _ALLOWED_HTML_ATTRS = {
     "a": {"href", "title"},
@@ -279,6 +278,7 @@ class _HtmlAllowlistSanitizer(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self._drop_depth = 0
+        self._open_tags: list[str] = []
 
     @property
     def output(self) -> str:
@@ -291,19 +291,26 @@ class _HtmlAllowlistSanitizer(HTMLParser):
                 self._drop_depth += 1
             return
         if tag_name in _DROP_HTML_CONTENT_TAGS:
-            if tag_name not in _DROP_SELF_CONTAINED_HTML_TAGS:
-                self._drop_depth = 1
+            self._drop_depth = 1
             return
         if tag_name not in _ALLOWED_HTML_TAGS:
             return
         rendered_attrs = self._render_attrs(tag_name, attrs)
         self.parts.append(f"<{tag_name}{rendered_attrs}>")
+        if tag_name not in _VOID_HTML_TAGS:
+            self._open_tags.append(tag_name)
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag_name = tag.lower()
         if tag_name in _DROP_HTML_CONTENT_TAGS or self._drop_depth:
             return
-        self.handle_starttag(tag, attrs)
+        if tag_name not in _ALLOWED_HTML_TAGS:
+            return
+        rendered_attrs = self._render_attrs(tag_name, attrs)
+        if tag_name in _VOID_HTML_TAGS:
+            self.parts.append(f"<{tag_name}{rendered_attrs}>")
+            return
+        self.parts.append(f"<{tag_name}{rendered_attrs}></{tag_name}>")
 
     def handle_endtag(self, tag: str) -> None:
         tag_name = tag.lower()
@@ -311,8 +318,9 @@ class _HtmlAllowlistSanitizer(HTMLParser):
             if tag_name in _DROP_HTML_CONTENT_TAGS:
                 self._drop_depth -= 1
             return
-        if tag_name in _ALLOWED_HTML_TAGS and tag_name not in _VOID_HTML_TAGS:
+        if tag_name in _ALLOWED_HTML_TAGS and self._open_tags and self._open_tags[-1] == tag_name:
             self.parts.append(f"</{tag_name}>")
+            self._open_tags.pop()
 
     def handle_data(self, data: str) -> None:
         if not self._drop_depth:
