@@ -440,6 +440,49 @@ class MarkdownCleanerTests(unittest.TestCase):
         self.assertEqual(len(document.tables), 2)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 0)
 
+    def test_parse_markdown_does_not_merge_malformed_header_when_non_empty_cells_differ(self):
+        markdown = "\n".join(
+            [
+                "# Payment schedules",
+                "",
+                "| item | amount | date |",
+                "| --- | --- | --- |",
+                "| rent | 1000 | 2026-01-01 |",
+                "",
+                "| service |  | owner |",
+                "| --- | --- | --- |",
+                "| cleaning |  | tenant |",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={
+                    "parser_backend": "docling",
+                    "docling_tables": [
+                        {
+                            "index": 0,
+                            "page": 1,
+                            "bbox": {"top": 0.72, "bottom": 0.95},
+                        },
+                        {
+                            "index": 1,
+                            "page": 2,
+                            "bbox": {"top": 0.04, "bottom": 0.18},
+                        },
+                    ],
+                },
+            )
+        )
+
+        self.assertEqual(len(document.tables), 2)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 0)
+
     def test_parse_markdown_keeps_meaningful_short_label_between_tables_with_layout_evidence(self):
         markdown = "\n".join(
             [

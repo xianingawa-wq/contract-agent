@@ -152,6 +152,36 @@ class ContractChunkerTests(unittest.TestCase):
         self.assertEqual(chunk.source_text, "Delivery obligation")
         self.assertEqual(raw_text[chunk.start_offset : chunk.end_offset], chunk.source_text)
 
+    def test_block_chunk_preserves_raw_text_when_location_matches_raw_length(self):
+        raw_text = "A\nB"
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc",
+                file_name="contract.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text=raw_text,
+            blocks=[
+                DocumentBlock(
+                    block_id="p1-b0",
+                    block_type="paragraph",
+                    text=raw_text,
+                    location=BlockLocation(
+                        page_no=1,
+                        block_index=0,
+                        start_offset=0,
+                        end_offset=len(raw_text),
+                    ),
+                )
+            ],
+        )
+
+        chunk = ContractChunker().chunk(document)[0]
+
+        self.assertEqual(chunk.source_text, raw_text)
+        self.assertEqual(raw_text[chunk.start_offset : chunk.end_offset], chunk.source_text)
+
     def test_block_chunk_uses_markdown_when_text_is_blank(self):
         document = ParsedDocument(
             metadata=DocumentMetadata(

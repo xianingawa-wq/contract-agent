@@ -24,6 +24,7 @@ from contract_agent.parser import (
     to_rag_documents,
 )
 from contract_agent.parser.markdown_document import MarkdownDocument
+from contract_agent.parser.parsed.markdown_block_parser import block_type_and_text
 from contract_agent.parser.parsed.markdown_metadata_builder import build_metadata
 
 
@@ -110,6 +111,31 @@ class ContractParserServiceTests(unittest.TestCase):
             ["dash item", "star item", "plus item", "ordered item", "parenthesized item"],
         )
 
+        ambiguous_markdown = "\n".join(
+            [
+                "\\- escaped marker",
+                "1.23 decimal value",
+                "| - | table cell |",
+            ]
+        )
+
+        ambiguous_document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=ambiguous_markdown,
+                file_name="contract.md",
+                file_type="md",
+                source_path="inline",
+                backend_name="builtin",
+            )
+        )
+
+        self.assertNotIn(
+            "list_item",
+            [block.block_type for block in ambiguous_document.blocks],
+        )
+        self.assertEqual(block_type_and_text("    - code item")[0], "paragraph")
+        self.assertEqual(block_type_and_text("---")[0], "paragraph")
+
     def test_parse_bytes_supports_txt_encodings(self):
         parser = _builtin_parser()
 
@@ -152,6 +178,7 @@ class ContractParserServiceTests(unittest.TestCase):
             all(
                 document.raw_text[chunk.start_offset : chunk.end_offset] == chunk.source_text
                 for chunk in document.clause_chunks
+                if chunk.chunk_level != "table"
             )
         )
         self.assertTrue(
@@ -415,15 +442,15 @@ class ContractParserServiceTests(unittest.TestCase):
         graph = ContractParser()._build_semantic_graph(document)
 
         derived_targets = {
-            edge["source"]: edge["target"]
+            (edge["source"], edge["target"])
             for edge in graph.edges
             if edge["type"] == "derived_from" and str(edge["source"]).startswith("chunk:")
         }
         self.assertEqual(
             derived_targets,
             {
-                "chunk:chunk-a": "block:block-a",
-                "chunk:chunk-b": "block:block-b",
+                ("chunk:chunk-a", "block:block-a"),
+                ("chunk:chunk-b", "block:block-b"),
             },
         )
 

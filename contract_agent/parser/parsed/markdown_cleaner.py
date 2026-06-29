@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 from typing import Any
 
 from contract_agent.parser.parsed.markdown_table_row_parser import split_pipe_row
@@ -403,11 +404,16 @@ def _continuation_rows(
     if _is_table_start(continuation, 0):
         if not can_merge_table_start:
             return []
-        if not _is_compatible_continuation_table(table_lines, continuation, table_columns):
+        compatibility = _continuation_table_compatibility(
+            table_lines,
+            continuation,
+            table_columns,
+        )
+        if compatibility == "incompatible":
             return []
         if _split_pipe_row(continuation[0]) == _split_pipe_row(table_lines[0]):
             return continuation[2:]
-        if preserve_malformed_header:
+        if preserve_malformed_header and compatibility == "data_row":
             return [continuation[0], *continuation[2:]]
         return continuation[2:]
     return continuation
@@ -437,20 +443,26 @@ def _looks_like_malformed_continuation_table(
     return empty_cells > 0
 
 
-def _is_compatible_continuation_table(
+def _continuation_table_compatibility(
     table_lines: list[str],
     continuation: list[str],
     table_columns: int,
-) -> bool:
+) -> Literal["same_header", "malformed_header", "data_row", "incompatible"]:
     if len(continuation) < 2:
-        return False
+        return "incompatible"
     continuation_header = _split_pipe_row(continuation[0])
     if len(continuation_header) != table_columns:
-        return False
+        return "incompatible"
     current_header = _split_pipe_row(table_lines[0])
     if continuation_header == current_header:
-        return True
-    return any(not cell for cell in continuation_header)
+        return "same_header"
+    if not any(not cell for cell in continuation_header):
+        return "incompatible"
+    if all(
+        not cell or cell == current_header[index] for index, cell in enumerate(continuation_header)
+    ):
+        return "malformed_header"
+    return "data_row" if continuation_header[0] == "" else "incompatible"
 
 
 def _looks_like_meaningful_short_label(stripped: str) -> bool:

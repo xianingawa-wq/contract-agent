@@ -46,7 +46,9 @@ class ContractChunker:
         location_start = block.location.start_offset or 0
         location_end = block.location.end_offset
         normalized = _normalize_text(raw_text)
-        if location_end is not None and location_end - location_start == len(normalized):
+        if location_end is not None and location_end - location_start == len(raw_text):
+            text, trim_start, trim_end = _trimmed_text_with_offsets(raw_text)
+        elif location_end is not None and location_end - location_start == len(normalized):
             text = normalized
             trim_start = 0
             trim_end = len(text)
