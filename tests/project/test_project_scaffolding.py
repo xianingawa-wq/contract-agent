@@ -51,6 +51,7 @@ class ProjectScaffoldingTests(unittest.TestCase):
 
     def test_canonical_service_agent_and_schema_packages_export_public_interfaces(self):
         import contract_agent.agents as agents
+        import contract_agent.parser as parser
         import contract_agent.schemas as schemas
         import contract_agent.services as services
 
@@ -59,7 +60,6 @@ class ProjectScaffoldingTests(unittest.TestCase):
                 "ChatService",
                 "ReviewService",
                 "GatewayRouter",
-                "ContractParser",
                 "RuleEngine",
             ],
             agents: ["ContractEditor", "LLMReviewer", "parser_agent", "risk_checker_agent"],
@@ -67,8 +67,13 @@ class ProjectScaffoldingTests(unittest.TestCase):
                 "ReviewRequest",
                 "ReviewResponse",
                 "ChatRequest",
-                "ParsedDocument",
                 "KnowledgeChunk",
+            ],
+            parser: [
+                "ContractParser",
+                "ParsedDocument",
+                "ParsedReviewInput",
+                "normalize_review_input",
             ],
         }.items():
             for name in names:

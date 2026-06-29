@@ -38,7 +38,7 @@ retrieval:
   rerank_max_retries: 0
 
 vector_store:
-  backend: milvus
+  backend: faiss
   knowledge_vector_store_dir: knowledge/ingested/laws_faiss
   milvus_uri: http://127.0.0.1:19530
   milvus_collection_name: legal_knowledge_chunks
@@ -73,6 +73,52 @@ limits:
   max_redraft_chunk_chars: 12000
   stream_max_seconds: 24.0
   stream_max_chars: 900
+
+parser:
+  default_converter: docling
+  enabled_converters:
+    - docling
+  fallback_order:
+    - docling
+  allow_converter_fallback: true
+  strict_converter_availability: false
+  allowed_suffixes:
+    - .txt
+    - .docx
+    - .pdf
+  allow_path_input: false
+  # Reserved until URL source loading is implemented; true fails fast today.
+  allow_url_input: false
+  trusted_path_roots: []
+  max_input_bytes: null
+  preserve_raw_text: true
+  detectors:
+    enabled:
+      - metadata
+      - clause_header
+      - definition
+      - reference
+    profile: builtin_zh_contract_v1
+    rules_path: null
+    min_confidence: 0.60
+    store_reasons: true
+  chunking:
+    max_chars: 1200
+    target_chars: 500
+    min_header_confidence: 0.65
+  markitdown:
+    enabled: false
+  docling:
+    enabled: true
+    enable_ocr: true
+    ocr_lang:
+      - chinese
+    force_full_page_ocr: true
+    bitmap_area_threshold: 0.02
+    text_score: 0.35
+    do_table_structure: true
+    compact_tables: true
+    enable_remote_services: false
 
 profile:
   path: .run/cli_profile.yaml

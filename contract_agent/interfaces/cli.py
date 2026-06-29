@@ -7,10 +7,9 @@ from typing import TextIO
 
 from contract_agent.interfaces.console import run_console_demo
 from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
-from contract_agent.config import configure_runtime, create_model_profile_service
+from contract_agent.config import AppContext, configure_runtime, create_model_profile_service
 from contract_agent.config import settings_snapshot
-from contract_agent.review.reporting import render_json, render_markdown
-from contract_agent.review.service import review_text
+from contract_agent.schemas.review import ReviewResponse
 
 
 def main(
@@ -27,7 +26,7 @@ def main(
     _prefer_utf8(stderr)
     parser = _build_parser()
     args = parser.parse_args(argv)
-    configure_runtime(config_path=getattr(args, "config", None))
+    app_context = configure_runtime(config_path=getattr(args, "config", None))
 
     if args.command not in {None, "demo"}:
         _load_default_profile_if_present()
@@ -35,7 +34,7 @@ def main(
     if args.command in {None, "demo"}:
         return _demo_command(args, stdin, stdout, stderr)
     if args.command == "review":
-        return _review_command(args, stdout, stderr)
+        return _review_command(args, stdout, stderr, app_context)
     if args.command == "config":
         return _config_command(stdout)
 
@@ -86,7 +85,9 @@ def _demo_command(args: argparse.Namespace, stdin: TextIO, stdout: TextIO, stder
     )
 
 
-def _review_command(args: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> int:
+def _review_command(
+    args: argparse.Namespace, stdout: TextIO, stderr: TextIO, app_context: AppContext
+) -> int:
     path = Path(args.path)
     if not path.exists():
         stderr.write(f"文件不存在：{path}\n")
@@ -95,14 +96,80 @@ def _review_command(args: argparse.Namespace, stdout: TextIO, stderr: TextIO) ->
         stderr.write(f"不是文件：{path}\n")
         return 2
 
-    text = path.read_text(encoding="utf-8-sig")
-    report = review_text(text, contract_type=args.contract_type, our_side=args.our_side)
+    from contract_agent.services.review_service import ReviewService
+
+    service = ReviewService(app_context=app_context)
+    try:
+        max_input_bytes = app_context.parser_config.max_input_bytes
+        if max_input_bytes is not None and path.stat().st_size > max_input_bytes:
+            stderr.write(f"文件大小超过限制：{max_input_bytes} bytes\n")
+            return 2
+        response = service.review_file(
+            path.name,
+            path.read_bytes(),
+            contract_type=args.contract_type,
+            our_side=args.our_side,
+        )
+    except Exception:
+        stderr.write("审查失败：服务暂不可用，请检查模型和知识库配置。\n")
+        return 1
+
     if args.format == "json":
-        stdout.write(render_json(report))
+        stdout.write(response.model_dump_json())
         stdout.write("\n")
     else:
-        stdout.write(render_markdown(report))
+        stdout.write(_render_service_review_markdown(response))
     return 0
+
+
+def _render_service_review_markdown(response: ReviewResponse) -> str:
+    lines = [
+        "# 合同审查报告",
+        "",
+        f"- 合同类型：{response.summary.contract_type}",
+        f"- 整体风险：{response.summary.overall_risk}",
+        f"- 风险数量：{response.summary.risk_count}",
+        "",
+        "## 审查概览",
+        "",
+        response.report.overview,
+        "",
+    ]
+
+    if response.report.key_findings:
+        lines.extend(["## 关键发现", ""])
+        lines.extend(f"- {finding}" for finding in response.report.key_findings)
+        lines.append("")
+
+    extracted_fields = response.extracted_fields.model_dump(exclude_none=True)
+    if extracted_fields:
+        lines.extend(["## 抽取信息", ""])
+        for key, value in extracted_fields.items():
+            lines.append(f"- {key}: {value}")
+        lines.append("")
+
+    lines.extend(["## 风险发现", ""])
+    if response.risks:
+        for risk in response.risks:
+            lines.extend(
+                [
+                    f"### {risk.title}",
+                    f"- 等级：{risk.severity}",
+                    f"- 证据：{risk.evidence}",
+                    f"- 说明：{risk.ai_explanation or risk.description}",
+                    f"- 建议：{risk.suggestion}",
+                    "",
+                ]
+            )
+    else:
+        lines.extend(["暂未发现明确风险。", ""])
+
+    if response.report.next_actions:
+        lines.extend(["## 下一步", ""])
+        lines.extend(f"- {action}" for action in response.report.next_actions)
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _config_command(stdout: TextIO) -> int:

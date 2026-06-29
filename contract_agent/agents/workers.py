@@ -57,13 +57,18 @@ def parser_agent(ctx: dict[str, Any]) -> AgentOutput:
 
     from contract_agent.constants.agent_prompts import parser_prompt
     from contract_agent.provider.client import get_chat_model
-    from contract_agent.services.parser import ContractParser
+    from contract_agent.parser import ContractParser, ParsedDocument
     from contract_agent.services.classifier import ContractClassifier
 
     # Rule-based preprocessing (kept as LLM input context)
-    parser = ContractParser()
     classifier = ContractClassifier()
-    document = parser.parse_text(contract_text)
+    document = ctx.get("parsed_document")
+    if not isinstance(document, ParsedDocument):
+        document_data = ctx.get("parsed_document_data")
+        if document_data:
+            document = ParsedDocument.model_validate(document_data)
+        else:
+            document = ContractParser().parse_text(contract_text)
     detected_type = contract_type or classifier.classify(contract_text)
 
     preprocessed = []
@@ -143,7 +148,7 @@ def risk_checker_agent(ctx: dict[str, Any]) -> AgentOutput:
 
     from contract_agent.constants.agent_prompts import risk_checker_prompt
     from contract_agent.provider.client import get_chat_model
-    from contract_agent.schemas.document import ClauseChunk, DocumentMetadata, ParsedDocument
+    from contract_agent.parser import ClauseChunk, DocumentMetadata, ParsedDocument
 
     # Rule engine as supplementary hints
     rule_engine = RuleEngine()

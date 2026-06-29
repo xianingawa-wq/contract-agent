@@ -5,10 +5,8 @@ __all__ = [
     "ActionRegistry",
     "ActionResult",
     "ChatService",
-    "ContractChunker",
     "ContractClassifier",
     "ContractExtractor",
-    "ContractParser",
     "GatewayRouter",
     "QueryKnowledgeAction",
     "ReactTraceStep",
@@ -31,10 +29,6 @@ def __getattr__(name: str):
         from contract_agent.services.review_gateway import GatewayRouter
 
         return GatewayRouter
-    if name == "ContractParser":
-        from contract_agent.services.parser import ContractParser
-
-        return ContractParser
     if name == "ContractClassifier":
         from contract_agent.services.classifier import ContractClassifier
 
@@ -47,10 +41,6 @@ def __getattr__(name: str):
         from contract_agent.services.rule_engine import RuleEngine
 
         return RuleEngine
-    if name == "ContractChunker":
-        from contract_agent.services.chunker import ContractChunker
-
-        return ContractChunker
     if name in {
         "ActionContext",
         "ActionHandler",

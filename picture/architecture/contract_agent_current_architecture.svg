@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100" role="img" aria-labelledby="title desc">
+  <title id="title">Contract Agent 当前架构总览</title>
+  <desc id="desc">Contract Agent Python 合同审查智能体运行时的入口层、服务编排层、核心能力层、基础设施层和外部依赖关系图。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8fbff"/>
+      <stop offset="45%" stop-color="#f6f7f3"/>
+      <stop offset="100%" stop-color="#fff8f2"/>
+    </linearGradient>
+    <linearGradient id="titleGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1c3d5a"/>
+      <stop offset="55%" stop-color="#315f72"/>
+      <stop offset="100%" stop-color="#8a5a32"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#172033" flood-opacity="0.13"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#405266"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#2d6cdf"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#23856d"/>
+    </marker>
+    <style>
+      .bg { fill: url(#bg); }
+      .title { font: 700 42px "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif; fill: url(#titleGrad); letter-spacing: 0; }
+      .subtitle { font: 400 18px "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif; fill: #586373; }
+      .layer-label { font: 700 18px "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif; fill: #2b3645; }
+      .layer-note { font: 400 13px "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif; fill: #647083; }
+      .box-title { font: 700 16px "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif; fill: #1f2937; }
+      .box-sub { font: 400 12px "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif; fill: #526174; }
+      .small { font: 400 11px "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif; fill: #637083; }
+      .tag { font: 700 11px "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif; fill: #ffffff; }
+      .section { fill: rgba(255,255,255,0.76); stroke: #d8e0ea; stroke-width: 1.2; rx: 18; filter: url(#shadow); }
+      .client { fill: #eef4ff; stroke: #8eb4ea; stroke-width: 1.4; rx: 12; }
+      .entry { fill: #fff7e8; stroke: #e0aa52; stroke-width: 1.4; rx: 12; }
+      .service { fill: #edf8f4; stroke: #73b6a1; stroke-width: 1.4; rx: 12; }
+      .core { fill: #f4f0ff; stroke: #a897d8; stroke-width: 1.4; rx: 12; }
+      .infra { fill: #f3f6f8; stroke: #9aaaba; stroke-width: 1.4; rx: 12; }
+      .external { fill: #fff1f1; stroke: #d48686; stroke-width: 1.4; rx: 12; }
+      .store { fill: #eef7ea; stroke: #8abf76; stroke-width: 1.4; rx: 12; }
+      .arrow { stroke: #405266; stroke-width: 2.1; fill: none; marker-end: url(#arrow); }
+      .arrow-blue { stroke: #2d6cdf; stroke-width: 2.3; fill: none; marker-end: url(#arrowBlue); }
+      .arrow-green { stroke: #23856d; stroke-width: 2.3; fill: none; marker-end: url(#arrowGreen); }
+      .arrow-dash { stroke: #738095; stroke-width: 1.8; fill: none; stroke-dasharray: 6 6; marker-end: url(#arrow); }
+      .pipe { stroke: #b7c3cf; stroke-width: 1.4; fill: none; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="1100"/>
+
+  <text class="title" x="70" y="78">Contract Agent 当前架构总览</text>
+  <text class="subtitle" x="72" y="112">独立 Python 合同审查智能体运行时：合同解析、规则审查、LLM 辅助、法律知识 RAG、多智能体编排、改写、审计与 gRPC 服务。</text>
+
+  <rect class="section" x="55" y="150" width="1490" height="115"/>
+  <text class="layer-label" x="80" y="182">调用方与入口层</text>
+  <text class="layer-note" x="80" y="204">外部系统进入 Python runtime，gRPC 是 Java 后端主入口，CLI/HTTP/Console 保留本地与最小接口能力。</text>
+
+  <rect class="client" x="95" y="220" width="185" height="68"/>
+  <text class="box-title" x="118" y="249">Java Backend</text>
+  <text class="box-sub" x="118" y="271">Spring Boot via gRPC</text>
+
+  <rect class="client" x="315" y="220" width="170" height="68"/>
+  <text class="box-title" x="338" y="249">CLI 用户</text>
+  <text class="box-sub" x="338" y="271">contract-agent</text>
+
+  <rect class="client" x="520" y="220" width="170" height="68"/>
+  <text class="box-title" x="543" y="249">HTTP 客户端</text>
+  <text class="box-sub" x="543" y="271">FastAPI minimal</text>
+
+  <rect class="client" x="725" y="220" width="185" height="68"/>
+  <text class="box-title" x="748" y="249">本地控制台</text>
+  <text class="box-sub" x="748" y="271">初始化和演示对话</text>
+
+  <rect class="entry" x="990" y="202" width="225" height="86"/>
+  <text class="box-title" x="1016" y="232">AgentRpcServicer</text>
+  <text class="box-sub" x="1016" y="254">Health / ParseFile / Review</text>
+  <text class="box-sub" x="1016" y="274">Chat / Redraft / Embed</text>
+
+  <rect class="entry" x="1260" y="202" width="235" height="86"/>
+  <text class="box-title" x="1286" y="232">interfaces/</text>
+  <text class="box-sub" x="1286" y="254">cli.py / http.py / console.py</text>
+  <text class="box-sub" x="1286" y="274">configure_runtime()</text>
+
+  <path class="arrow-blue" d="M280 254 C430 254, 820 248, 990 244"/>
+  <path class="arrow" d="M485 254 C680 254, 1080 258, 1260 252"/>
+  <path class="arrow" d="M690 254 C820 254, 1130 258, 1260 252"/>
+  <path class="arrow" d="M910 254 C1010 260, 1140 262, 1260 252"/>
+
+  <rect class="section" x="55" y="320" width="1490" height="280"/>
+  <text class="layer-label" x="80" y="352">服务编排层</text>
+  <text class="layer-note" x="80" y="374">把请求拆成审查、对话、单智能体或多智能体路径，并将解析结果、规则结果、知识检索和 LLM 输出组装成用户可见响应。</text>
+
+  <rect class="service" x="95" y="410" width="255" height="125"/>
+  <text class="box-title" x="122" y="442">ReviewService</text>
+  <text class="box-sub" x="122" y="466">review_document()</text>
+  <text class="box-sub" x="122" y="486">解析 -> 分类/抽取 -> 规则</text>
+  <text class="box-sub" x="122" y="506">RAG -> LLM 风险增强</text>
+
+  <rect class="service" x="390" y="410" width="255" height="125"/>
+  <text class="box-title" x="417" y="442">ChatService</text>
+  <text class="box-sub" x="417" y="466">意图路由：review/search/advice/chat</text>
+  <text class="box-sub" x="417" y="486">ReAct step planning</text>
+  <text class="box-sub" x="417" y="506">query_knowledge action</text>
+
+  <rect class="service" x="685" y="410" width="250" height="125"/>
+  <text class="box-title" x="712" y="442">GatewayRouter</text>
+  <text class="box-sub" x="712" y="466">SINGLE / MULTI_AUTO</text>
+  <text class="box-sub" x="712" y="486">MULTI_MANUAL</text>
+  <text class="box-sub" x="712" y="506">review / dialogue team</text>
+
+  <rect class="core" x="975" y="390" width="250" height="165"/>
+  <text class="box-title" x="1002" y="422">SupervisorAgent</text>
+  <text class="box-sub" x="1002" y="446">ReAct 循环决策</text>
+  <text class="box-sub" x="1002" y="466">依赖排序和批次执行</text>
+  <text class="box-sub" x="1002" y="486">parser -> risk_checker</text>
+  <text class="box-sub" x="1002" y="506">legal_ref -> redrafter</text>
+  <text class="box-sub" x="1002" y="526">最终 review_report</text>
+
+  <rect class="core" x="1265" y="390" width="230" height="165"/>
+  <text class="box-title" x="1292" y="422">AgentRuntime</text>
+  <text class="box-sub" x="1292" y="446">TaskRegistry</text>
+  <text class="box-sub" x="1292" y="466">TaskMessageQueue</text>
+  <text class="box-sub" x="1292" y="486">EventPublisher</text>
+  <text class="box-sub" x="1292" y="506">PipelineState / Events</text>
+
+  <path class="arrow-blue" d="M1102 288 C970 326, 485 350, 225 410"/>
+  <path class="arrow-blue" d="M1102 288 C1010 338, 630 354, 520 410"/>
+  <path class="arrow-blue" d="M1102 288 C1112 326, 945 350, 820 410"/>
+  <path class="arrow" d="M1265 288 C1208 330, 1138 350, 1100 390"/>
+  <path class="arrow" d="M350 470 L390 470"/>
+  <path class="arrow" d="M645 470 L685 470"/>
+  <path class="arrow-green" d="M935 470 L975 470"/>
+  <path class="arrow-green" d="M1225 470 L1265 470"/>
+
+  <rect class="section" x="55" y="650" width="1490" height="260"/>
+  <text class="layer-label" x="80" y="682">核心能力层</text>
+  <text class="layer-note" x="80" y="704">领域能力按包拆分，Provider 与 RAG 采用 interface -> service -> impl -> factory 模式，解析包封闭输出结构化合同文档。</text>
+
+  <rect class="core" x="95" y="735" width="230" height="130"/>
+  <text class="box-title" x="122" y="766">Parser Package</text>
+  <text class="box-sub" x="122" y="790">ContractParser</text>
+  <text class="box-sub" x="122" y="810">BackendRouter</text>
+  <text class="box-sub" x="122" y="830">Builtin / Markitdown / Docling</text>
+  <text class="box-sub" x="122" y="850">chunks + semantic_graph</text>
+
+  <rect class="core" x="365" y="735" width="230" height="130"/>
+  <text class="box-title" x="392" y="766">规则与本地审查</text>
+  <text class="box-sub" x="392" y="790">ContractClassifier</text>
+  <text class="box-sub" x="392" y="810">ContractExtractor</text>
+  <text class="box-sub" x="392" y="830">RuleEngine</text>
+  <text class="box-sub" x="392" y="850">rulesets/built_in.py</text>
+
+  <rect class="core" x="635" y="735" width="245" height="130"/>
+  <text class="box-title" x="662" y="766">Knowledge RAG</text>
+  <text class="box-sub" x="662" y="790">KnowledgeIngestor</text>
+  <text class="box-sub" x="662" y="810">VectorStore FAISS / Milvus</text>
+  <text class="box-sub" x="662" y="830">Hybrid BM25 + Dense</text>
+  <text class="box-sub" x="662" y="850">Qwen rerank fallback</text>
+
+  <rect class="core" x="920" y="735" width="245" height="130"/>
+  <text class="box-title" x="947" y="766">Provider Abstraction</text>
+  <text class="box-sub" x="947" y="790">LLMProvider Protocol</text>
+  <text class="box-sub" x="947" y="810">ModelProviderFactory</text>
+  <text class="box-sub" x="947" y="830">OpenAI / openai_compatible</text>
+  <text class="box-sub" x="947" y="850">DashScope / Qwen</text>
+
+  <rect class="core" x="1205" y="735" width="290" height="130"/>
+  <text class="box-title" x="1232" y="766">Agent Workers</text>
+  <text class="box-sub" x="1232" y="790">parser_agent：条款结构化</text>
+  <text class="box-sub" x="1232" y="810">risk_checker：风险发现</text>
+  <text class="box-sub" x="1232" y="830">legal_ref：法条检索与分析</text>
+  <text class="box-sub" x="1232" y="850">redrafter：改写建议</text>
+
+  <path class="arrow" d="M220 535 C220 600, 210 666, 210 735"/>
+  <path class="arrow" d="M250 535 C300 600, 420 670, 480 735"/>
+  <path class="arrow-green" d="M250 535 C430 610, 650 665, 748 735"/>
+  <path class="arrow-blue" d="M520 535 C630 610, 840 675, 1040 735"/>
+  <path class="arrow-green" d="M1095 555 C1125 630, 1240 675, 1348 735"/>
+  <path class="arrow-green" d="M1325 555 C1350 625, 1360 675, 1355 735"/>
+  <path class="arrow-dash" d="M880 800 L920 800"/>
+  <path class="arrow-dash" d="M1165 800 L1205 800"/>
+  <path class="arrow-dash" d="M595 800 L635 800"/>
+
+  <rect class="section" x="55" y="950" width="1490" height="105"/>
+  <text class="layer-label" x="80" y="982">运行时、存储与外部依赖</text>
+  <text class="layer-note" x="80" y="1004">配置快照、数据库 schema、审计日志和 token trace 为所有服务提供横切能力；外部依赖按懒加载和可选后端接入。</text>
+
+  <rect class="infra" x="95" y="1018" width="190" height="62"/>
+  <text class="box-title" x="118" y="1045">Config Runtime</text>
+  <text class="box-sub" x="118" y="1066">.run/config + env + profile</text>
+
+  <rect class="store" x="320" y="1018" width="190" height="62"/>
+  <text class="box-title" x="343" y="1045">PostgreSQL</text>
+  <text class="box-sub" x="343" y="1066">schema / warm memory</text>
+
+  <rect class="store" x="545" y="1018" width="190" height="62"/>
+  <text class="box-title" x="568" y="1045">Redis</text>
+  <text class="box-sub" x="568" y="1066">hot memory / events</text>
+
+  <rect class="store" x="770" y="1018" width="190" height="62"/>
+  <text class="box-title" x="793" y="1045">Vector Store</text>
+  <text class="box-sub" x="793" y="1066">Milvus / FAISS</text>
+
+  <rect class="external" x="995" y="1018" width="210" height="62"/>
+  <text class="box-title" x="1018" y="1045">OpenAI / DashScope</text>
+  <text class="box-sub" x="1018" y="1066">chat / embedding / rerank</text>
+
+  <rect class="infra" x="1240" y="1018" width="255" height="62"/>
+  <text class="box-title" x="1263" y="1045">Audit + Trace</text>
+  <text class="box-sub" x="1263" y="1066">JSONL audit / token estimate</text>
+
+  <path class="pipe" d="M190 1018 C190 930, 190 900, 190 865"/>
+  <path class="pipe" d="M415 1018 C415 940, 485 910, 650 865"/>
+  <path class="pipe" d="M640 1018 C645 930, 1040 910, 1325 865"/>
+  <path class="pipe" d="M865 1018 C855 940, 795 900, 758 865"/>
+  <path class="pipe" d="M1100 1018 C1088 940, 1055 900, 1042 865"/>
+  <path class="pipe" d="M1368 1018 C1325 930, 980 585, 220 535"/>
+
+  <rect x="75" y="912" width="1450" height="22" fill="#ffffff" opacity="0.5" rx="11"/>
+  <text class="small" x="95" y="927">主链路：gRPC Review / Chat / ReviewMultiAgent -> 服务层 -> Parser + Rule + RAG + Provider -> 结构化响应 / 流式事件 / 审计日志</text>
+
+  <g transform="translate(1270 140)">
+    <rect x="0" y="0" width="250" height="38" rx="19" fill="#1f2937" opacity="0.92"/>
+    <circle cx="24" cy="19" r="6" fill="#2d6cdf"/>
+    <text class="tag" x="42" y="23">蓝色：入口主调用</text>
+    <circle cx="142" cy="19" r="6" fill="#23856d"/>
+    <text class="tag" x="160" y="23">绿色：编排流</text>
+  </g>
+</svg>

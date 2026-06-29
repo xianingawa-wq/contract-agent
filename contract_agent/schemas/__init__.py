@@ -7,13 +7,6 @@ from contract_agent.schemas.chat import (
     ChatSearchResult,
     ChatTraceStep,
 )
-from contract_agent.schemas.document import (
-    ClauseChunk,
-    DocumentMetadata,
-    DocumentSpan,
-    ParsedDocument,
-    ParseResponse,
-)
 from contract_agent.schemas.knowledge import KnowledgeChunk
 from contract_agent.schemas.review import (
     ExtractedFields,
@@ -35,15 +28,10 @@ __all__ = [
     "ChatRole",
     "ChatSearchResult",
     "ChatTraceStep",
-    "ClauseChunk",
-    "DocumentMetadata",
-    "DocumentSpan",
     "ExtractedFields",
     "HealthResponse",
     "KnowledgeChunk",
     "KnowledgeReference",
-    "ParsedDocument",
-    "ParseResponse",
     "ReviewReport",
     "ReviewRequest",
     "ReviewResponse",

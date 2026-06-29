@@ -4,7 +4,13 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from contract_agent.logger.audit import AuditLogger, get_audit_logger
-from contract_agent.config import ModelRuntimeConfig, Settings, settings_snapshot
+from contract_agent.config import (
+    AppContext,
+    ModelRuntimeConfig,
+    ParserConfig,
+    Settings,
+    settings_snapshot,
+)
 from contract_agent.config import RetrievalConfig
 from contract_agent.schemas.review import (
     HealthResponse,
@@ -18,6 +24,7 @@ from contract_agent.trace.tokens import TokenTrace
 from contract_agent.services.classifier import ContractClassifier
 from contract_agent.services.extractor import ContractExtractor
 from contract_agent.services.rule_engine import RuleEngine
+from contract_agent.parser import ParsedDocument, normalize_review_input
 
 if TYPE_CHECKING:
     from contract_agent.knowledge.rag.retriever import ContractKnowledgeRetriever
@@ -29,10 +36,22 @@ class ReviewService:
         audit_logger: AuditLogger | None = None,
         runtime_settings: Settings | None = None,
         model_config: ModelRuntimeConfig | None = None,
+        parser_config: ParserConfig | None = None,
         parser: Any | None = None,
+        app_context: AppContext | None = None,
     ) -> None:
-        self.settings = runtime_settings or settings_snapshot()
-        self.model_config = model_config
+        self.app_context = app_context
+        self.settings = runtime_settings or (
+            app_context.settings if app_context is not None else settings_snapshot()
+        )
+        self.model_config = model_config or (
+            app_context.model_config if app_context is not None else None
+        )
+        self.parser_config = parser_config or (
+            app_context.parser_config
+            if app_context is not None
+            else ParserConfig.from_settings(self.settings)
+        )
         self.retrieval_config = RetrievalConfig.from_settings(self.settings)
         self.classifier = ContractClassifier()
         self.extractor = ContractExtractor()
@@ -63,10 +82,14 @@ class ReviewService:
             our_side=payload.our_side,
             text_length=len(payload.contract_text),
         ):
-            with self.audit_logger.span("review.parse", parser="text"):
-                document = self.parser.parse_text(payload.contract_text)
-            return self._review_document(
-                document=document, contract_type=payload.contract_type, our_side=payload.our_side
+            normalized = normalize_review_input(
+                contract_text=payload.contract_text,
+                contract_type=payload.contract_type,
+                our_side=payload.our_side,
+                parser=self.parser,
+            )
+            return self.review_document(
+                normalized.document, payload.contract_type, payload.our_side
             )
 
     def review_file(
@@ -80,25 +103,28 @@ class ReviewService:
             file_name=file_name,
             content_bytes=len(content),
         ):
-            with self.audit_logger.span("review.parse", parser="file", file_name=file_name):
-                document = self.parser.parse_bytes(file_name, content)
-            return self._review_document(
-                document=document, contract_type=contract_type, our_side=our_side
+            normalized = normalize_review_input(
+                file_name=file_name,
+                content=content,
+                contract_type=contract_type,
+                our_side=our_side,
+                parser=self.parser,
             )
+            return self.review_document(normalized.document, contract_type, our_side)
 
-    def parse_file(self, file_name: str, content: bytes):
+    def parse_file(self, file_name: str, content: bytes) -> ParsedDocument:
         return self.parser.parse_bytes(file_name, content)
 
     @property
     def parser(self):
         if self._parser is None:
-            from contract_agent.services.parser import ContractParser
+            from contract_agent.parser import ContractParser
 
-            self._parser = ContractParser()
+            self._parser = ContractParser(parser_config=self.parser_config)
         return self._parser
 
-    def _review_document(
-        self, document, contract_type: str | None, our_side: str
+    def review_document(
+        self, document: ParsedDocument, contract_type: str | None, our_side: str
     ) -> ReviewResponse:
         contract_text = document.raw_text
         with self.audit_logger.span("review.classify"):

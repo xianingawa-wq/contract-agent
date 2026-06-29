@@ -4,16 +4,36 @@ import json
 import threading
 import uuid
 from concurrent import futures
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 import grpc
 
 from contract_agent.logger.audit import AuditLogger, get_audit_logger
-from contract_agent.config import AppContext, Settings, configure_runtime, settings_snapshot
+from contract_agent.config import (
+    AppContext,
+    ParserConfig,
+    Settings,
+    configure_runtime,
+    settings_snapshot,
+)
+from contract_agent.parser import (
+    ContractParser,
+    DocumentLoadError,
+    DocumentParseError,
+    ParsedReviewInput,
+    ParserError,
+    ReviewInputError,
+    UnsupportedFileType,
+    normalize_review_input,
+    to_evidence_json,
+    to_llm_context,
+    to_rag_documents,
+)
 from contract_agent.schemas.chat import ChatRequest
 from contract_agent.schemas.review import ReviewRequest
 
 from contract_agent.orchestration.protocol import (
+    AgentOutput,
     AgentMode,
     PipelineState,
     PipelineStatus,
@@ -45,11 +65,17 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         )
         self.model_config = app_context.model_config if app_context is not None else None
         self.multiagent_config = app_context.multiagent_config if app_context is not None else None
+        self.parser_config = (
+            app_context.parser_config
+            if app_context is not None
+            else ParserConfig.from_settings(self.settings)
+        )
         self.base_audit_logger = audit_logger or get_audit_logger()
         self.audit_logger = self.base_audit_logger.with_prefix("[RPC]", scope="rpc")
         self.review_service: "ReviewService | None" = None
         self.chat_service: "ChatService | None" = None
         self.contract_editor: "ContractEditor | None" = None
+        self._parser: ContractParser | None = None
         self._embed_lock = threading.Lock()
 
     def _get_review_service(self) -> "ReviewService":
@@ -59,7 +85,9 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             self.review_service = ReviewService(
                 runtime_settings=self.settings,
                 model_config=self.model_config,
+                parser_config=self.parser_config,
                 audit_logger=self.base_audit_logger,
+                app_context=self.app_context,
             )
         return self.review_service
 
@@ -73,6 +101,71 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                 audit_logger=self.base_audit_logger,
             )
         return self.chat_service
+
+    def _normalize_review_request(self, request) -> ParsedReviewInput:
+        parser = self._get_parser()
+
+        if request.HasField("contract_text"):
+            return normalize_review_input(
+                contract_text=request.contract_text,
+                contract_type=request.contract_type or None,
+                our_side=request.our_side or "甲方",
+                parser=parser,
+            )
+        if request.HasField("file"):
+            return normalize_review_input(
+                file_name=request.file.file_name,
+                content=request.file.content,
+                source_kind="grpc_file",
+                contract_type=request.contract_type or None,
+                our_side=request.our_side or "甲方",
+                parser=parser,
+            )
+        raise ReviewInputError("review 请求缺少合同文本或文件。")
+
+    def _get_parser(self) -> ContractParser:
+        if self.review_service is not None and hasattr(self.review_service, "parser"):
+            return self.review_service.parser
+        if self._parser is None:
+            self._parser = ContractParser(parser_config=self.parser_config)
+        return self._parser
+
+    def _multiagent_initial_input(self, normalized: ParsedReviewInput) -> dict:
+        return {
+            "contract_text": normalized.contract_text,
+            "parsed_document_data": normalized.document.model_dump(mode="json"),
+            "document_metadata": normalized.document.metadata.model_dump(mode="json"),
+            "clause_chunks": [
+                chunk.model_dump(mode="json") for chunk in normalized.document.clause_chunks
+            ],
+            "document_blocks": [
+                block.model_dump(mode="json") for block in normalized.document.blocks
+            ],
+            "rag_documents": to_rag_documents(normalized.document),
+            "llm_context": to_llm_context(normalized.document),
+            "evidence_json": to_evidence_json(normalized.document),
+            "contract_type": normalized.contract_type,
+            "our_side": normalized.our_side or "甲方",
+        }
+
+    def _agent_with_runtime(self, agent_fn: Callable[[dict[str, Any]], AgentOutput]):
+        def run(ctx: dict[str, Any]) -> AgentOutput:
+            return agent_fn(
+                {
+                    **ctx,
+                    "runtime_settings": self.settings,
+                    "model_config": self.model_config,
+                }
+            )
+
+        return run
+
+    def _parser_error_code(self, exc: ParserError) -> int:
+        if isinstance(exc, (UnsupportedFileType, ReviewInputError, DocumentParseError)):
+            return 400
+        if isinstance(exc, DocumentLoadError):
+            return 400
+        return 500
 
     def Health(self, request, context):
         with self.audit_logger.trace("grpc.Health"):
@@ -95,6 +188,10 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                 return agent_pb2.JsonResponse(
                     code=200, json=json.dumps(payload, ensure_ascii=False)
                 )
+            except ParserError as exc:
+                code = self._parser_error_code(exc)
+                self._emit_rpc_error("ParseFile", code, exc)
+                return agent_pb2.JsonResponse(code=code, error=str(exc))
             except ValueError as exc:
                 self._emit_rpc_error("ParseFile", 400, exc)
                 return agent_pb2.JsonResponse(code=400, error=str(exc))
@@ -108,22 +205,27 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
     def Review(self, request, context):
         with self.audit_logger.trace("grpc.Review", contract_type=request.contract_type or None):
             try:
-                if request.HasField("contract_text"):
-                    result = self._get_review_service().review(
-                        ReviewRequest(
-                            contract_text=request.contract_text,
-                            contract_type=request.contract_type or None,
-                            our_side=request.our_side or "甲方",
-                        )
+                service = self._get_review_service()
+                normalized = self._normalize_review_request(request)
+                if hasattr(service, "review_document"):
+                    result = service.review_document(
+                        normalized.document,
+                        normalized.contract_type,
+                        normalized.our_side or "甲方",
                     )
                 else:
-                    result = self._get_review_service().review_file(
-                        file_name=request.file.file_name,
-                        content=request.file.content,
-                        contract_type=request.contract_type or None,
-                        our_side=request.our_side or "甲方",
+                    result = service.review(
+                        ReviewRequest(
+                            contract_text=normalized.contract_text,
+                            contract_type=normalized.contract_type,
+                            our_side=normalized.our_side or "甲方",
+                        )
                     )
                 return agent_pb2.JsonResponse(code=200, json=result.model_dump_json())
+            except ParserError as exc:
+                code = self._parser_error_code(exc)
+                self._emit_rpc_error("Review", code, exc)
+                return agent_pb2.JsonResponse(code=code, error=str(exc))
             except ValueError as exc:
                 self._emit_rpc_error("Review", 400, exc)
                 return agent_pb2.JsonResponse(code=400, error=str(exc))
@@ -227,49 +329,52 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         from contract_agent.orchestration.events import EventPublisher
 
         try:
+            normalized = self._normalize_review_request(request)
             config = self.multiagent_config
             if config is None:
                 from contract_agent.config import MultiAgentConfig
 
                 config = MultiAgentConfig()
             gateway = GatewayRouter(config)
-            memory = MemoryManager(config, runtime_settings=self.settings)
-            publisher = EventPublisher(config.redis_url)
-
-            contract_text = request.contract_text or ""
+            contract_text = normalized.contract_text
             clause_count = len(contract_text) // 100
+            contract_id = normalized.document.metadata.doc_id or contract_text[:64] or "unknown"
 
             mode = gateway._detect_mode(contract_text, clause_count)
 
             if mode == AgentMode.SINGLE:
-                from contract_agent.orchestration.single import SingleAgentHandler
-
                 state = PipelineState(
                     pipeline_id=str(uuid.uuid4()),
-                    contract_id=contract_text[:64] or "unknown",
+                    contract_id=contract_id,
                     mode=AgentMode.SINGLE,
                     team="review",
                     status=PipelineStatus.PENDING,
                 )
-                single = SingleAgentHandler(runtime_settings=self.settings)
-                state, result = single.run_review(
-                    state,
-                    contract_text=contract_text,
-                    contract_type=request.contract_type,
-                    our_side=request.our_side,
+                state.status = PipelineStatus.RUNNING
+                result = self._get_review_service().review_document(
+                    normalized.document,
+                    normalized.contract_type,
+                    normalized.our_side or "甲方",
                 )
-                return agent_pb2.JsonResponse(code=200, json=json.dumps(result, ensure_ascii=False))
+                state.status = PipelineStatus.COMPLETED
+                return agent_pb2.JsonResponse(
+                    code=200,
+                    json=json.dumps(
+                        {"review_result": result.model_dump(mode="json")},
+                        ensure_ascii=False,
+                    ),
+                )
 
             # Multi-agent path — ReAct Supervisor
+            memory = MemoryManager(config, runtime_settings=self.settings)
+            publisher = EventPublisher(config.redis_url)
             route_resp = gateway.route(
                 user_message="审查合同",
-                contract_id=contract_text[:64],
+                contract_id=contract_id,
                 explicit_mode=mode,
                 contract_clause_count=clause_count,
             )
-            state = gateway.create_pipeline_state(
-                route_resp, contract_id=contract_text[:64] or "unknown"
-            )
+            state = gateway.create_pipeline_state(route_resp, contract_id=contract_id)
 
             from contract_agent.orchestration.supervisor import SupervisorAgent
 
@@ -286,15 +391,9 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                 ("legal_ref", legal_ref_agent),
                 ("redrafter", redrafter_agent),
             ]:
-                supervisor.register_agent(agent_id, agent_fn)
+                supervisor.register_agent(agent_id, self._agent_with_runtime(agent_fn))
 
-            initial_input = {
-                "contract_text": contract_text,
-                "contract_type": request.contract_type or None,
-                "our_side": request.our_side or "甲方",
-                "runtime_settings": self.settings,
-                "model_config": self.model_config,
-            }
+            initial_input = self._multiagent_initial_input(normalized)
 
             state = supervisor.run(state, initial_input, on_event=publisher.publish)
 
@@ -342,6 +441,8 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                     ensure_ascii=False,
                 ),
             )
+        except ParserError as exc:
+            return agent_pb2.JsonResponse(code=self._parser_error_code(exc), error=str(exc))
         except ValueError as exc:
             return agent_pb2.JsonResponse(code=400, error=str(exc))
         except RuntimeError as exc:
@@ -364,6 +465,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
         )
 
         try:
+            normalized = self._normalize_review_request(request)
             config = self.multiagent_config
             if config is None:
                 from contract_agent.config import MultiAgentConfig
@@ -384,33 +486,36 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                 ("legal_ref", legal_ref_agent),
                 ("redrafter", redrafter_agent),
             ]:
-                supervisor.register_agent(agent_id, agent_fn)
+                supervisor.register_agent(agent_id, self._agent_with_runtime(agent_fn))
 
-            contract_text = request.contract_text or ""
+            contract_text = normalized.contract_text
             clause_count = len(contract_text) // 100
             mode = gateway._detect_mode(contract_text, clause_count)
+            contract_id = normalized.document.metadata.doc_id or contract_text[:64] or "unknown"
 
             if mode == AgentMode.SINGLE:
-                from contract_agent.orchestration.single import SingleAgentHandler
-
                 state = PipelineState(
                     pipeline_id=str(uuid.uuid4()),
-                    contract_id=contract_text[:64] or "unknown",
+                    contract_id=contract_id,
                     mode=AgentMode.SINGLE,
                     team="review",
                     status=PipelineStatus.PENDING,
                 )
-                single = SingleAgentHandler(runtime_settings=self.settings)
-                state, result = single.run_review(
-                    state,
-                    contract_text=contract_text,
-                    contract_type=request.contract_type,
-                    our_side=request.our_side,
+                state.status = PipelineStatus.RUNNING
+                result = self._get_review_service().review_document(
+                    normalized.document,
+                    normalized.contract_type,
+                    normalized.our_side or "甲方",
                 )
+                state.status = PipelineStatus.COMPLETED
                 yield agent_pb2.ChatStreamResponse(
                     event="pipeline_completed",
                     data_json=json.dumps(
-                        {"pipeline_id": state.pipeline_id, "mode": "single", "result": result},
+                        {
+                            "pipeline_id": state.pipeline_id,
+                            "mode": "single",
+                            "result": {"review_result": result.model_dump(mode="json")},
+                        },
                         ensure_ascii=False,
                     ),
                 )
@@ -418,21 +523,13 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
 
             route_resp = gateway.route(
                 user_message="审查合同",
-                contract_id=contract_text[:64],
+                contract_id=contract_id,
                 explicit_mode=mode,
                 contract_clause_count=clause_count,
             )
-            state = gateway.create_pipeline_state(
-                route_resp, contract_id=contract_text[:64] or "unknown"
-            )
+            state = gateway.create_pipeline_state(route_resp, contract_id=contract_id)
 
-            initial_input = {
-                "contract_text": contract_text,
-                "contract_type": request.contract_type or None,
-                "our_side": request.our_side or "甲方",
-                "runtime_settings": self.settings,
-                "model_config": self.model_config,
-            }
+            initial_input = self._multiagent_initial_input(normalized)
 
             # Emit pipeline_started immediately so frontend knows we're live
             yield agent_pb2.ChatStreamResponse(

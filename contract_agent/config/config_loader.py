@@ -77,8 +77,14 @@ def configure_runtime(
     config_path: Path | str | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> AppContext:
-    app_config = config or load_app_config(config_path, environ=environ)
+    if config is not None:
+        app_config = config
+        if environ is not None:
+            app_config = _apply_environment_overlay(app_config, environ)
+    else:
+        app_config = load_app_config(config_path, environ=environ)
     runtime_settings = app_config.to_settings()
+    parser_config = app_config.to_parser_config()
     update_settings(settings_to_dict(runtime_settings))
     logger.handle(
         Info(
@@ -95,6 +101,7 @@ def configure_runtime(
         model_config=app_config.to_model_runtime_config(),
         retrieval_config=app_config.to_retrieval_config(),
         multiagent_config=app_config.to_multiagent_config(),
+        parser_config=parser_config,
     )
 
 
@@ -125,8 +132,17 @@ def _apply_environment_overlay(
         path: tuple[str, ...],
         value: object,
         *names: str,
+        allow_empty: bool = False,
     ) -> None:
-        _copy_if_present(source_environ, target_data, path, value, *names, applied=applied)
+        _copy_if_present(
+            source_environ,
+            target_data,
+            path,
+            value,
+            *names,
+            applied=applied,
+            allow_empty=allow_empty,
+        )
 
     copy(
         environ,
@@ -309,6 +325,211 @@ def _apply_environment_overlay(
     copy(
         environ, data, ("limits", "stream_max_chars"), settings.stream_max_chars, "STREAM_MAX_CHARS"
     )
+    copy(
+        environ,
+        data,
+        ("parser", "default_converter"),
+        settings.parser_default_converter,
+        "PARSER_DEFAULT_CONVERTER",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "enabled_converters"),
+        settings.parser_enabled_converters,
+        "PARSER_ENABLED_CONVERTERS",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "fallback_order"),
+        settings.parser_fallback_order,
+        "PARSER_FALLBACK_ORDER",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "allow_converter_fallback"),
+        settings.parser_allow_converter_fallback,
+        "PARSER_ALLOW_CONVERTER_FALLBACK",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "strict_converter_availability"),
+        settings.parser_strict_converter_availability,
+        "PARSER_STRICT_CONVERTER_AVAILABILITY",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "allowed_suffixes"),
+        settings.parser_allowed_suffixes,
+        "PARSER_ALLOWED_SUFFIXES",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "allow_path_input"),
+        settings.parser_allow_path_input,
+        "PARSER_ALLOW_PATH_INPUT",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "allow_url_input"),
+        settings.parser_allow_url_input,
+        "PARSER_ALLOW_URL_INPUT",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "trusted_path_roots"),
+        settings.parser_trusted_path_roots,
+        "PARSER_TRUSTED_PATH_ROOTS",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "max_input_bytes"),
+        settings.parser_max_input_bytes,
+        "PARSER_MAX_INPUT_BYTES",
+        allow_empty=True,
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "preserve_raw_text"),
+        settings.parser_preserve_raw_text,
+        "PARSER_PRESERVE_RAW_TEXT",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "detectors", "enabled"),
+        settings.parser_enabled_detectors,
+        "PARSER_ENABLED_DETECTORS",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "detectors", "profile"),
+        settings.parser_detector_profile,
+        "PARSER_DETECTOR_PROFILE",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "detectors", "rules_path"),
+        settings.parser_detector_rules_path,
+        "PARSER_DETECTOR_RULES_PATH",
+        allow_empty=True,
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "detectors", "min_confidence"),
+        settings.parser_min_detector_confidence,
+        "PARSER_MIN_DETECTOR_CONFIDENCE",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "detectors", "store_reasons"),
+        settings.parser_store_detector_reasons,
+        "PARSER_STORE_DETECTOR_REASONS",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "chunking", "max_chars"),
+        settings.parser_chunk_max_chars,
+        "PARSER_CHUNK_MAX_CHARS",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "chunking", "target_chars"),
+        settings.parser_chunk_target_chars,
+        "PARSER_CHUNK_TARGET_CHARS",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "chunking", "min_header_confidence"),
+        settings.parser_min_header_confidence,
+        "PARSER_MIN_HEADER_CONFIDENCE",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "markitdown", "enabled"),
+        settings.parser_markitdown_enabled,
+        "PARSER_MARKITDOWN_ENABLED",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "enabled"),
+        settings.parser_docling_enabled,
+        "PARSER_DOCLING_ENABLED",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "enable_ocr"),
+        settings.parser_docling_enable_ocr,
+        "PARSER_DOCLING_ENABLE_OCR",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "ocr_lang"),
+        settings.parser_docling_ocr_lang,
+        "PARSER_DOCLING_OCR_LANG",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "force_full_page_ocr"),
+        settings.parser_docling_force_full_page_ocr,
+        "PARSER_DOCLING_FORCE_FULL_PAGE_OCR",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "bitmap_area_threshold"),
+        settings.parser_docling_bitmap_area_threshold,
+        "PARSER_DOCLING_BITMAP_AREA_THRESHOLD",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "text_score"),
+        settings.parser_docling_text_score,
+        "PARSER_DOCLING_TEXT_SCORE",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "do_table_structure"),
+        settings.parser_docling_do_table_structure,
+        "PARSER_DOCLING_DO_TABLE_STRUCTURE",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "compact_tables"),
+        settings.parser_docling_compact_tables,
+        "PARSER_DOCLING_COMPACT_TABLES",
+    )
+    copy(
+        environ,
+        data,
+        ("parser", "docling", "enable_remote_services"),
+        settings.parser_docling_enable_remote_services,
+        "PARSER_DOCLING_ENABLE_REMOTE_SERVICES",
+    )
     copy(environ, data, ("multiagent", "redis_url"), environ.get("REDIS_URL"), "REDIS_URL")
     copy(environ, data, ("grpc", "port"), _int(environ.get("AGENT_GRPC_PORT")), "AGENT_GRPC_PORT")
     return AppConfig.model_validate(data)
@@ -341,8 +562,13 @@ def _copy_if_present(
     value: object,
     *names: str,
     applied: list[str] | None = None,
+    allow_empty: bool = False,
 ) -> None:
-    if not any(name in environ and environ[name] != "" for name in names):
+    if allow_empty:
+        present = any(name in environ for name in names)
+    else:
+        present = any(name in environ and environ[name] != "" for name in names)
+    if not present:
         return
     target = data
     for key in path[:-1]:
