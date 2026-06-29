@@ -314,10 +314,13 @@ class ParserBackendImplTests(unittest.TestCase):
                 '<p>ok</p><script>alert("x")</script>'
                 '<img src="x" onerror="bad">'
                 '<a href="javascript:alert(1)">bad</a>'
-                '<svg><a xlink:href="javascript:alert(2)">bad</a></svg>'
+                '<a href="jav&#x61;script:alert(2)">encoded</a>'
+                '<svg><a href="https://safe.example">bad</a></svg>'
+                '<math><mi onclick="bad">x</mi></math>'
                 '<iframe src="https://evil.example"></iframe>'
                 '<object data="https://evil.example"></object>'
                 '<embed src="https://evil.example">'
+                '<p>safe <a href="https://example.com" title="ok">link</a></p>'
             )
 
         def fake_convert_to_html(stream: BytesIO) -> FakeMammothResult:
@@ -329,7 +332,11 @@ class ParserBackendImplTests(unittest.TestCase):
         with patch.dict(sys.modules, {"mammoth": module}):
             html = builtin_converter._docx_to_html(b"fake")  # noqa: SLF001
 
-        self.assertEqual(html, '<p>ok</p><img src="x"><a>bad</a><svg><a>bad</a></svg>')
+        self.assertEqual(
+            html,
+            '<p>ok</p><img src="x"><a>bad</a><a>encoded</a>'
+            '<p>safe <a href="https://example.com" title="ok">link</a></p>',
+        )
 
 
 def _run_docling_fake(document_converter_cls: type) -> object:

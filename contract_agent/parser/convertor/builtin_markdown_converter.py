@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from html import escape
+from html.parser import HTMLParser
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from contract_agent.parser.exception import DocumentLoadError, DocumentParseError
 
@@ -218,36 +221,122 @@ def _docx_to_html(content: bytes) -> str:
 
 
 def _sanitize_html(html: str) -> str:
-    without_scripts = re.sub(
-        r"<script\b[^>]*>.*?</script\s*>",
-        "",
-        html,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    without_active_elements = re.sub(
-        r"<(?:iframe|object|embed)\b[^>]*>.*?</(?:iframe|object|embed)\s*>",
-        "",
-        without_scripts,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    without_active_elements = re.sub(
-        r"<(?:iframe|object|embed)\b[^>]*/?>",
-        "",
-        without_active_elements,
-        flags=re.IGNORECASE,
-    )
-    without_event_handlers = re.sub(
-        r"\s+on[a-zA-Z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)",
-        "",
-        without_active_elements,
-        flags=re.IGNORECASE,
-    )
-    return re.sub(
-        r"\s+(?:href|src|xlink:href)\s*=\s*(\"\s*javascript:[^\"]*\"|'\s*javascript:[^']*'|javascript:[^\s>]+)",
-        "",
-        without_event_handlers,
-        flags=re.IGNORECASE,
-    ).strip()
+    sanitizer = _HtmlAllowlistSanitizer()
+    sanitizer.feed(html)
+    sanitizer.close()
+    return sanitizer.output.strip()
+
+
+_ALLOWED_HTML_TAGS = {
+    "a",
+    "b",
+    "blockquote",
+    "br",
+    "code",
+    "em",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "img",
+    "li",
+    "ol",
+    "p",
+    "pre",
+    "s",
+    "span",
+    "strong",
+    "table",
+    "tbody",
+    "td",
+    "th",
+    "thead",
+    "tr",
+    "u",
+    "ul",
+}
+_VOID_HTML_TAGS = {"br", "hr", "img"}
+_DROP_HTML_CONTENT_TAGS = {"embed", "iframe", "math", "object", "script", "style", "svg"}
+_DROP_SELF_CONTAINED_HTML_TAGS = {"embed"}
+_GLOBAL_HTML_ATTRS = {"title"}
+_ALLOWED_HTML_ATTRS = {
+    "a": {"href", "title"},
+    "img": {"alt", "src", "title"},
+    "ol": {"start"},
+    "td": {"colspan", "rowspan"},
+    "th": {"colspan", "rowspan"},
+}
+_URL_HTML_ATTRS = {"href", "src"}
+_ALLOWED_URL_SCHEMES = {"http", "https", "mailto"}
+
+
+class _HtmlAllowlistSanitizer(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._drop_depth = 0
+
+    @property
+    def output(self) -> str:
+        return "".join(self.parts)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag_name = tag.lower()
+        if self._drop_depth:
+            if tag_name in _DROP_HTML_CONTENT_TAGS:
+                self._drop_depth += 1
+            return
+        if tag_name in _DROP_HTML_CONTENT_TAGS:
+            if tag_name not in _DROP_SELF_CONTAINED_HTML_TAGS:
+                self._drop_depth = 1
+            return
+        if tag_name not in _ALLOWED_HTML_TAGS:
+            return
+        rendered_attrs = self._render_attrs(tag_name, attrs)
+        self.parts.append(f"<{tag_name}{rendered_attrs}>")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag_name = tag.lower()
+        if tag_name in _DROP_HTML_CONTENT_TAGS or self._drop_depth:
+            return
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag_name = tag.lower()
+        if self._drop_depth:
+            if tag_name in _DROP_HTML_CONTENT_TAGS:
+                self._drop_depth -= 1
+            return
+        if tag_name in _ALLOWED_HTML_TAGS and tag_name not in _VOID_HTML_TAGS:
+            self.parts.append(f"</{tag_name}>")
+
+    def handle_data(self, data: str) -> None:
+        if not self._drop_depth:
+            self.parts.append(escape(data, quote=False))
+
+    def _render_attrs(self, tag_name: str, attrs: list[tuple[str, str | None]]) -> str:
+        allowed = _GLOBAL_HTML_ATTRS | _ALLOWED_HTML_ATTRS.get(tag_name, set())
+        rendered: list[str] = []
+        for raw_name, raw_value in attrs:
+            attr_name = raw_name.lower()
+            if attr_name not in allowed or raw_value is None:
+                continue
+            if attr_name in _URL_HTML_ATTRS and not _is_safe_html_url(raw_value):
+                continue
+            rendered.append(f'{attr_name}="{escape(raw_value.strip(), quote=True)}"')
+        return f" {' '.join(rendered)}" if rendered else ""
+
+
+def _is_safe_html_url(value: str) -> bool:
+    compact = re.sub(r"[\x00-\x20]+", "", value).strip()
+    if compact.startswith("//"):
+        return False
+    scheme = urlsplit(compact).scheme.lower()
+    return not scheme or scheme in _ALLOWED_URL_SCHEMES
 
 
 def _ensure_parseable(markdown: str) -> None:
