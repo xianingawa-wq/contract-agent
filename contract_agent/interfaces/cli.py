@@ -100,14 +100,18 @@ def _review_command(
 
     service = ReviewService(app_context=app_context)
     try:
+        max_input_bytes = app_context.parser_config.max_input_bytes
+        if max_input_bytes is not None and path.stat().st_size > max_input_bytes:
+            stderr.write(f"文件大小超过限制：{max_input_bytes} bytes\n")
+            return 2
         response = service.review_file(
             path.name,
             path.read_bytes(),
             contract_type=args.contract_type,
             our_side=args.our_side,
         )
-    except Exception as exc:
-        stderr.write(f"审查失败：{exc}\n")
+    except Exception:
+        stderr.write("审查失败：服务暂不可用，请检查模型和知识库配置。\n")
         return 1
 
     if args.format == "json":
@@ -131,6 +135,11 @@ def _render_service_review_markdown(response: ReviewResponse) -> str:
         response.report.overview,
         "",
     ]
+
+    if response.report.key_findings:
+        lines.extend(["## 关键发现", ""])
+        lines.extend(f"- {finding}" for finding in response.report.key_findings)
+        lines.append("")
 
     extracted_fields = response.extracted_fields.model_dump(exclude_none=True)
     if extracted_fields:

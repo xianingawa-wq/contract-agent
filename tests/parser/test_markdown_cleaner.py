@@ -30,7 +30,21 @@ class MarkdownCleanerTests(unittest.TestCase):
                 file_type="pdf",
                 source_path="contract.pdf",
                 backend_name="docling",
-                conversion_metadata={"parser_backend": "docling"},
+                conversion_metadata={
+                    "parser_backend": "docling",
+                    "docling_tables": [
+                        {
+                            "index": 0,
+                            "page": 1,
+                            "bbox": {"top": 0.72, "bottom": 0.95},
+                        },
+                        {
+                            "index": 1,
+                            "page": 2,
+                            "bbox": {"top": 0.04, "bottom": 0.18},
+                        },
+                    ],
+                },
             )
         )
 
@@ -67,7 +81,21 @@ class MarkdownCleanerTests(unittest.TestCase):
                 file_type="pdf",
                 source_path="contract.pdf",
                 backend_name="docling",
-                conversion_metadata={"parser_backend": "docling"},
+                conversion_metadata={
+                    "parser_backend": "docling",
+                    "docling_tables": [
+                        {
+                            "index": 0,
+                            "page": 1,
+                            "bbox": {"top": 0.72, "bottom": 0.95},
+                        },
+                        {
+                            "index": 1,
+                            "page": 2,
+                            "bbox": {"top": 0.04, "bottom": 0.18},
+                        },
+                    ],
+                },
             )
         )
 
@@ -104,7 +132,21 @@ class MarkdownCleanerTests(unittest.TestCase):
                 file_type="pdf",
                 source_path="contract.pdf",
                 backend_name="docling",
-                conversion_metadata={"parser_backend": "docling"},
+                conversion_metadata={
+                    "parser_backend": "docling",
+                    "docling_tables": [
+                        {
+                            "index": 0,
+                            "page": 1,
+                            "bbox": {"top": 0.72, "bottom": 0.95},
+                        },
+                        {
+                            "index": 1,
+                            "page": 2,
+                            "bbox": {"top": 0.04, "bottom": 0.18},
+                        },
+                    ],
+                },
             )
         )
 
@@ -118,6 +160,51 @@ class MarkdownCleanerTests(unittest.TestCase):
         )
         self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 1)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 2)
+
+    def test_parse_markdown_keeps_escaped_pipe_inside_table_cell(self):
+        markdown = "\n".join(
+            [
+                "# Pricing",
+                "",
+                "| item | expression | note |",
+                "| --- | --- | --- |",
+                "| rent | A\\|B | plain |",
+                "",
+                "OCRNOISE",
+                "",
+                "|  | C\\|D | tail |",
+                "| --- | --- | --- |",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={
+                    "parser_backend": "docling",
+                    "docling_tables": [
+                        {
+                            "index": 0,
+                            "page": 1,
+                            "bbox": {"top": 0.72, "bottom": 0.95},
+                        },
+                        {
+                            "index": 1,
+                            "page": 2,
+                            "bbox": {"top": 0.04, "bottom": 0.18},
+                        },
+                    ],
+                },
+            )
+        )
+
+        self.assertEqual(len(document.tables), 1)
+        self.assertIn(["rent", "A|B", "plain"], document.tables[0].rows)
+        self.assertIn(["", "C|D", "tail"], document.tables[0].rows)
 
     def test_parse_markdown_keeps_body_text_between_tables(self):
         markdown = "\n".join(
@@ -180,6 +267,38 @@ class MarkdownCleanerTests(unittest.TestCase):
 
         self.assertEqual(len(document.tables), 2)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 0)
+
+    def test_parse_markdown_keeps_short_label_between_tables_without_layout_evidence(self):
+        markdown = "\n".join(
+            [
+                "# Payment plan",
+                "",
+                "| item | amount |",
+                "| --- | --- |",
+                "| rent | 1000 |",
+                "",
+                "ScheduleA",
+                "",
+                "| deposit | 2000 |",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertEqual(len(document.tables), 1)
+        self.assertIn("ScheduleA", document.raw_text)
+        self.assertIn("deposit | 2000", document.raw_text)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 0)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 0)
 
     def test_parse_markdown_merges_cross_page_tables_when_docling_bbox_is_continuous(self):
         markdown = "\n".join(
@@ -271,7 +390,10 @@ class MarkdownCleanerTests(unittest.TestCase):
 
         self.assertEqual(len(document.tables), 1)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 1)
-        self.assertTrue(any(row[0] == "墙体结构" for row in document.tables[0].rows))
+        self.assertIn(
+            ["墙体结构", "建筑主体正常", "建筑主体", "其他"],
+            document.tables[0].rows,
+        )
 
     def test_parse_markdown_removes_repeated_header_near_page_numbers_after_first(self):
         markdown = "\n".join(
@@ -314,11 +436,13 @@ class MarkdownCleanerTests(unittest.TestCase):
                 "第一页正文。",
                 "",
                 "1",
+                "---",
                 "",
                 "第二条 正文",
                 "第二页正文。",
                 "",
                 "2",
+                "---",
                 "",
                 "第三条 正文",
                 "第三页正文。",
@@ -343,7 +467,7 @@ class MarkdownCleanerTests(unittest.TestCase):
         self.assertNotIn("2", non_empty_lines)
         self.assertIn("第一页正文", document.raw_text)
         self.assertIn("第三页正文", document.raw_text)
-        self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 2)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 4)
 
     def test_parse_markdown_keeps_body_numbers_that_are_not_page_sequence(self):
         markdown = "\n".join(
@@ -377,6 +501,37 @@ class MarkdownCleanerTests(unittest.TestCase):
         self.assertIn("1000", non_empty_lines)
         self.assertIn("1", non_empty_lines)
         self.assertIn("本条继续说明", document.raw_text)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 0)
+
+    def test_parse_markdown_keeps_numeric_lines_without_page_boundary_context(self):
+        markdown = "\n".join(
+            [
+                "# Numbered sections",
+                "",
+                "1",
+                "Payment obligation",
+                "",
+                "2",
+                "Delivery obligation",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        non_empty_lines = [
+            line.strip() for line in document.markdown_content.splitlines() if line.strip()
+        ]
+        self.assertIn("1", non_empty_lines)
+        self.assertIn("2", non_empty_lines)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 0)
 
 

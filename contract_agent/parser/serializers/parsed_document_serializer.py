@@ -18,10 +18,12 @@ def to_markdown(document: ParsedDocument) -> str:
 
     lines: list[str] = []
     for block in document.blocks:
-        text = block.markdown or block.text.strip()
+        text = (block.markdown or block.text).strip()
         if not text:
             continue
-        if block.block_type == "title":
+        if block.markdown:
+            lines.append(text)
+        elif block.block_type == "title":
             lines.append(f"# {text}")
         elif block.block_type == "clause_header":
             level = min(max(block.level or 2, 2), 6)
@@ -61,12 +63,16 @@ def to_llm_context(document: ParsedDocument, *, max_chars: int | None = None) ->
 
     if max_chars is None:
         return "\n".join(lines)
+    if max_chars <= 0:
+        return ""
 
     selected: list[str] = []
     length = 0
     for line in lines:
         next_length = length + len(line) + (1 if selected else 0)
-        if selected and next_length > max_chars:
+        if next_length > max_chars:
+            if not selected:
+                return line[:max_chars]
             break
         selected.append(line)
         length = next_length

@@ -22,16 +22,31 @@ class ParserBackendImplTests(unittest.TestCase):
         class FakeBBox:
             coord_origin = "TOPLEFT"
 
-            def __init__(self, *, top: float, bottom: float) -> None:
-                self.l = 0
+            def __init__(
+                self,
+                *,
+                top: float,
+                bottom: float,
+                left: float = 0,
+                right: float = 100,
+            ) -> None:
+                self.l = left
                 self.t = top
-                self.r = 100
+                self.r = right
                 self.b = bottom
 
         class FakeProvenance:
-            def __init__(self, *, page_no: int, top: float, bottom: float) -> None:
+            def __init__(
+                self,
+                *,
+                page_no: int,
+                top: float,
+                bottom: float,
+                left: float = 0,
+                right: float = 100,
+            ) -> None:
                 self.page_no = page_no
-                self.bbox = FakeBBox(top=top, bottom=bottom)
+                self.bbox = FakeBBox(top=top, bottom=bottom, left=left, right=right)
 
         class FakePageSize:
             width = 100
@@ -41,14 +56,30 @@ class ParserBackendImplTests(unittest.TestCase):
             size = FakePageSize()
 
         class FakeTable:
-            def __init__(self, *, page_no: int, top: float, bottom: float) -> None:
-                self.prov = [FakeProvenance(page_no=page_no, top=top, bottom=bottom)]
+            def __init__(
+                self,
+                *,
+                page_no: int,
+                top: float,
+                bottom: float,
+                left: float = 0,
+                right: float = 100,
+            ) -> None:
+                self.prov = [
+                    FakeProvenance(
+                        page_no=page_no,
+                        top=top,
+                        bottom=bottom,
+                        left=left,
+                        right=right,
+                    )
+                ]
 
         class FakeDoclingDocument:
             pages = {1: FakePage(), 2: FakePage()}
             tables = [
                 FakeTable(page_no=1, top=80, bottom=96),
-                FakeTable(page_no=2, top=3, bottom=20),
+                FakeTable(page_no=2, top=3, bottom=20, left=90, right=10),
             ]
 
             def export_to_markdown(self, **kwargs: object) -> str:
@@ -94,7 +125,7 @@ class ParserBackendImplTests(unittest.TestCase):
                 {
                     "index": 1,
                     "page": 2,
-                    "bbox": {"left": 0.0, "top": 0.03, "right": 1.0, "bottom": 0.2},
+                    "bbox": {"left": 0.1, "top": 0.03, "right": 0.9, "bottom": 0.2},
                 },
             ],
         )
@@ -148,6 +179,35 @@ class ParserBackendImplTests(unittest.TestCase):
         with self.assertRaisesRegex(DocumentLoadError, "Docling"):
             _run_docling_fake(FakeDocumentConverter)
 
+    def test_docling_convertor_rejects_failure_even_with_long_markdown(self):
+        class FakeDoclingDocument:
+            pages = {}
+            tables = []
+
+            def export_to_markdown(self, **kwargs: object) -> str:
+                return "Long partial output. " * 20
+
+        class FakeError:
+            error_message = "conversion failed"
+
+        class FakeStatus:
+            value = "failure"
+
+        class FakeBackendResult:
+            document = FakeDoclingDocument()
+            status = FakeStatus()
+            errors = [FakeError()]
+
+        class FakeDocumentConverter:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+            def convert(self, source: str) -> FakeBackendResult:
+                return FakeBackendResult()
+
+        with self.assertRaisesRegex(DocumentLoadError, "Docling conversion failed"):
+            _run_docling_fake(FakeDocumentConverter)
+
     def test_markitdown_convertor_returns_exact_backend_markdown(self):
         calls: list[str] = []
         markdown = "# Project\n\n| Key | Value |\n| --- | --- |\n"
@@ -177,6 +237,25 @@ class ParserBackendImplTests(unittest.TestCase):
         self.assertEqual(calls, [str(path.resolve())])
         self.assertEqual(result.markdown_content, markdown)
         self.assertEqual(result.conversion_metadata["parser_backend"], "markitdown")
+
+    def test_markitdown_convertor_wraps_conversion_failures(self):
+        class FakeMarkItDown:
+            def convert(self, source: str) -> object:
+                raise RuntimeError("third-party failure")
+
+        module = types.ModuleType("markitdown")
+        module.MarkItDown = FakeMarkItDown
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "project.docx"
+            path.write_bytes(b"fake")
+            with patch.dict(sys.modules, {"markitdown": module}):
+                with patch("importlib.util.find_spec", return_value=_module_spec("markitdown")):
+                    with self.assertRaisesRegex(DocumentLoadError, "MarkItDown backend"):
+                        MarkitdownParserImpl().convert(
+                            ParserSource.from_path(path),
+                            ParserConfig(markitdown_enabled=True),
+                        )
 
 
 def _run_docling_fake(document_converter_cls: type) -> object:

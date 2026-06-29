@@ -23,9 +23,46 @@ from contract_agent.parser import (
     UnsupportedFileType,
     to_rag_documents,
 )
+from contract_agent.parser.markdown_document import MarkdownDocument
+from contract_agent.parser.parsed.markdown_metadata_builder import build_metadata
 
 
 class ContractParserServiceTests(unittest.TestCase):
+    def test_metadata_doc_id_uses_raw_text_and_page_count_is_at_least_one(self):
+        first = build_metadata(
+            file_name="same.txt",
+            source_path="same.txt",
+            file_type="txt",
+            raw_text="first body",
+            spans=[
+                DocumentSpan(
+                    span_id="s1",
+                    block_index=0,
+                    start_offset=0,
+                    end_offset=5,
+                    text="first",
+                )
+            ],
+        )
+        second = build_metadata(
+            file_name="same.txt",
+            source_path="same.txt",
+            file_type="txt",
+            raw_text="second body",
+            spans=[
+                DocumentSpan(
+                    span_id="s1",
+                    block_index=0,
+                    start_offset=0,
+                    end_offset=6,
+                    text="second",
+                )
+            ],
+        )
+
+        self.assertNotEqual(first.doc_id, second.doc_id)
+        self.assertEqual(first.page_count, 1)
+
     def test_parse_text_generates_metadata_spans_and_chunks_without_detectors(self):
         document = _builtin_parser().parse_text("第一条 付款\n甲方应支付价款。", "inline.txt")
 
@@ -184,6 +221,41 @@ class ContractParserServiceTests(unittest.TestCase):
         self.assertIn("| Merged all |  |", table_block.markdown or "")
         self.assertIn("|  |  |", table_block.markdown or "")
 
+    def test_parse_docx_rejects_unreasonable_grid_span(self):
+        class FakeGridSpan:
+            val = "101"
+
+        class FakeCellProperties:
+            gridSpan = FakeGridSpan()
+            vMerge = None
+
+        class FakeCellXml:
+            tcPr = FakeCellProperties()
+
+        class FakeRowXml:
+            tc_lst = [FakeCellXml()]
+
+        class FakeRow:
+            _tr = FakeRowXml()
+
+        class FakeTable:
+            rows = [FakeRow()]
+
+        from contract_agent.parser.convertor import builtin_markdown_converter as converter
+
+        with self.assertRaises(DocumentParseError):
+            converter._table_rows(FakeTable())
+
+    def test_parse_docx_keeps_markdown_when_optional_html_conversion_fails(self):
+        from contract_agent.parser.convertor import builtin_markdown_converter as converter
+
+        with patch.object(converter, "_parse_docx_bytes", return_value="Docx markdown"):
+            with patch.object(converter, "_docx_to_html", side_effect=RuntimeError("html failed")):
+                loaded = converter.load_bytes("contract.docx", b"fake")
+
+        self.assertEqual(loaded.markdown_content, "Docx markdown")
+        self.assertEqual(loaded.html_content, "")
+
     def test_semantic_graph_chunk_edges_do_not_grow_by_blocks_times_chunks(self):
         spans = []
         blocks = []
@@ -248,12 +320,44 @@ class ContractParserServiceTests(unittest.TestCase):
         derived_edges = [edge for edge in graph.edges if edge["type"] == "derived_from"]
         self.assertLessEqual(len(derived_edges), len(chunks))
 
+    def test_semantic_graph_definition_node_ids_are_unique_for_repeated_terms(self):
+        from contract_agent.parser import DocumentDefinition
+
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc-definitions",
+                file_name="definitions.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text="Definitions",
+            definitions=[
+                DocumentDefinition(term="Affiliate", definition="First meaning"),
+                DocumentDefinition(term="Affiliate", definition="Second meaning"),
+            ],
+        )
+
+        graph = ContractParser()._build_semantic_graph(document)
+
+        definition_ids = [node["id"] for node in graph.nodes if node.get("type") == "definition"]
+        self.assertEqual(definition_ids, ["definition:0:Affiliate", "definition:1:Affiliate"])
+        self.assertEqual(len(definition_ids), len(set(definition_ids)))
+
     def test_parse_path_delegates_to_bytes_loader(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "contract.txt"
             path.write_text("第一条 付款", encoding="utf-8")
 
-            document = _builtin_parser().parse_path(path)
+            parser = ContractParser(
+                parser_config=ParserConfig(
+                    default_converter="builtin",
+                    enabled_converters=["builtin"],
+                    fallback_order=["builtin"],
+                    allow_path_input=True,
+                    trusted_path_roots=[tmp],
+                )
+            )
+            document = parser.parse_path(path)
 
         self.assertEqual(document.metadata.file_name, "contract.txt")
         self.assertEqual(document.raw_text, "第一条 付款")
@@ -275,14 +379,15 @@ class ContractParserServiceTests(unittest.TestCase):
             def convert(self, source: str) -> FakeBackendResult:
                 return FakeBackendResult()
 
-        config = ParserConfig(
-            default_converter="docling",
-            enabled_converters=["docling"],
-            fallback_order=["docling"],
-            docling_enabled=True,
-        )
-
         with tempfile.TemporaryDirectory() as tmp:
+            config = ParserConfig(
+                default_converter="docling",
+                enabled_converters=["docling"],
+                fallback_order=["docling"],
+                docling_enabled=True,
+                allow_path_input=True,
+                trusted_path_roots=[tmp],
+            )
             path = Path(tmp) / "contract.pdf"
             path.write_bytes(b"fake")
             with (
@@ -332,14 +437,15 @@ class ContractParserServiceTests(unittest.TestCase):
             def convert(self, source: str) -> FakeBackendResult:
                 return FakeBackendResult()
 
-        config = ParserConfig(
-            default_converter="docling",
-            enabled_converters=["docling"],
-            fallback_order=["docling"],
-            docling_enabled=True,
-        )
-
         with tempfile.TemporaryDirectory() as tmp:
+            config = ParserConfig(
+                default_converter="docling",
+                enabled_converters=["docling"],
+                fallback_order=["docling"],
+                docling_enabled=True,
+                allow_path_input=True,
+                trusted_path_roots=[tmp],
+            )
             path = Path(tmp) / "contract.pdf"
             path.write_bytes(b"fake")
             with (
@@ -367,14 +473,15 @@ class ContractParserServiceTests(unittest.TestCase):
 
         module = types.ModuleType("markitdown")
         module.MarkItDown = FakeMarkItDown
-        config = ParserConfig(
-            default_converter="markitdown",
-            enabled_converters=["markitdown"],
-            fallback_order=["markitdown"],
-            markitdown_enabled=True,
-        )
-
         with tempfile.TemporaryDirectory() as tmp:
+            config = ParserConfig(
+                default_converter="markitdown",
+                enabled_converters=["markitdown"],
+                fallback_order=["markitdown"],
+                markitdown_enabled=True,
+                allow_path_input=True,
+                trusted_path_roots=[tmp],
+            )
             path = Path(tmp) / "legacy.doc"
             path.write_bytes(b"fake legacy doc")
             with (
@@ -397,6 +504,19 @@ class ContractParserServiceTests(unittest.TestCase):
         with self.assertRaises(DocumentLoadError):
             parser.parse_text("123456789")
 
+    def test_parse_markdown_obeys_max_input_bytes(self):
+        parser = ContractParser(parser_config=ParserConfig(max_input_bytes=8))
+        markdown_document = MarkdownDocument(
+            markdown_content="123456789",
+            file_name="inline.md",
+            file_type="md",
+            source_path="inline.md",
+            backend_name="test",
+        )
+
+        with self.assertRaises(DocumentLoadError):
+            parser.parse_markdown(markdown_document)
+
     def test_unsupported_suffix_raises_parser_exception(self):
         with self.assertRaises(UnsupportedFileType):
             _builtin_parser().parse_bytes("contract.xlsx", b"data")
@@ -408,10 +528,6 @@ class ContractParserServiceTests(unittest.TestCase):
             parser.parse_text("   \n  ")
         with self.assertRaises(DocumentLoadError):
             parser.parse_bytes("contract.txt", b"\xff\xfe\x00\xff")
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 def _module_spec(name: str) -> importlib.machinery.ModuleSpec:
@@ -487,3 +603,7 @@ def _fake_docling_modules(document_converter_cls: type):
             "docling.datamodel.pipeline_options": pipeline_options,
         },
     )
+
+
+if __name__ == "__main__":
+    unittest.main()

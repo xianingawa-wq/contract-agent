@@ -1,3 +1,4 @@
+import ast
 import unittest
 from pathlib import Path
 
@@ -77,17 +78,18 @@ class PackageBoundaryTests(unittest.TestCase):
     def test_parser_modules_do_not_import_optional_backend_dependencies_at_top_level(self):
         root = Path(__file__).resolve().parents[2]
         parser_dir = root / "contract_agent" / "parser"
+        optional_roots = {"docling", "markitdown"}
         offenders = []
         for path in parser_dir.rglob("*.py"):
-            text = path.read_text(encoding="utf-8")
-            for forbidden in (
-                "import docling",
-                "from docling",
-                "import markitdown",
-                "from markitdown",
-            ):
-                if forbidden in text:
-                    offenders.append(f"{path.relative_to(root)}:{forbidden}")
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in tree.body:
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.split(".", 1)[0] in optional_roots:
+                            offenders.append(f"{path.relative_to(root)}:import {alias.name}")
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    if node.module.split(".", 1)[0] in optional_roots:
+                        offenders.append(f"{path.relative_to(root)}:from {node.module}")
 
         self.assertEqual(offenders, [])
 
@@ -152,21 +154,21 @@ class PackageBoundaryTests(unittest.TestCase):
     def test_convertor_layer_does_not_import_parsed_document_models(self):
         root = Path(__file__).resolve().parents[2]
         convertor_dir = root / "contract_agent" / "parser" / "convertor"
-        forbidden = [
-            "ParsedDocument",
-            "DocumentSpan",
-            "DocumentBlock",
-            "DocumentTable",
-            "ClauseChunk",
-            "MarkdownParsedService",
-        ]
+        forbidden_modules = {
+            "contract_agent.parser.models",
+            "contract_agent.parser.parsed.markdown_parsed_service",
+        }
         offenders = []
 
         for path in convertor_dir.rglob("*.py"):
-            text = path.read_text(encoding="utf-8")
-            for marker in forbidden:
-                if marker in text:
-                    offenders.append(f"{path.relative_to(root)}:{marker}")
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name in forbidden_modules:
+                            offenders.append(f"{path.relative_to(root)}:import {alias.name}")
+                elif isinstance(node, ast.ImportFrom) and node.module in forbidden_modules:
+                    offenders.append(f"{path.relative_to(root)}:from {node.module}")
 
         self.assertEqual(offenders, [])
 

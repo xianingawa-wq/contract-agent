@@ -387,7 +387,6 @@ def _apply_environment_overlay(
         ("parser", "trusted_path_roots"),
         settings.parser_trusted_path_roots,
         "PARSER_TRUSTED_PATH_ROOTS",
-        allow_empty=True,
     )
     copy(
         environ,

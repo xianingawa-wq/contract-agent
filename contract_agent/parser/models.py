@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -21,11 +22,15 @@ class DocumentMetadata(BaseModel):
 
 class DocumentSpan(BaseModel):
     span_id: str
-    page_no: int | None = None
-    block_index: int
-    start_offset: int
-    end_offset: int
+    page_no: int | None = Field(default=None, ge=1)
+    block_index: int = Field(ge=0)
+    start_offset: int = Field(ge=0)
+    end_offset: int = Field(ge=0)
     text: str
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.end_offset < self.start_offset:
+            raise ValueError("end_offset must not be smaller than start_offset")
 
 
 class ClauseChunk(BaseModel):
@@ -34,22 +39,34 @@ class ClauseChunk(BaseModel):
     clause_no: str | None = None
     parent_clause_no: str | None = None
     section_title: str
-    page_no: int | None = None
-    start_offset: int
-    end_offset: int
+    page_no: int | None = Field(default=None, ge=1)
+    start_offset: int = Field(ge=0)
+    end_offset: int = Field(ge=0)
     source_text: str
     prev_chunk_id: str | None = None
     next_chunk_id: str | None = None
 
+    def model_post_init(self, __context: Any) -> None:
+        if self.end_offset < self.start_offset:
+            raise ValueError("end_offset must not be smaller than start_offset")
+
 
 class BlockLocation(BaseModel):
-    page_no: int | None = None
-    block_index: int
-    start_offset: int | None = None
-    end_offset: int | None = None
+    page_no: int | None = Field(default=None, ge=1)
+    block_index: int = Field(ge=0)
+    start_offset: int | None = Field(default=None, ge=0)
+    end_offset: int | None = Field(default=None, ge=0)
     span_ids: list[str] = Field(default_factory=list)
     bbox: dict[str, float] | None = None
     source_path: str | None = None
+
+    def model_post_init(self, __context: Any) -> None:
+        if (
+            self.start_offset is not None
+            and self.end_offset is not None
+            and self.end_offset < self.start_offset
+        ):
+            raise ValueError("end_offset must not be smaller than start_offset")
 
 
 class BlockConfidence(BaseModel):
@@ -87,6 +104,12 @@ class DocumentTable(BaseModel):
     rows: list[list[str]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("metadata")
+    @classmethod
+    def _metadata_must_be_json_safe(cls, value: dict[str, Any]) -> dict[str, Any]:
+        _ensure_json_safe(value)
+        return value
+
 
 class DocumentFigure(BaseModel):
     figure_id: str
@@ -94,6 +117,12 @@ class DocumentFigure(BaseModel):
     span_ids: list[str] = Field(default_factory=list)
     caption: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("metadata")
+    @classmethod
+    def _metadata_must_be_json_safe(cls, value: dict[str, Any]) -> dict[str, Any]:
+        _ensure_json_safe(value)
+        return value
 
 
 class DocumentDefinition(BaseModel):
@@ -114,6 +143,18 @@ class DocumentSemanticGraph(BaseModel):
     nodes: list[dict[str, Any]] = Field(default_factory=list)
     edges: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("nodes", "edges")
+    @classmethod
+    def _graph_items_must_be_json_safe(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        _ensure_json_safe(value)
+        return value
+
+    @field_validator("metadata")
+    @classmethod
+    def _metadata_must_be_json_safe(cls, value: dict[str, Any]) -> dict[str, Any]:
+        _ensure_json_safe(value)
+        return value
 
 
 class ParsedDocument(BaseModel):
@@ -146,7 +187,11 @@ class ParseResponse(BaseModel):
 
 
 def _ensure_json_safe(value: Any) -> None:
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, (str, int, bool)):
+        return
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("parser metadata fields must be JSON-compatible")
         return
     if isinstance(value, (bytes, bytearray, memoryview, Path)):
         raise ValueError("parser metadata fields must be JSON-compatible")

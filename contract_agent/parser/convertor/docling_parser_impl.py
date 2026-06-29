@@ -13,9 +13,6 @@ from contract_agent.parser.parser_backend_contract import ParserBackendSupport
 from contract_agent.parser.parser_source import ParserSource
 
 
-_DOCLING_LOW_QUALITY_MARKDOWN_CHARS = 100
-
-
 class DoclingParserImpl:
     name = "docling"
 
@@ -98,9 +95,11 @@ class DoclingParserImpl:
         markdown = str(export_to_markdown(compact_tables=config.docling_compact_tables))
         if not markdown.strip():
             raise DocumentLoadError("Docling 未返回可解析内容。")
-        if _is_low_quality_docling_output(markdown, status=status, errors=errors):
+        if status == "failure":
+            raise DocumentLoadError("Docling conversion failed: " + ("; ".join(errors) or status))
+        if status == "partial_success" and errors:
             raise DocumentLoadError(
-                "Docling returned low-quality partial output: " + "; ".join(errors)
+                "Docling conversion only partially succeeded: " + "; ".join(errors)
             )
         self.logger.handle(
             parser_log_event(
@@ -154,17 +153,6 @@ def _docling_error_messages(errors: object) -> list[str]:
         if message:
             messages.append(message)
     return messages
-
-
-def _is_low_quality_docling_output(
-    markdown: str,
-    *,
-    status: str,
-    errors: list[str],
-) -> bool:
-    if not errors and status not in {"failure", "partial_success"}:
-        return False
-    return len(markdown.strip()) < _DOCLING_LOW_QUALITY_MARKDOWN_CHARS
 
 
 def _export_html(document_obj: object) -> str:
@@ -252,9 +240,9 @@ def _normalize_bbox(
         top = top / height
         bottom = bottom / height
     return {
-        "left": _clamp_unit(left),
+        "left": _clamp_unit(min(left, right)),
         "top": _clamp_unit(min(top, bottom)),
-        "right": _clamp_unit(right),
+        "right": _clamp_unit(max(left, right)),
         "bottom": _clamp_unit(max(top, bottom)),
     }
 

@@ -1,4 +1,5 @@
 import json
+import math
 import unittest
 from pathlib import Path
 
@@ -7,10 +8,15 @@ from contract_agent.parser import (
     BlockLocation,
     ClauseChunk,
     DocumentBlock,
+    DocumentFigure,
     DocumentMetadata,
+    DocumentSemanticGraph,
     DocumentSpan,
+    DocumentTable,
     ParsedDocument,
 )
+from contract_agent.parser.markdown_document import MarkdownDocument
+from contract_agent.parser.parser_source import ParserSource
 
 
 def make_document() -> ParsedDocument:
@@ -20,30 +26,30 @@ def make_document() -> ParsedDocument:
             file_name="contract.txt",
             file_type="txt",
             source_path="inline",
-            title="采购合同",
+            title="Purchase Contract",
             page_count=1,
         ),
-        raw_text="第一条 付款\n合同正文",
+        raw_text="Section 1 Payment\nContract body",
         spans=[
             DocumentSpan(
                 span_id="p1-b0",
                 page_no=1,
                 block_index=0,
                 start_offset=0,
-                end_offset=5,
-                text="第一条 付款",
+                end_offset=17,
+                text="Section 1 Payment",
             )
         ],
         clause_chunks=[
             ClauseChunk(
                 chunk_id="chunk-1",
                 chunk_level="clause",
-                clause_no="第一条",
-                section_title="付款",
+                clause_no="1",
+                section_title="Payment",
                 page_no=1,
                 start_offset=0,
-                end_offset=5,
-                source_text="第一条 付款",
+                end_offset=17,
+                source_text="Section 1 Payment",
             )
         ],
     )
@@ -54,7 +60,7 @@ class ParserModelTests(unittest.TestCase):
         document = make_document()
 
         self.assertEqual(document.metadata.file_name, "contract.txt")
-        self.assertEqual(document.raw_text, "第一条 付款\n合同正文")
+        self.assertEqual(document.raw_text, "Section 1 Payment\nContract body")
         self.assertEqual(len(document.spans), 1)
         self.assertEqual(len(document.clause_chunks), 1)
         self.assertEqual(document.schema_version, "2.0")
@@ -72,7 +78,7 @@ class ParserModelTests(unittest.TestCase):
         block = DocumentBlock(
             block_id="p1-b0",
             block_type="paragraph",
-            text="正文",
+            text="body",
             location=BlockLocation(block_index=0),
         )
 
@@ -87,8 +93,8 @@ class ParserModelTests(unittest.TestCase):
 
         first.tables.append({"table_id": "t1", "rows": [["a"]]})
         first.figures.append({"figure_id": "f1"})
-        first.definitions.append({"term": "价款", "definition": "合同金额"})
-        first.references.append({"source_span_id": "p1-b0", "target": "第二条"})
+        first.definitions.append({"term": "price", "definition": "amount"})
+        first.references.append({"source_span_id": "p1-b0", "target": "section 2"})
 
         self.assertEqual(second.tables, [])
         self.assertEqual(second.figures, [])
@@ -99,7 +105,7 @@ class ParserModelTests(unittest.TestCase):
             DocumentBlock(
                 block_id="p1-b0",
                 block_type="paragraph",
-                text="正文",
+                text="body",
                 location=BlockLocation(block_index=0),
             )
         )
@@ -116,16 +122,18 @@ class ParserModelTests(unittest.TestCase):
         self.assertEqual(restored, document)
 
     def test_json_fields_reject_non_json_safe_values(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as exc:
             DocumentBlock(
                 block_id="p1-b0",
                 block_type="paragraph",
-                text="正文",
+                text="body",
                 location=BlockLocation(block_index=0),
                 metadata={"raw": b"bytes"},
             )
+        self.assertIn("metadata", str(exc.exception))
+        self.assertIn("JSON-compatible", str(exc.exception))
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as exc:
             ParsedDocument(
                 metadata=DocumentMetadata(
                     doc_id="doc-1",
@@ -133,9 +141,119 @@ class ParserModelTests(unittest.TestCase):
                     file_type="txt",
                     source_path="inline",
                 ),
-                raw_text="正文",
+                raw_text="body",
                 conversion_metadata={"path": Path("contract.txt")},
             )
+        self.assertIn("conversion_metadata", str(exc.exception))
+        self.assertIn("JSON-compatible", str(exc.exception))
+
+    def test_json_fields_reject_non_finite_floats_and_extension_metadata(self):
+        cases = [
+            lambda: DocumentBlock(
+                block_id="p1-b0",
+                block_type="paragraph",
+                text="body",
+                location=BlockLocation(block_index=0),
+                metadata={"score": math.nan},
+            ),
+            lambda: DocumentTable(table_id="t1", metadata={"score": math.inf}),
+            lambda: DocumentFigure(figure_id="f1", metadata={"raw": b"bytes"}),
+            lambda: DocumentSemanticGraph(nodes=[{"raw": b"bytes"}]),
+            lambda: DocumentSemanticGraph(edges=[{"score": math.inf}]),
+            lambda: DocumentSemanticGraph(metadata={"path": Path("contract.txt")}),
+            lambda: MarkdownDocument(
+                markdown_content="body",
+                file_name="contract.txt",
+                file_type="txt",
+                source_path="inline",
+                backend_name="test",
+                conversion_metadata={"score": math.nan},
+            ),
+        ]
+        for build in cases:
+            with self.subTest(build=build):
+                with self.assertRaises(ValueError):
+                    build()
+
+    def test_location_offsets_and_page_indexes_are_validated(self):
+        with self.assertRaises(ValueError):
+            DocumentSpan(
+                span_id="bad",
+                page_no=0,
+                block_index=0,
+                start_offset=0,
+                end_offset=1,
+                text="x",
+            )
+        with self.assertRaises(ValueError):
+            DocumentSpan(
+                span_id="bad",
+                page_no=1,
+                block_index=-1,
+                start_offset=0,
+                end_offset=1,
+                text="x",
+            )
+        with self.assertRaises(ValueError):
+            DocumentSpan(
+                span_id="bad",
+                page_no=1,
+                block_index=0,
+                start_offset=5,
+                end_offset=4,
+                text="x",
+            )
+        with self.assertRaises(ValueError):
+            ClauseChunk(
+                chunk_id="bad",
+                chunk_level="paragraph",
+                section_title="bad",
+                page_no=1,
+                start_offset=5,
+                end_offset=4,
+                source_text="x",
+            )
+        with self.assertRaises(ValueError):
+            BlockLocation(block_index=0, start_offset=5, end_offset=4)
+
+    def test_parser_source_kind_must_match_payload(self):
+        invalid_sources = [
+            lambda: ParserSource(
+                kind="text",
+                file_name="contract.txt",
+                content=b"body",
+                source_path="contract.txt",
+                file_type="txt",
+            ),
+            lambda: ParserSource(
+                kind="bytes",
+                file_name="contract.txt",
+                text="body",
+                source_path="contract.txt",
+                file_type="txt",
+            ),
+            lambda: ParserSource(
+                kind="path",
+                file_name="contract.txt",
+                text="body",
+                source_path="contract.txt",
+                file_type="txt",
+            ),
+        ]
+
+        for build in invalid_sources:
+            with self.subTest(build=build):
+                with self.assertRaises(ValueError):
+                    build()
+
+    def test_parser_source_from_path_keeps_absolute_local_path_but_safe_source_path(self):
+        path = Path("fixtures") / "contract.txt"
+
+        source = ParserSource.from_path(path)
+
+        self.assertTrue(source.local_path.is_absolute())
+        self.assertEqual(source.file_name, "contract.txt")
+        self.assertEqual(source.source_path, "contract.txt")
 
 
 if __name__ == "__main__":

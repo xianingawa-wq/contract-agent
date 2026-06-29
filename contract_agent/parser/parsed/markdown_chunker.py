@@ -18,6 +18,13 @@ class _ChunkSource:
     source_text: str
 
 
+@dataclass(frozen=True)
+class _TextPart:
+    text: str
+    start: int
+    end: int
+
+
 class ContractChunker:
     def __init__(self, parser_config: ParserConfig | None = None) -> None:
         self.parser_config = parser_config or ParserConfig()
@@ -94,32 +101,53 @@ class ContractChunker:
                         parent_clause_no=chunk.parent_clause_no or chunk.clause_no,
                         section_title=chunk.section_title,
                         page_no=chunk.page_no,
-                        start_offset=chunk.start_offset,
-                        end_offset=chunk.end_offset,
-                        source_text=part,
+                        start_offset=chunk.start_offset + part.start,
+                        end_offset=chunk.start_offset + part.end,
+                        source_text=part.text,
                     )
                 )
 
         self._link_neighbors(refined)
         return refined
 
-    def _split_by_sentences(self, text: str, max_chars: int) -> list[str]:
-        sentences = re.split(r"(?<=[。；;.!?])", text)
-        parts: list[str] = []
-        current = ""
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
+    def _split_by_sentences(self, text: str, max_chars: int) -> list[_TextPart]:
+        sentence_matches = re.finditer(r".*?(?:[。；;.!?]|$)", text, flags=re.S)
+        parts: list[_TextPart] = []
+        current_text = ""
+        current_start: int | None = None
+        current_end = 0
+        for match in sentence_matches:
+            sentence = match.group(0)
+            if not sentence or not sentence.strip():
                 continue
-            if len(current) + len(sentence) <= max_chars:
-                current += sentence
-            else:
-                if current:
-                    parts.append(current)
-                current = sentence
-        if current:
-            parts.append(current)
-        return parts or [text]
+
+            sentence_start = match.start()
+            sentence_end = match.end()
+            if len(sentence) > max_chars:
+                if current_text and current_start is not None:
+                    parts.append(_TextPart(current_text, current_start, current_end))
+                    current_text = ""
+                    current_start = None
+                for part_start in range(sentence_start, sentence_end, max_chars):
+                    part_end = min(part_start + max_chars, sentence_end)
+                    parts.append(_TextPart(text[part_start:part_end], part_start, part_end))
+                continue
+
+            candidate = current_text + sentence
+            if current_start is None or len(candidate) <= max_chars:
+                if current_start is None:
+                    current_start = sentence_start
+                current_text = candidate
+                current_end = sentence_end
+                continue
+
+            parts.append(_TextPart(current_text, current_start, current_end))
+            current_start = sentence_start
+            current_end = sentence_end
+            current_text = sentence
+        if current_text and current_start is not None:
+            parts.append(_TextPart(current_text, current_start, current_end))
+        return parts or [_TextPart(text, 0, len(text))]
 
 
 def _block_text(block: DocumentBlock) -> str:

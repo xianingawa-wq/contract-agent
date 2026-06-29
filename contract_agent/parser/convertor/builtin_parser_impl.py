@@ -18,7 +18,8 @@ class BuiltinParserImpl:
     def supports(self, source: ParserSource, config: ParserConfig) -> ParserBackendSupport:
         if source.kind == "text":
             return ParserBackendSupport(supported=True, confidence=1.0, reason="builtin text input")
-        suffix = f".{source.file_type}" if source.file_type else ""
+        normalized_file_type = (source.file_type or "").strip().lower().lstrip(".")
+        suffix = f".{normalized_file_type}" if normalized_file_type else ""
         if suffix in self.supported_suffixes and suffix in config.allowed_suffixes:
             return ParserBackendSupport(
                 supported=True, confidence=0.95, reason="builtin suffix match"

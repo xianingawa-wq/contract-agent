@@ -18,7 +18,7 @@ class ParserConfig(BaseModel):
     strict_converter_availability: bool = False
 
     allowed_suffixes: list[str] = Field(default_factory=lambda: DEFAULT_ALLOWED_SUFFIXES.copy())
-    allow_path_input: bool = True
+    allow_path_input: bool = False
     allow_url_input: bool = False
     trusted_path_roots: list[str] = Field(default_factory=list)
     max_input_bytes: int | None = None
@@ -51,7 +51,9 @@ class ParserConfig(BaseModel):
         self.enabled_converters = _dedupe_non_empty(self.enabled_converters)
         self.fallback_order = _dedupe_non_empty(self.fallback_order)
         self.enabled_detectors = _dedupe_non_empty(self.enabled_detectors)
-        self.allowed_suffixes = [_normalize_suffix(suffix) for suffix in self.allowed_suffixes]
+        self.allowed_suffixes = _dedupe_non_empty(
+            [_normalize_suffix(suffix) for suffix in self.allowed_suffixes]
+        )
         self.docling_ocr_lang = _dedupe_non_empty(self.docling_ocr_lang)
         self.trusted_path_roots = [root for root in self.trusted_path_roots if root]
         if self.detector_rules_path == "":
@@ -62,6 +64,8 @@ class ParserConfig(BaseModel):
             raise ValueError("parser.default_converter must be present in enabled_converters")
         if not self.fallback_order:
             raise ValueError("parser.fallback_order must be non-empty")
+        if not self.allowed_suffixes:
+            raise ValueError("parser.allowed_suffixes must contain at least one valid suffix")
         if self.default_converter not in self.fallback_order:
             raise ValueError("parser.default_converter must be present in fallback_order")
         if self.fallback_order[0] != self.default_converter:
@@ -98,6 +102,10 @@ class ParserConfig(BaseModel):
             raise ValueError("parser.min_header_confidence must be between 0 and 1")
         if self.allow_url_input:
             raise ValueError("parser.allow_url_input is reserved until URL input is implemented")
+        if self.allow_path_input and not self.trusted_path_roots:
+            raise ValueError(
+                "parser.trusted_path_roots must be non-empty when path input is enabled"
+            )
         if self.docling_enable_ocr and not self.docling_ocr_lang:
             raise ValueError("parser.docling_ocr_lang must be non-empty when OCR is enabled")
         if not 0 <= self.docling_bitmap_area_threshold <= 1:

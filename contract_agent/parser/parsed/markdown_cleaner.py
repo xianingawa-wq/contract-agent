@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from contract_agent.parser.parsed.markdown_table_row_parser import split_pipe_row
+
 
 _PAGE_NUMBER_PATTERNS = [
     re.compile(r"^第\s*[\d一二三四五六七八九十百千]+\s*页(?:\s*[，,]?\s*共\s*\d+\s*页)?$"),
@@ -215,10 +217,11 @@ def _numeric_page_footer_indexes(lines: list[str]) -> set[int]:
     for candidate in candidates[1:]:
         previous_index, previous_page_no = run[-1]
         index, page_no = candidate
-        if page_no == previous_page_no + 1 and _looks_like_page_break_gap(
-            lines,
-            previous_index,
-            index,
+        if (
+            page_no == previous_page_no + 1
+            and _looks_like_page_break_gap(lines, previous_index, index)
+            and _has_numeric_footer_boundary_context(lines, previous_index)
+            and _has_numeric_footer_boundary_context(lines, index)
         ):
             run.append(candidate)
             continue
@@ -238,6 +241,25 @@ def _looks_like_page_break_gap(lines: list[str], previous_index: int, index: int
         not _is_page_separator(line) and not _is_known_footer(line) for line in between
     )
     return has_content
+
+
+def _has_numeric_footer_boundary_context(lines: list[str], index: int) -> bool:
+    previous_line = _nearest_non_empty_line(lines, index, step=-1)
+    next_line = _nearest_non_empty_line(lines, index, step=1)
+    return any(
+        _is_page_separator(line) or _is_known_footer(line) or _is_page_number(line)
+        for line in (previous_line, next_line)
+        if line is not None
+    )
+
+
+def _nearest_non_empty_line(lines: list[str], index: int, *, step: int) -> str | None:
+    cursor = index + step
+    while 0 <= cursor < len(lines):
+        if lines[cursor].strip():
+            return lines[cursor].strip()
+        cursor += step
+    return None
 
 
 def _is_known_footer(line: str) -> bool:
@@ -282,9 +304,15 @@ def _merge_split_tables(
                 current_table_index,
                 next_table_index,
             )
-            can_merge_noise_gap = gap.has_noise and _can_merge_after_table_noise_gap(
-                continuation,
-                table_columns,
+            if gap.has_noise and not has_layout_evidence:
+                break
+            can_merge_noise_gap = (
+                gap.has_noise
+                and has_layout_evidence
+                and _can_merge_after_table_noise_gap(
+                    continuation,
+                    table_columns,
+                )
             )
             append_lines = _continuation_rows(
                 table_lines,
@@ -485,9 +513,4 @@ def _column_count(line: str) -> int:
 
 
 def _split_pipe_row(line: str) -> list[str]:
-    stripped = line.strip()
-    if stripped.startswith("|"):
-        stripped = stripped[1:]
-    if stripped.endswith("|"):
-        stripped = stripped[:-1]
-    return [cell.replace("\\|", "|").strip() for cell in stripped.split("|")]
+    return split_pipe_row(line)

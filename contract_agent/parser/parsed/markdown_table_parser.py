@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contract_agent.parser.parsed.markdown_table_row_parser import split_pipe_row
+
 
 def is_table_start(lines: list[str], index: int) -> bool:
     if index + 1 >= len(lines):
@@ -30,7 +32,7 @@ def parse_table_rows(table_markdown: str) -> list[list[str]]:
 
 
 def table_text(rows: list[list[str]]) -> str:
-    return "\n".join(" | ".join(cell for cell in row if cell) for row in rows)
+    return "\n".join(" | ".join(row) for row in rows)
 
 
 def _is_pipe_row(line: str) -> bool:
@@ -46,9 +48,4 @@ def _is_separator_row(line: str) -> bool:
 
 
 def _split_pipe_row(line: str) -> list[str]:
-    stripped = line.strip()
-    if stripped.startswith("|"):
-        stripped = stripped[1:]
-    if stripped.endswith("|"):
-        stripped = stripped[:-1]
-    return [cell.replace("\\|", "|").strip() for cell in stripped.split("|")]
+    return split_pipe_row(line)

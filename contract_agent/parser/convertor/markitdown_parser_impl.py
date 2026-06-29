@@ -33,8 +33,13 @@ class MarkitdownParserImpl:
         if markitdown_cls is None:
             raise DocumentLoadError("MarkItDown backend 未找到 MarkItDown 入口。")
 
-        with local_parser_source(source) as input_path:
-            result = markitdown_cls().convert(input_path)
+        try:
+            with local_parser_source(source) as input_path:
+                result = markitdown_cls().convert(input_path)
+        except DocumentLoadError:
+            raise
+        except Exception as exc:
+            raise DocumentLoadError(f"MarkItDown backend 转换失败：{exc}") from exc
 
         markdown = _markdown_from_result(result)
         return MarkdownDocument(

@@ -20,7 +20,7 @@ class ParserConfigTests(unittest.TestCase):
         self.assertTrue(config.allow_converter_fallback)
         self.assertFalse(config.strict_converter_availability)
         self.assertEqual(config.allowed_suffixes, [".txt", ".doc", ".docx", ".pdf"])
-        self.assertTrue(config.allow_path_input)
+        self.assertFalse(config.allow_path_input)
         self.assertFalse(config.allow_url_input)
         self.assertEqual(config.trusted_path_roots, [])
         self.assertIsNone(config.max_input_bytes)
@@ -46,6 +46,10 @@ class ParserConfigTests(unittest.TestCase):
         self.assertTrue(config.docling_do_table_structure)
         self.assertTrue(config.docling_compact_tables)
         self.assertFalse(config.docling_enable_remote_services)
+
+    def test_parser_config_rejects_empty_allowed_suffixes_after_normalization(self):
+        with self.assertRaisesRegex(ValueError, "allowed_suffixes"):
+            ParserConfig(allowed_suffixes=["", "  "])
 
     def test_settings_env_parser_values_parse_lists_numbers_booleans_and_empty_optionals(self):
         settings = load_settings_from_env(
@@ -120,6 +124,14 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(parser_config.chunk_target_chars, 300)
         self.assertEqual(parser_config.min_header_confidence, 0.7)
         self.assertTrue(parser_config.docling_enabled)
+
+        stricter_parser_config = AppConfig.model_validate(
+            {
+                "limits": {"max_upload_size_bytes": 8192},
+                "parser": {"max_input_bytes": 4096},
+            }
+        ).to_parser_config()
+        self.assertEqual(stricter_parser_config.max_input_bytes, 4096)
 
     def test_environment_overlay_and_app_context_include_parser_config(self):
         with temporary_settings():

@@ -86,7 +86,7 @@ parser:
     - .txt
     - .docx
     - .pdf
-  allow_path_input: true
+  allow_path_input: false
   # Reserved until URL source loading is implemented; true fails fast today.
   allow_url_input: false
   trusted_path_roots: []

@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from contract_agent.config.config_parser import ParserConfig
@@ -13,10 +15,30 @@ from contract_agent.parser.parser_source import ParserSource
 class ParserBackendRouterTests(unittest.TestCase):
     def test_default_router_uses_docling_backend_for_text(self):
         router = ParserBackendRouter.default()
-        result = router.convert(
-            ParserSource.from_text("第一条 付款", file_name="inline.txt"),
-            ParserConfig(),
-        )
+        with (
+            patch(
+                "contract_agent.parser.convertor.docling_parser_impl.DoclingParserImpl.supports",
+                return_value=ParserBackendSupport(
+                    supported=True,
+                    confidence=1.0,
+                    reason="stubbed docling",
+                ),
+            ),
+            patch(
+                "contract_agent.parser.convertor.docling_parser_impl.DoclingParserImpl.convert",
+                return_value=MarkdownDocument(
+                    markdown_content="第一条 付款",
+                    file_name="inline.txt",
+                    file_type="txt",
+                    source_path="inline.txt",
+                    backend_name="docling",
+                ),
+            ),
+        ):
+            result = router.convert(
+                ParserSource.from_text("第一条 付款", file_name="inline.txt"),
+                ParserConfig(),
+            )
 
         self.assertEqual(result.backend_name, "docling")
         self.assertEqual(result.markdown_content, "第一条 付款")
@@ -81,6 +103,26 @@ class ParserBackendRouterTests(unittest.TestCase):
 
         with self.assertRaisesRegex(DocumentLoadError, "broken backend failed"):
             router.convert(ParserSource.from_text("第一条 付款", file_name="inline.txt"), config)
+
+    def test_path_input_rejects_missing_and_directory_before_backend_routing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            router = ParserBackendRouter([BuiltinParserImpl()])
+            config = ParserConfig(
+                default_converter="builtin",
+                enabled_converters=["builtin"],
+                fallback_order=["builtin"],
+                allow_path_input=True,
+                trusted_path_roots=[tmp],
+            )
+
+            missing = Path(tmp) / "missing.txt"
+            with self.assertRaises(DocumentLoadError):
+                router.convert(ParserSource.from_path(missing), config)
+
+            directory = Path(tmp) / "directory.txt"
+            directory.mkdir()
+            with self.assertRaises(DocumentLoadError):
+                router.convert(ParserSource.from_path(directory), config)
 
 
 class BrokenParserImpl:

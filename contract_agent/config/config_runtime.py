@@ -129,7 +129,7 @@ class Settings(BaseModel):
     parser_allowed_suffixes: list[str] = Field(
         default_factory=lambda: DEFAULT_ALLOWED_SUFFIXES.copy()
     )
-    parser_allow_path_input: bool = True
+    parser_allow_path_input: bool = False
     parser_allow_url_input: bool = False
     parser_trusted_path_roots: list[str] = Field(default_factory=list)
     parser_max_input_bytes: int | None = None
@@ -270,7 +270,7 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
         parser_allowed_suffixes=_csv_list_value(
             _env(env, "PARSER_ALLOWED_SUFFIXES"), DEFAULT_ALLOWED_SUFFIXES
         ),
-        parser_allow_path_input=_bool_value(_env(env, "PARSER_ALLOW_PATH_INPUT"), "true"),
+        parser_allow_path_input=_bool_value(_env(env, "PARSER_ALLOW_PATH_INPUT"), "false"),
         parser_allow_url_input=_bool_value(_env(env, "PARSER_ALLOW_URL_INPUT"), "false"),
         parser_trusted_path_roots=_csv_list_value(_env(env, "PARSER_TRUSTED_PATH_ROOTS"), []),
         parser_max_input_bytes=_optional_int_value(_env(env, "PARSER_MAX_INPUT_BYTES")),

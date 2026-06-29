@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -23,7 +24,11 @@ class MarkdownDocument(BaseModel):
 
 
 def _ensure_json_safe(value: Any) -> None:
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, (str, int, bool)):
+        return
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("parser metadata fields must be JSON-compatible")
         return
     if isinstance(value, list):
         for item in value:

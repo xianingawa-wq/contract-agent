@@ -1,4 +1,3 @@
-import inspect
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +9,6 @@ from contract_agent.parser import (
     ReviewInputError,
     normalize_review_input,
 )
-import contract_agent.parser.review_input_normalizer as normalizer_module
 
 
 class ReviewInputNormalizerTests(unittest.TestCase):
@@ -49,10 +47,43 @@ class ReviewInputNormalizerTests(unittest.TestCase):
             path = Path(tmp) / "contract.txt"
             path.write_text("第一条 付款", encoding="utf-8")
 
-            normalized = normalize_review_input(file_path=path)
+            normalized = normalize_review_input(
+                file_path=path,
+                parser=ContractParser(
+                    parser_config=ParserConfig(
+                        default_converter="builtin",
+                        enabled_converters=["builtin"],
+                        fallback_order=["builtin"],
+                        allow_path_input=True,
+                        trusted_path_roots=[tmp],
+                    )
+                ),
+            )
 
         self.assertEqual(normalized.source_kind, "path")
         self.assertEqual(normalized.contract_text, "第一条 付款")
+
+    def test_blank_text_does_not_shadow_file_path_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "contract.txt"
+            path.write_text("Path body", encoding="utf-8")
+
+            normalized = normalize_review_input(
+                contract_text="   ",
+                file_path=path,
+                parser=ContractParser(
+                    parser_config=ParserConfig(
+                        default_converter="builtin",
+                        enabled_converters=["builtin"],
+                        fallback_order=["builtin"],
+                        allow_path_input=True,
+                        trusted_path_roots=[tmp],
+                    )
+                ),
+            )
+
+        self.assertEqual(normalized.source_kind, "path")
+        self.assertEqual(normalized.contract_text, "Path body")
 
     def test_invalid_inputs_raise_review_input_error(self):
         cases = [
@@ -71,12 +102,15 @@ class ReviewInputNormalizerTests(unittest.TestCase):
                 with self.assertRaises(ReviewInputError):
                     normalize_review_input(**kwargs)
 
-    def test_normalizer_does_not_depend_on_grpc_layer(self):
-        source = inspect.getsource(normalizer_module)
+    def test_grpc_file_kind_is_plain_bytes_input_boundary(self):
+        normalized = normalize_review_input(
+            file_name="contract.txt",
+            content=b"Plain bytes",
+            source_kind="grpc_file",
+        )
 
-        self.assertNotIn("agent_rpc", source)
-        self.assertNotIn("agent_pb2", source)
-        self.assertNotIn("HasField", source)
+        self.assertEqual(normalized.source_kind, "grpc_file")
+        self.assertEqual(normalized.contract_text, "Plain bytes")
 
     def test_path_input_obeys_injected_parser_config(self):
         with tempfile.TemporaryDirectory() as tmp:

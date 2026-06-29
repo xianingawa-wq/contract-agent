@@ -76,6 +76,30 @@ class ConfigPackageTests(unittest.TestCase):
         self.assertEqual(context.settings.chat_model, "yaml-chat")
         self.assertEqual(settings_snapshot().chat_model, "yaml-chat")
 
+    def test_empty_parser_trusted_roots_env_does_not_clear_yaml_roots(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            trusted = root / "trusted"
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "parser:",
+                        "  allow_path_input: true",
+                        "  trusted_path_roots:",
+                        f"    - {trusted.as_posix()}",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path,
+                environ={"PARSER_TRUSTED_PATH_ROOTS": ""},
+            )
+
+        self.assertEqual(config.parser.trusted_path_roots, [trusted.as_posix()])
+
     def test_configure_runtime_logs_yaml_env_profile_and_injection(self):
         with TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

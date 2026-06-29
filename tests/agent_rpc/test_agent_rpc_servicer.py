@@ -27,6 +27,26 @@ class FakeReviewService:
         return HealthResponse(status="ok", llm_configured=True, knowledge_base_ready=False)
 
 
+def _builtin_context():
+    return configure_runtime(
+        AppConfig.model_validate(
+            {
+                "parser": {
+                    "default_converter": "builtin",
+                    "enabled_converters": ["builtin"],
+                    "fallback_order": ["builtin"],
+                    "docling": {"enabled": False},
+                },
+                "models": {
+                    "chat": {"api_key": "chat-key", "model": "qwen-max"},
+                    "embedding": {"model": "text-embedding-v4"},
+                    "rerank": {"provider": "qwen", "model": "qwen3-rerank"},
+                },
+            }
+        )
+    )
+
+
 def make_review_response() -> ReviewResponse:
     from datetime import datetime, timezone
 
@@ -117,7 +137,7 @@ class AgentRpcServicerTests(unittest.TestCase):
                 pass
 
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
-        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+        servicer = AgentRpcServicer(app_context=_builtin_context())
         agent_pb2_grpc.add_AgentRpcServiceServicer_to_server(servicer, server)
         port = server.add_insecure_port("127.0.0.1:0")
 
@@ -163,7 +183,7 @@ class AgentRpcServicerTests(unittest.TestCase):
                 raise AssertionError("Review RPC must not call review_file after normalization")
 
         service = ReviewServiceSpy()
-        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+        servicer = AgentRpcServicer(app_context=_builtin_context())
         servicer.review_service = service  # type: ignore[assignment]
 
         response = servicer.Review(
@@ -234,7 +254,7 @@ class AgentRpcServicerTests(unittest.TestCase):
             def publish(self, event):
                 pass
 
-        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+        servicer = AgentRpcServicer(app_context=_builtin_context())
 
         with (
             patch("contract_agent.memory.manager.MemoryManager", FakeMemoryManager),
@@ -259,6 +279,7 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertEqual(initial_input["contract_text"], "第一条 付款")
         self.assertEqual(initial_input["document_metadata"]["file_name"], "contract.txt")
         self.assertIn("raw_text", initial_input["parsed_document_data"])
+        self.assertNotIn("parsed_document", initial_input)
         self.assertIn("document_blocks", initial_input)
         self.assertIn("llm_context", initial_input)
         self.assertIn("evidence_json", initial_input)
@@ -269,6 +290,49 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertTrue(initial_input["rag_documents"])
         self.assertEqual(initial_input["contract_type"], "采购合同")
         self.assertEqual(initial_input["our_side"], "甲方")
+        json.dumps(initial_input, ensure_ascii=False)
+
+    def test_review_multi_agent_single_mode_reuses_normalized_document_and_review_service(self):
+        class ReviewServiceSpy(FakeReviewService):
+            def __init__(self):
+                self.review_document_calls = []
+
+            def review_document(self, document, contract_type, our_side):
+                self.review_document_calls.append((document, contract_type, our_side))
+                return make_review_response()
+
+            def review(self, *args, **kwargs):
+                raise AssertionError("single mode must not reparse contract_text")
+
+        from contract_agent.orchestration.protocol import AgentMode
+
+        service = ReviewServiceSpy()
+        servicer = AgentRpcServicer(app_context=_builtin_context())
+        servicer.review_service = service  # type: ignore[assignment]
+
+        with patch(
+            "contract_agent.services.review_gateway.GatewayRouter._detect_mode",
+            return_value=AgentMode.SINGLE,
+        ):
+            response = servicer.ReviewMultiAgent(
+                agent_pb2.ReviewRequest(
+                    file=agent_pb2.FilePayload(
+                        file_name="contract.txt",
+                        content=b"Section 1 Payment",
+                    ),
+                    contract_type="purchase",
+                    our_side="buyer",
+                ),
+                None,
+            )
+
+        self.assertEqual(response.code, 200)
+        self.assertEqual(len(service.review_document_calls), 1)
+        document, contract_type, our_side = service.review_document_calls[0]
+        self.assertEqual(document.metadata.file_name, "contract.txt")
+        self.assertEqual(document.raw_text, "Section 1 Payment")
+        self.assertEqual(contract_type, "purchase")
+        self.assertEqual(our_side, "buyer")
 
     def test_review_multi_agent_stream_file_input_passes_parsed_text_to_supervisor(self):
         captured_inputs = []
@@ -278,7 +342,7 @@ class AgentRpcServicerTests(unittest.TestCase):
             state.status = PipelineStatus.COMPLETED
             return state
 
-        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+        servicer = AgentRpcServicer(app_context=_builtin_context())
 
         with patch("contract_agent.orchestration.supervisor.SupervisorAgent") as supervisor_cls:
             supervisor_cls.return_value.run.side_effect = fake_run

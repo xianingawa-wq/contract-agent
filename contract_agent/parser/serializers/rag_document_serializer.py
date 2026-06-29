@@ -7,7 +7,7 @@ from contract_agent.parser.models import ParsedDocument
 
 def to_rag_documents(document: ParsedDocument) -> list[dict[str, Any]]:
     if document.clause_chunks:
-        return [
+        chunk_documents = [
             {
                 "page_content": chunk.source_text,
                 "metadata": {
@@ -23,6 +23,8 @@ def to_rag_documents(document: ParsedDocument) -> list[dict[str, Any]]:
             for chunk in document.clause_chunks
             if chunk.source_text.strip()
         ]
+        if chunk_documents:
+            return chunk_documents
 
     if document.blocks:
         return [

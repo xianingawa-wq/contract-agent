@@ -40,8 +40,10 @@ class RemovedLegacyPathTests(unittest.TestCase):
 
         for path in removed_paths:
             with self.subTest(path=path):
-                with self.assertRaises(ModuleNotFoundError):
+                with self.assertRaises(ModuleNotFoundError) as exc:
                     importlib.import_module(path)
+                missing_name = exc.exception.name or ""
+                self.assertTrue(path == missing_name or path.startswith(f"{missing_name}."))
 
     def test_service_and_schema_packages_do_not_export_legacy_parser_symbols(self):
         import contract_agent.schemas as schemas

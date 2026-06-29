@@ -155,7 +155,15 @@ class ParserBackendRouter:
                 roots = [Path(root).expanduser().resolve() for root in config.trusted_path_roots]
                 if not any(path == root or root in path.parents for root in roots):
                     raise DocumentLoadError("文件路径不在 parser.trusted_path_roots 允许范围内。")
-            if config.max_input_bytes is not None and path.exists():
+            if not path.exists():
+                raise DocumentLoadError("文件路径不存在，无法解析。")
+            if not path.is_file():
+                raise DocumentLoadError("文件路径不是普通文件，无法解析。")
+            try:
+                path.open("rb").close()
+            except OSError as exc:
+                raise DocumentLoadError(f"文件不可读取，无法解析: {exc}") from exc
+            if config.max_input_bytes is not None:
                 if path.stat().st_size > config.max_input_bytes:
                     raise DocumentLoadError("文件大小超过 parser.max_input_bytes 限制。")
 

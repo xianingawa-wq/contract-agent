@@ -52,6 +52,36 @@ class ParserSerializerTests(unittest.TestCase):
             ],
         )
 
+    def make_ascii_document(self) -> ParsedDocument:
+        return ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc-ascii",
+                file_name="contract.txt",
+                file_type="txt",
+                source_path="inline",
+                title="Purchase Contract",
+                contract_type_hint="Purchase",
+                page_count=1,
+            ),
+            raw_text="",
+            blocks=[
+                DocumentBlock(
+                    block_id="p1-b0",
+                    block_type="title",
+                    text="Purchase Contract",
+                    location=BlockLocation(page_no=1, block_index=0),
+                ),
+                DocumentBlock(
+                    block_id="p1-b1",
+                    block_type="clause_header",
+                    text="Section 1 Payment",
+                    level=1,
+                    location=BlockLocation(page_no=1, block_index=1),
+                    metadata={"clause_no": "1"},
+                ),
+            ],
+        )
+
     def test_plain_text_markdown_llm_context_and_rag_outputs_use_blocks(self):
         document = self.make_document()
 
@@ -71,6 +101,36 @@ class ParserSerializerTests(unittest.TestCase):
         document.markdown_content = "# Preserved\n\n| A | B |\n"
 
         self.assertEqual(to_markdown(document), "# Preserved\n\n| A | B |\n")
+
+    def test_text_markdown_and_llm_context_outputs_are_deterministic(self):
+        document = self.make_ascii_document()
+
+        self.assertEqual(to_plain_text(document), "Purchase Contract\nSection 1 Payment")
+        self.assertEqual(to_markdown(document), "# Purchase Contract\n\n## Section 1 Payment")
+        self.assertEqual(
+            to_llm_context(document),
+            "\n".join(
+                [
+                    "文档: Purchase Contract",
+                    "类型: Purchase",
+                    "[block_id=p1-b0 page=1 confidence=1.00] Purchase Contract",
+                    "[block_id=p1-b1 page=1 confidence=1.00] Section 1 Payment",
+                ]
+            ),
+        )
+
+    def test_to_markdown_does_not_double_prefix_block_markdown(self):
+        document = self.make_ascii_document()
+        document.blocks[0].markdown = "# Purchase Contract"
+        document.blocks[1].markdown = "## Section 1 Payment"
+
+        self.assertEqual(to_markdown(document), "# Purchase Contract\n\n## Section 1 Payment")
+
+    def test_to_llm_context_respects_max_chars_as_hard_cap(self):
+        document = self.make_ascii_document()
+
+        self.assertLessEqual(len(to_llm_context(document, max_chars=10)), 10)
+        self.assertEqual(to_llm_context(document, max_chars=0), "")
 
     def test_rag_documents_prefer_chunks_over_blocks_for_retrieval_granularity(self):
         document = self.make_document()
@@ -105,6 +165,29 @@ class ParserSerializerTests(unittest.TestCase):
         self.assertEqual(rag_documents[0]["metadata"]["chunk_id"], "chunk-p1-b1-part1")
         self.assertEqual(rag_documents[0]["metadata"]["section_title"], "付款")
         self.assertNotIn("block_id", rag_documents[0]["metadata"])
+
+    def test_rag_documents_fall_back_to_blocks_when_chunks_are_blank(self):
+        document = self.make_ascii_document()
+        document.clause_chunks = [
+            ClauseChunk(
+                chunk_id="chunk-blank",
+                chunk_level="sentence_group",
+                clause_no="1",
+                section_title="Payment",
+                page_no=1,
+                start_offset=0,
+                end_offset=0,
+                source_text="   ",
+            )
+        ]
+
+        rag_documents = to_rag_documents(document)
+
+        self.assertEqual(
+            [item["page_content"] for item in rag_documents],
+            ["Purchase Contract", "Section 1 Payment"],
+        )
+        self.assertEqual(rag_documents[0]["metadata"]["block_id"], "p1-b0")
 
     def test_evidence_json_is_json_safe_without_detector_output(self):
         evidence = to_evidence_json(self.make_document())

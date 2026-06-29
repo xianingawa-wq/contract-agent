@@ -8,6 +8,9 @@ from pathlib import Path
 from contract_agent.parser.exception import DocumentLoadError, DocumentParseError
 
 
+MAX_DOCX_GRID_SPAN = 100
+
+
 @dataclass(frozen=True)
 class BuiltinMarkdownContent:
     markdown_content: str
@@ -47,7 +50,10 @@ def load_bytes(
         html_content = ""
     elif suffix == ".docx":
         markdown = _parse_docx_bytes(content)
-        html_content = _docx_to_html(content)
+        try:
+            html_content = _docx_to_html(content)
+        except Exception:
+            html_content = ""
     elif suffix == ".pdf":
         markdown = _parse_pdf_bytes(content)
         html_content = ""
@@ -121,13 +127,16 @@ def _table_rows(table: object) -> list[list[str]]:
         values: list[str] = []
         row_has_merge_placeholder = False
         for cell_xml in row._tr.tc_lst:
+            grid_span = _grid_span(cell_xml)
+            if grid_span > MAX_DOCX_GRID_SPAN:
+                raise DocumentParseError("DOCX 表格列数超过限制，无法解析。")
             if _is_vertical_merge_continuation(cell_xml):
-                values.extend([""] * _grid_span(cell_xml))
+                values.extend([""] * grid_span)
                 row_has_merge_placeholder = True
                 continue
             cell = _Cell(cell_xml, table)
             values.append(_normalize_cell_text(cell.text))
-            values.extend([""] * (_grid_span(cell_xml) - 1))
+            values.extend([""] * (grid_span - 1))
         if any(values) or row_has_merge_placeholder:
             rows.append(values)
     return rows
@@ -203,8 +212,8 @@ def _docx_to_html(content: bytes) -> str:
 
     try:
         result = mammoth_to_html(BytesIO(content))
-    except Exception as exc:
-        raise DocumentLoadError(f"生成 docx HTML 失败：{exc}") from exc
+    except Exception:
+        return ""
     return result.value.strip() if result.value else ""
 
 

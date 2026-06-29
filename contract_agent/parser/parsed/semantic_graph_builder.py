@@ -95,8 +95,8 @@ def build_semantic_graph(document: ParsedDocument) -> DocumentSemanticGraph:
             if block_node_id:
                 edges.append({"source": node_id, "target": block_node_id, "type": "derived_from"})
 
-    for definition in document.definitions:
-        node_id = f"definition:{definition.term}"
+    for index, definition in enumerate(document.definitions):
+        node_id = f"definition:{index}:{definition.term}"
         nodes.append(
             {
                 "id": node_id,

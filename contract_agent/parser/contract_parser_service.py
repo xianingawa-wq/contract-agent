@@ -73,6 +73,12 @@ class ContractParser:
         return markdown_document
 
     def parse_markdown(self, markdown_document: MarkdownDocument) -> ParsedDocument:
+        if self.parser_config.max_input_bytes is not None:
+            markdown_size = len(markdown_document.markdown_content.encode("utf-8"))
+            if markdown_size > self.parser_config.max_input_bytes:
+                from contract_agent.parser.exception import DocumentLoadError
+
+                raise DocumentLoadError("Markdown 内容大小超过 parser.max_input_bytes 限制。")
         self.logger.handle(
             parser_log_event(
                 "Service",

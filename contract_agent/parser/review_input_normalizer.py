@@ -33,23 +33,19 @@ def normalize_review_input(
     parser: ContractParser | None = None,
 ) -> ParsedReviewInput:
     parser = parser or ContractParser()
-    source_count = sum(
-        [
-            bool(contract_text and contract_text.strip()),
-            content is not None,
-            file_path is not None,
-        ]
-    )
+    has_text = bool(contract_text and contract_text.strip())
+    has_content = content is not None
+    has_path = file_path is not None
+    source_count = sum([has_text, has_content, has_path])
     if source_count != 1:
         raise ReviewInputError("review 输入必须且只能提供一种正文来源。")
 
-    if contract_text is not None:
-        if not contract_text.strip():
-            raise ReviewInputError("合同文本为空，无法审查。")
+    if has_text:
         _ensure_source_kind(source_kind, "text")
+        assert contract_text is not None
         document = parser.parse_text(contract_text)
         resolved_kind: ReviewSourceKind = "text"
-    elif content is not None:
+    elif has_content:
         if not file_name:
             raise ReviewInputError("文件输入缺少 file_name。")
         if not content:

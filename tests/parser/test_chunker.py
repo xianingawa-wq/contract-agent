@@ -74,6 +74,27 @@ class ContractChunkerTests(unittest.TestCase):
         self.assertGreater(len(chunks), 1)
         self.assertTrue(all(len(chunk.source_text) <= 12 for chunk in chunks))
 
+    def test_split_long_chunks_preserves_offsets_for_each_part(self):
+        text = "Alpha. Beta. Gamma."
+        chunks = ContractChunker(ParserConfig(chunk_max_chars=10, chunk_target_chars=8)).chunk(
+            document_from_lines([text])
+        )
+
+        self.assertEqual([chunk.source_text for chunk in chunks], ["Alpha.", " Beta.", " Gamma."])
+        self.assertEqual(
+            [(chunk.start_offset, chunk.end_offset) for chunk in chunks],
+            [(0, 6), (6, 12), (12, 19)],
+        )
+
+    def test_unpunctuated_long_sentence_is_hard_split_to_target_chars(self):
+        text = "abcdefghij"
+        chunks = ContractChunker(ParserConfig(chunk_max_chars=5, chunk_target_chars=4)).chunk(
+            document_from_lines([text])
+        )
+
+        self.assertEqual([chunk.source_text for chunk in chunks], ["abcd", "efgh", "ij"])
+        self.assertTrue(all(len(chunk.source_text) <= 4 for chunk in chunks))
+
 
 if __name__ == "__main__":
     unittest.main()

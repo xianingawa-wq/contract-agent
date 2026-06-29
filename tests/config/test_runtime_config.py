@@ -214,14 +214,15 @@ class RuntimeConfigTests(unittest.TestCase):
                 "docling_enable_remote_services",
             ),
         }
+        repo_root = Path(__file__).resolve().parents[2]
         env_keys = {
             line.split("=", 1)[0]
-            for line in Path(".env.example").read_text(encoding="utf-8").splitlines()
+            for line in (repo_root / ".env.example").read_text(encoding="utf-8").splitlines()
             if line.startswith("PARSER_")
         }
-        parser_yaml = yaml.safe_load(Path("config.example.yaml").read_text(encoding="utf-8"))[
-            "parser"
-        ]
+        parser_yaml = yaml.safe_load(
+            (repo_root / "config.example.yaml").read_text(encoding="utf-8")
+        )["parser"]
 
         self.assertEqual(env_keys, set(field_map))
         for env_key, (yaml_path, settings_field, parser_field) in field_map.items():

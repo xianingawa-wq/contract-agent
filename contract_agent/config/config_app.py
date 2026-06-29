@@ -134,7 +134,7 @@ class ParserSection(BaseModel):
     allow_converter_fallback: bool = True
     strict_converter_availability: bool = False
     allowed_suffixes: list[str] = Field(default_factory=lambda: DEFAULT_ALLOWED_SUFFIXES.copy())
-    allow_path_input: bool = True
+    allow_path_input: bool = False
     allow_url_input: bool = False
     trusted_path_roots: list[str] = Field(default_factory=list)
     max_input_bytes: int | None = None
