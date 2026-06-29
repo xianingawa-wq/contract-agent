@@ -31,7 +31,7 @@ def safe_source_label(source_path: str | None) -> str:
     compact = re.sub(r"[\r\n\t]+", "/", str(source_path)).strip()
     if not compact:
         return "unknown"
-    if compact.startswith("local:"):
+    if re.fullmatch(r"local:[0-9a-f]{12}:[^/\\\r\n\t]+", compact):
         return compact
     normalized = compact.replace("\\", "/")
     return PurePath(normalized).name or "source"

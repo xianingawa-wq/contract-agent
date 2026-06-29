@@ -50,6 +50,15 @@ class ParserLoggingTests(unittest.TestCase):
         self.assertNotIn("C:/secret", messages)
         self.assertNotIn("customer\ncontract", messages)
 
+        source.source_path = "local:deadbeef:C:/secret/customer\ncontract.txt"
+        with self.assertLogs("contract_agent.parser", level="INFO") as captured:
+            parser.convert_to_markdown(source)
+
+        messages = "\n".join(captured.output)
+        self.assertIn("source=contract.txt", messages)
+        self.assertNotIn("C:/secret", messages)
+        self.assertNotIn("customer\ncontract", messages)
+
 
 if __name__ == "__main__":
     unittest.main()

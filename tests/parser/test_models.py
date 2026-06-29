@@ -257,6 +257,13 @@ class ParserModelTests(unittest.TestCase):
         self.assertIn("contract.txt", source.source_path)
         self.assertNotIn("\n", source.source_path)
 
+    def test_parser_source_from_path_sanitizes_local_file_name(self):
+        source = ParserSource.from_path(Path("contract\nsecret.txt"))
+
+        self.assertEqual(source.file_name, "contract\nsecret.txt")
+        self.assertIn("contract_secret.txt", source.source_path)
+        self.assertNotIn("\n", source.source_path)
+
     def test_parser_source_from_path_distinguishes_same_name_files(self):
         first = ParserSource.from_path(Path("first") / "contract.txt")
         second = ParserSource.from_path(Path("second") / "contract.txt")

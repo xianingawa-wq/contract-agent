@@ -172,6 +172,11 @@ class ParserBackendRouter:
                 if path.stat().st_size > config.max_input_bytes:
                     raise DocumentLoadError("文件大小超过 parser.max_input_bytes 限制。")
             source = ParserSource.from_path(path)
+            suffix = f".{source.file_type}" if source.file_type else ""
+            if not suffix:
+                raise DocumentLoadError("缺少文件名或文件后缀，无法判断文件类型。")
+            if suffix.lower() not in config.allowed_suffixes:
+                raise UnsupportedFileType(f"不支持的文件类型：{suffix or '未知'}")
 
         if source.kind == "bytes":
             content_size = len(source.content or b"")

@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from contract_agent.config.config_parser import ParserConfig
 from contract_agent.parser.convertor.builtin_parser_impl import BuiltinParserImpl
-from contract_agent.parser.exception import DocumentLoadError
+from contract_agent.parser.exception import DocumentLoadError, UnsupportedFileType
 from contract_agent.parser.markdown_document import MarkdownDocument
 from contract_agent.parser.parser_backend_contract import ParserBackendSupport
 from contract_agent.parser.parser_backend_router import ParserBackendRouter
@@ -150,6 +150,31 @@ class ParserBackendRouterTests(unittest.TestCase):
 
         self.assertEqual(backend.seen_local_path, path.resolve())
         self.assertTrue(str(backend.seen_source_path).startswith("local:"))
+
+    def test_path_input_validates_resolved_path_suffix_after_redaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "contract.exe"
+            path.write_text("body", encoding="utf-8")
+            router = ParserBackendRouter([RecordingPathBackend()])
+            config = ParserConfig(
+                default_converter="recording",
+                enabled_converters=["recording"],
+                fallback_order=["recording"],
+                allow_path_input=True,
+                trusted_path_roots=[str(root)],
+                allowed_suffixes=[".txt"],
+            )
+            source = ParserSource(
+                kind="path",
+                file_name="contract.txt",
+                local_path=path,
+                source_path="contract.txt",
+                file_type="txt",
+            )
+
+            with self.assertRaisesRegex(UnsupportedFileType, "不支持的文件类型"):
+                router.convert(source, config)
 
 
 class BrokenParserImpl:
