@@ -82,12 +82,13 @@ class ReviewService:
             our_side=payload.our_side,
             text_length=len(payload.contract_text),
         ):
-            normalized = normalize_review_input(
-                contract_text=payload.contract_text,
-                contract_type=payload.contract_type,
-                our_side=payload.our_side,
-                parser=self.parser,
-            )
+            with self.audit_logger.span("review.parse", parser="text"):
+                normalized = normalize_review_input(
+                    contract_text=payload.contract_text,
+                    contract_type=payload.contract_type,
+                    our_side=payload.our_side,
+                    parser=self.parser,
+                )
             return self.review_document(
                 normalized.document, payload.contract_type, payload.our_side
             )
