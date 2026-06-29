@@ -258,11 +258,12 @@ class ParserModelTests(unittest.TestCase):
         self.assertNotIn("\n", source.source_path)
 
     def test_parser_source_from_path_sanitizes_local_file_name(self):
-        source = ParserSource.from_path(Path("contract\nsecret.txt"))
+        source = ParserSource.from_path(Path("contract\nsecret\x1b.txt"))
 
-        self.assertEqual(source.file_name, "contract\nsecret.txt")
-        self.assertIn("contract_secret.txt", source.source_path)
+        self.assertEqual(source.file_name, "contract\nsecret\x1b.txt")
+        self.assertIn("contract_secret_.txt", source.source_path)
         self.assertNotIn("\n", source.source_path)
+        self.assertNotIn("\x1b", source.source_path)
 
     def test_local_source_path_sanitizes_posix_filename_separators(self):
         source_path = _local_source_path(PurePosixPath("contract\\secret.txt"))

@@ -204,6 +204,30 @@ class ParserBackendRouterTests(unittest.TestCase):
             with self.assertRaisesRegex(UnsupportedFileType, "不支持的文件类型"):
                 router.convert(source, config)
 
+    def test_path_input_rejects_symlink_escape_from_trusted_root(self):
+        with tempfile.TemporaryDirectory() as trusted_tmp:
+            with tempfile.TemporaryDirectory() as outside_tmp:
+                trusted_root = Path(trusted_tmp)
+                outside_path = Path(outside_tmp) / "contract.txt"
+                outside_path.write_text("body", encoding="utf-8")
+                link_path = trusted_root / "linked_contract.txt"
+                try:
+                    link_path.symlink_to(outside_path)
+                except (NotImplementedError, OSError):
+                    self.skipTest("symlinks are not available on this platform")
+
+                router = ParserBackendRouter([RecordingPathBackend()])
+                config = ParserConfig(
+                    default_converter="recording",
+                    enabled_converters=["recording"],
+                    fallback_order=["recording"],
+                    allow_path_input=True,
+                    trusted_path_roots=[str(trusted_root)],
+                )
+
+                with self.assertRaisesRegex(DocumentLoadError, "trusted_path_roots"):
+                    router.convert(ParserSource.from_path(link_path), config)
+
 
 class BrokenParserImpl:
     name = "broken"
