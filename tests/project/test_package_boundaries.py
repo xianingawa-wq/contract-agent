@@ -82,7 +82,7 @@ class PackageBoundaryTests(unittest.TestCase):
         offenders = []
         for path in parser_dir.rglob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in tree.body:
+            for node in _module_level_import_nodes(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
                         if alias.name.split(".", 1)[0] in optional_roots:
@@ -190,6 +190,30 @@ class PackageBoundaryTests(unittest.TestCase):
                     offenders.append(f"{path.relative_to(root)}:{marker}")
 
         self.assertEqual(offenders, [])
+
+
+def _module_level_import_nodes(tree: ast.Module) -> list[ast.Import | ast.ImportFrom]:
+    nodes: list[ast.Import | ast.ImportFrom] = []
+    pending: list[ast.stmt] = list(tree.body)
+    while pending:
+        node = pending.pop(0)
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            nodes.append(node)
+            continue
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if isinstance(node, ast.If):
+            pending = list(node.body) + list(node.orelse) + pending
+            continue
+        if isinstance(node, ast.Try):
+            pending = (
+                list(node.body)
+                + [item for handler in node.handlers for item in handler.body]
+                + list(node.orelse)
+                + list(node.finalbody)
+                + pending
+            )
+    return nodes
 
 
 if __name__ == "__main__":

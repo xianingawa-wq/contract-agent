@@ -319,6 +319,17 @@ class ContractParserServiceTests(unittest.TestCase):
 
         derived_edges = [edge for edge in graph.edges if edge["type"] == "derived_from"]
         self.assertLessEqual(len(derived_edges), len(chunks))
+        self.assertEqual(
+            derived_edges,
+            [
+                {
+                    "source": f"chunk:chunk-{index}",
+                    "target": "block:p1-b0",
+                    "type": "derived_from",
+                }
+                for index in range(20)
+            ],
+        )
 
     def test_semantic_graph_definition_node_ids_are_unique_for_repeated_terms(self):
         from contract_agent.parser import DocumentDefinition

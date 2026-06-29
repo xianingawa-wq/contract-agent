@@ -189,6 +189,35 @@ class ParserSerializerTests(unittest.TestCase):
         )
         self.assertEqual(rag_documents[0]["metadata"]["block_id"], "p1-b0")
 
+    def test_rag_documents_keep_chunk_only_blank_placeholders(self):
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc-chunk-only",
+                file_name="contract.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text="",
+            clause_chunks=[
+                ClauseChunk(
+                    chunk_id="chunk-blank",
+                    chunk_level="sentence_group",
+                    clause_no="1",
+                    section_title="Payment",
+                    page_no=1,
+                    start_offset=0,
+                    end_offset=0,
+                    source_text="   ",
+                )
+            ],
+        )
+
+        rag_documents = to_rag_documents(document)
+
+        self.assertEqual(len(rag_documents), 1)
+        self.assertEqual(rag_documents[0]["page_content"], "   ")
+        self.assertEqual(rag_documents[0]["metadata"]["block_id"], None)
+
     def test_evidence_json_is_json_safe_without_detector_output(self):
         evidence = to_evidence_json(self.make_document())
 
