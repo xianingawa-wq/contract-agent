@@ -296,8 +296,8 @@ class ContractParserServiceTests(unittest.TestCase):
                     chunk_level="sentence_group",
                     section_title="Body",
                     page_no=1,
-                    start_offset=start,
-                    end_offset=end,
+                    start_offset=0,
+                    end_offset=2000,
                     source_text=text,
                 )
             )
@@ -319,6 +319,69 @@ class ContractParserServiceTests(unittest.TestCase):
 
         derived_edges = [edge for edge in graph.edges if edge["type"] == "derived_from"]
         self.assertLessEqual(len(derived_edges), len(chunks))
+
+    def test_semantic_graph_exactly_links_chunks_with_matching_block_offsets(self):
+        spans = []
+        blocks = []
+        chunks = []
+        cursor = 0
+        for index in range(20):
+            text = f"Block {index}"
+            start = cursor
+            end = start + len(text)
+            span_id = f"p1-b{index}"
+            spans.append(
+                DocumentSpan(
+                    span_id=span_id,
+                    page_no=1,
+                    block_index=index,
+                    start_offset=start,
+                    end_offset=end,
+                    text=text,
+                )
+            )
+            blocks.append(
+                DocumentBlock(
+                    block_id=span_id,
+                    block_type="paragraph",
+                    text=text,
+                    location=BlockLocation(
+                        page_no=1,
+                        block_index=index,
+                        start_offset=start,
+                        end_offset=end,
+                        span_ids=[span_id],
+                    ),
+                )
+            )
+            chunks.append(
+                ClauseChunk(
+                    chunk_id=f"chunk-{index}",
+                    chunk_level="sentence_group",
+                    section_title="Body",
+                    page_no=1,
+                    start_offset=start,
+                    end_offset=end,
+                    source_text=text,
+                )
+            )
+            cursor = end + 1
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc-graph-exact",
+                file_name="graph.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text="\n".join(span.text for span in spans),
+            spans=spans,
+            blocks=blocks,
+            clause_chunks=chunks,
+        )
+
+        graph = ContractParser()._build_semantic_graph(document)
+
+        derived_edges = [edge for edge in graph.edges if edge["type"] == "derived_from"]
         self.assertEqual(
             derived_edges,
             [

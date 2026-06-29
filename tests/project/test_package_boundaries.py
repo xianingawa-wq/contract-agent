@@ -191,10 +191,29 @@ class PackageBoundaryTests(unittest.TestCase):
 
         self.assertEqual(offenders, [])
 
+    def test_module_level_import_scan_descends_except_handlers(self):
+        tree = ast.parse(
+            """
+try:
+    pass
+except Exception:
+    import redis
+
+def local_import():
+    import sqlalchemy
+"""
+        )
+
+        imports = _module_level_import_nodes(tree)
+
+        self.assertEqual(len(imports), 1)
+        self.assertIsInstance(imports[0], ast.Import)
+        self.assertEqual(imports[0].names[0].name, "redis")
+
 
 def _module_level_import_nodes(tree: ast.Module) -> list[ast.Import | ast.ImportFrom]:
     nodes: list[ast.Import | ast.ImportFrom] = []
-    pending: list[ast.stmt] = list(tree.body)
+    pending: list[ast.AST] = list(tree.body)
     while pending:
         node = pending.pop(0)
         if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -202,10 +221,7 @@ def _module_level_import_nodes(tree: ast.Module) -> list[ast.Import | ast.Import
             continue
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             continue
-        child_statements = [
-            child for child in ast.iter_child_nodes(node) if isinstance(child, ast.stmt)
-        ]
-        pending = child_statements + pending
+        pending = list(ast.iter_child_nodes(node)) + pending
     return nodes
 
 

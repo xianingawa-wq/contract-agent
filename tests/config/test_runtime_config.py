@@ -23,7 +23,10 @@ def _env_example_value(raw_value: str, default_value: object) -> object:
             else ([] if isinstance(default_value, list) else raw_value)
         )
     if isinstance(default_value, bool):
-        return raw_value.lower() == "true"
+        normalized = raw_value.lower()
+        if normalized not in {"true", "false"}:
+            raise ValueError(f"Invalid boolean value in .env.example: {raw_value!r}")
+        return normalized == "true"
     if isinstance(default_value, int):
         return int(raw_value)
     if isinstance(default_value, float):
@@ -267,6 +270,10 @@ class RuntimeConfigTests(unittest.TestCase):
                     _env_example_value(env_values[env_key], default_value),
                     default_value,
                 )
+
+    def test_env_example_bool_parser_rejects_invalid_literals(self):
+        with self.assertRaisesRegex(ValueError, "Invalid boolean value"):
+            _env_example_value("flase", False)
 
     def test_apply_model_runtime_config_updates_related_aliases_together(self):
         config = ModelRuntimeConfig(
