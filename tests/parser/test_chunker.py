@@ -1,7 +1,13 @@
 import unittest
 
 from contract_agent.config.config_parser import ParserConfig
-from contract_agent.parser import DocumentMetadata, DocumentSpan, ParsedDocument
+from contract_agent.parser import (
+    BlockLocation,
+    DocumentBlock,
+    DocumentMetadata,
+    DocumentSpan,
+    ParsedDocument,
+)
 from contract_agent.parser.parsed.markdown_chunker import ContractChunker
 
 
@@ -85,6 +91,63 @@ class ContractChunkerTests(unittest.TestCase):
             [(chunk.start_offset, chunk.end_offset) for chunk in chunks],
             [(0, 6), (6, 12), (12, 19)],
         )
+
+    def test_span_chunk_offsets_align_after_trimming_boundary_whitespace(self):
+        raw_text = "  Payment obligation  "
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc",
+                file_name="contract.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text=raw_text,
+            spans=[
+                DocumentSpan(
+                    span_id="p1-b0",
+                    page_no=1,
+                    block_index=0,
+                    start_offset=0,
+                    end_offset=len(raw_text),
+                    text=raw_text,
+                )
+            ],
+        )
+
+        chunk = ContractChunker().chunk(document)[0]
+
+        self.assertEqual(chunk.source_text, "Payment obligation")
+        self.assertEqual(raw_text[chunk.start_offset : chunk.end_offset], chunk.source_text)
+
+    def test_block_chunk_offsets_align_after_trimming_boundary_whitespace(self):
+        raw_text = "  Delivery obligation  "
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc",
+                file_name="contract.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text=raw_text,
+            blocks=[
+                DocumentBlock(
+                    block_id="p1-b0",
+                    block_type="paragraph",
+                    text=raw_text,
+                    location=BlockLocation(
+                        page_no=1,
+                        block_index=0,
+                        start_offset=0,
+                        end_offset=len(raw_text),
+                    ),
+                )
+            ],
+        )
+
+        chunk = ContractChunker().chunk(document)[0]
+
+        self.assertEqual(chunk.source_text, "Delivery obligation")
+        self.assertEqual(raw_text[chunk.start_offset : chunk.end_offset], chunk.source_text)
 
     def test_unpunctuated_long_sentence_is_hard_split_to_target_chars(self):
         text = "abcdefghij"

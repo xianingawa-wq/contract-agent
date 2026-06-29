@@ -23,7 +23,6 @@ def build_semantic_graph(document: ParsedDocument) -> DocumentSemanticGraph:
     block_nodes_by_id: dict[str, str] = {}
     block_nodes_by_span_id: dict[str, str] = {}
     ordered_blocks = _blocks_ordered_by_offset(document)
-    block_cursor = 0
     for block in document.blocks:
         node_id = f"block:{block.block_id}"
         block_nodes_by_id[block.block_id] = node_id
@@ -84,9 +83,8 @@ def build_semantic_graph(document: ParsedDocument) -> DocumentSemanticGraph:
         if previous_chunk_node_id:
             edges.append({"source": previous_chunk_node_id, "target": node_id, "type": "next"})
         previous_chunk_node_id = node_id
-        block, block_cursor = _next_block_for_chunk(
+        block = _block_for_chunk(
             ordered_blocks,
-            block_cursor,
             chunk.start_offset,
             chunk.end_offset,
         )
@@ -153,12 +151,12 @@ def _blocks_ordered_by_offset(document: ParsedDocument) -> list:
     )
 
 
-def _next_block_for_chunk(
+def _block_for_chunk(
     ordered_blocks: list,
-    cursor: int,
     start_offset: int,
     end_offset: int,
-) -> tuple[object | None, int]:
+) -> object | None:
+    cursor = 0
     while (
         cursor < len(ordered_blocks)
         and ordered_blocks[cursor].location.end_offset is not None
@@ -166,11 +164,11 @@ def _next_block_for_chunk(
     ):
         cursor += 1
     if cursor >= len(ordered_blocks):
-        return None, cursor
+        return None
     block = ordered_blocks[cursor]
     if block.location.start_offset is not None and block.location.start_offset <= end_offset:
-        return block, cursor
-    return None, cursor
+        return block
+    return None
 
 
 def _preview(text: str, limit: int = 120) -> str:

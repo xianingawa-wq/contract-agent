@@ -112,7 +112,7 @@ class MarkdownCleanerTests(unittest.TestCase):
                 "# Payment plan",
                 "",
                 "| year | item | amount | total | date |",
-                "| - | - | - | - | - |",
+                "| --- | --- | --- | --- | --- |",
                 "| year 1 | rent | + 2200 | 2464 | 2027-02-19 |",
                 "",
                 "ANHUYOUQU",
@@ -120,7 +120,7 @@ class MarkdownCleanerTests(unittest.TestCase):
                 "OGA",
                 "",
                 "|  | service fee | + 264 |  |  |",
-                "| - | - | - | - | - |",
+                "| --- | --- | --- | --- | --- |",
                 "| year 1 | rent | + 2200 | 2464 | 2027-03-19 |",
             ]
         )
@@ -212,13 +212,13 @@ class MarkdownCleanerTests(unittest.TestCase):
                 "# Payment plan",
                 "",
                 "| year | item | amount | total | date |",
-                "| - | - | - | - | - |",
+                "| --- | --- | --- | --- | --- |",
                 "| year 1 | rent | + 2200 | 2464 | 2027-02-19 |",
                 "",
                 "Business note: keep the next table separate.",
                 "",
                 "| year | item | amount | total | date |",
-                "| - | - | - | - | - |",
+                "| --- | --- | --- | --- | --- |",
                 "| year 1 | deposit | + 2200 | 2200 | 2027-03-19 |",
             ]
         )
@@ -279,6 +279,8 @@ class MarkdownCleanerTests(unittest.TestCase):
                 "",
                 "ScheduleA",
                 "",
+                "| item | amount |",
+                "| --- | --- |",
                 "| deposit | 2000 |",
             ]
         )
@@ -294,9 +296,9 @@ class MarkdownCleanerTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(len(document.tables), 1)
+        self.assertEqual(len(document.tables), 2)
         self.assertIn("ScheduleA", document.raw_text)
-        self.assertIn("deposit | 2000", document.raw_text)
+        self.assertIn("deposit | 2000", document.markdown_content)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 0)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 0)
 
@@ -347,7 +349,7 @@ class MarkdownCleanerTests(unittest.TestCase):
         )
         self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 1)
 
-    def test_parse_markdown_merges_cross_page_tables_with_different_continuation_header(self):
+    def test_parse_markdown_does_not_merge_cross_page_tables_with_incompatible_schema(self):
         markdown = "\n".join(
             [
                 "# 维修责任",
@@ -388,12 +390,133 @@ class MarkdownCleanerTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(len(document.tables), 1)
-        self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 1)
+        self.assertEqual(len(document.tables), 2)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 0)
         self.assertIn(
             ["墙体结构", "建筑主体正常", "建筑主体", "其他"],
-            document.tables[0].rows,
+            document.tables[1].rows,
         )
+
+    def test_parse_markdown_does_not_merge_cross_page_tables_with_different_headers(self):
+        markdown = "\n".join(
+            [
+                "# Payment schedules",
+                "",
+                "| item | amount |",
+                "| --- | --- |",
+                "| rent | 1000 |",
+                "",
+                "| service | owner | due date |",
+                "| --- | --- | --- |",
+                "| cleaning | tenant | monthly |",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={
+                    "parser_backend": "docling",
+                    "docling_tables": [
+                        {
+                            "index": 0,
+                            "page": 1,
+                            "bbox": {"top": 0.72, "bottom": 0.95},
+                        },
+                        {
+                            "index": 1,
+                            "page": 2,
+                            "bbox": {"top": 0.04, "bottom": 0.18},
+                        },
+                    ],
+                },
+            )
+        )
+
+        self.assertEqual(len(document.tables), 2)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 0)
+
+    def test_parse_markdown_keeps_meaningful_short_label_between_tables_with_layout_evidence(self):
+        markdown = "\n".join(
+            [
+                "# Payment schedules",
+                "",
+                "| item | amount |",
+                "| --- | --- |",
+                "| rent | 1000 |",
+                "",
+                "ScheduleA",
+                "",
+                "| item | amount |",
+                "| --- | --- |",
+                "| deposit | 2000 |",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={
+                    "parser_backend": "docling",
+                    "docling_tables": [
+                        {
+                            "index": 0,
+                            "page": 1,
+                            "bbox": {"top": 0.72, "bottom": 0.95},
+                        },
+                        {
+                            "index": 1,
+                            "page": 2,
+                            "bbox": {"top": 0.04, "bottom": 0.18},
+                        },
+                    ],
+                },
+            )
+        )
+
+        self.assertEqual(len(document.tables), 2)
+        self.assertIn("ScheduleA", document.raw_text)
+        self.assertIn("deposit | 2000", document.markdown_content)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 0)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 0)
+
+    def test_parse_markdown_keeps_repeated_clause_titles_near_page_numbers(self):
+        markdown = "\n".join(
+            [
+                "Payment obligations",
+                "Page 1 of 2",
+                "",
+                "The buyer pays within five days.",
+                "",
+                "Payment obligations",
+                "Page 2 of 2",
+                "",
+                "Late payment bears interest.",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertEqual(document.raw_text.count("Payment obligations"), 2)
+        self.assertNotIn("Page 1 of 2", document.raw_text)
+        self.assertNotIn("Page 2 of 2", document.raw_text)
 
     def test_parse_markdown_removes_repeated_header_near_page_numbers_after_first(self):
         markdown = "\n".join(
