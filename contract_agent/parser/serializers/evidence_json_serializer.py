@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from contract_agent.parser.models import ParsedDocument
@@ -28,8 +29,10 @@ def to_evidence_json(document: ParsedDocument) -> dict[str, Any]:
 
 
 def _json_safe(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, (str, int, bool)):
         return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
     if isinstance(value, bytes):
         return "<bytes>"
     if isinstance(value, dict):

@@ -1,4 +1,5 @@
 import json
+import math
 import unittest
 
 from contract_agent.parser import (
@@ -189,12 +190,101 @@ class ParserSerializerTests(unittest.TestCase):
         )
         self.assertEqual(rag_documents[0]["metadata"]["block_id"], "p1-b0")
 
+    def test_rag_documents_do_not_emit_blank_chunk_only_documents(self):
+        document = self.make_ascii_document()
+        document.blocks = []
+        document.clause_chunks = [
+            ClauseChunk(
+                chunk_id="chunk-blank",
+                chunk_level="sentence_group",
+                clause_no="1",
+                section_title="Payment",
+                page_no=1,
+                start_offset=0,
+                end_offset=0,
+                source_text="   ",
+            )
+        ]
+
+        self.assertEqual(to_rag_documents(document), [])
+
+    def test_rag_documents_keep_chunk_only_documents(self):
+        document = self.make_ascii_document()
+        document.blocks = []
+        document.clause_chunks = [
+            ClauseChunk(
+                chunk_id="chunk-payment",
+                chunk_level="sentence_group",
+                clause_no="1",
+                section_title="Payment",
+                page_no=1,
+                start_offset=0,
+                end_offset=18,
+                source_text="Payment is due.",
+            )
+        ]
+
+        rag_documents = to_rag_documents(document)
+
+        self.assertEqual([item["page_content"] for item in rag_documents], ["Payment is due."])
+        self.assertEqual(rag_documents[0]["metadata"]["chunk_id"], "chunk-payment")
+
+    def test_text_serializers_fall_back_to_raw_text_when_blocks_are_blank(self):
+        document = self.make_ascii_document()
+        document.raw_text = "Raw fallback text"
+        document.blocks = [
+            DocumentBlock(
+                block_id="p1-b0",
+                block_type="paragraph",
+                text="   ",
+                markdown=" ",
+                location=BlockLocation(page_no=1, block_index=0),
+            )
+        ]
+
+        self.assertEqual(to_plain_text(document), "Raw fallback text")
+        self.assertEqual(to_markdown(document), "Raw fallback text")
+
+        mixed_document = self.make_ascii_document()
+        mixed_document.raw_text = "Raw fallback text"
+        mixed_document.blocks.insert(
+            0,
+            DocumentBlock(
+                block_id="p1-b-blank",
+                block_type="paragraph",
+                text="   ",
+                markdown=" ",
+                location=BlockLocation(page_no=1, block_index=0),
+            ),
+        )
+
+        self.assertEqual(to_plain_text(mixed_document), "Purchase Contract\nSection 1 Payment")
+        self.assertEqual(to_markdown(mixed_document), "# Purchase Contract\n\n## Section 1 Payment")
+
     def test_evidence_json_is_json_safe_without_detector_output(self):
         evidence = to_evidence_json(self.make_document())
 
         self.assertIn("blocks", evidence)
         self.assertNotIn("detector_results", evidence)
         json.dumps(evidence, ensure_ascii=False)
+
+    def test_evidence_json_normalizes_non_finite_numbers_for_strict_json(self):
+        document = self.make_ascii_document()
+        document.conversion_metadata = {
+            "score": math.nan,
+            "nested": {"positive": math.inf, "negative": -math.inf, "finite": 0.75},
+            "items": [math.nan, {"value": math.inf}],
+        }
+
+        evidence = to_evidence_json(document)
+
+        self.assertIsNone(evidence["conversion_metadata"]["score"])
+        self.assertIsNone(evidence["conversion_metadata"]["nested"]["positive"])
+        self.assertIsNone(evidence["conversion_metadata"]["nested"]["negative"])
+        self.assertEqual(evidence["conversion_metadata"]["nested"]["finite"], 0.75)
+        self.assertIsNone(evidence["conversion_metadata"]["items"][0])
+        self.assertIsNone(evidence["conversion_metadata"]["items"][1]["value"])
+        json.dumps(evidence, allow_nan=False)
 
     def test_evidence_json_includes_structured_extensions(self):
         document = self.make_document()
