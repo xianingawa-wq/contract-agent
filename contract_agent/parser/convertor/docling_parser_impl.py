@@ -27,8 +27,6 @@ class DoclingParserImpl:
                 supported=False,
                 reason="docling remote services are disabled by parser safety policy",
             )
-        if importlib.util.find_spec("docling") is None:
-            return ParserBackendSupport(supported=False, reason="docling package is not installed")
         suffix = f".{source.file_type}" if source.file_type else ""
         if source.kind == "text" or suffix.lower() != ".pdf":
             return ParserBackendSupport(
@@ -36,6 +34,8 @@ class DoclingParserImpl:
                 reason=f"docling backend supports PDF input only: {suffix or source.kind}",
                 can_fallback=True,
             )
+        if importlib.util.find_spec("docling") is None:
+            return ParserBackendSupport(supported=False, reason="docling package is not installed")
         return ParserBackendSupport(supported=True, confidence=0.85, reason="docling available")
 
     def convert(self, source: ParserSource, config: ParserConfig) -> MarkdownDocument:

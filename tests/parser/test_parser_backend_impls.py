@@ -31,6 +31,21 @@ class ParserBackendImplTests(unittest.TestCase):
         self.assertFalse(text_support.supported)
         self.assertFalse(docx_support.supported)
 
+    def test_docling_non_pdf_sources_can_fallback_when_dependency_missing(self):
+        backend = DoclingParserImpl()
+        config = ParserConfig(docling_enabled=True)
+
+        with patch("importlib.util.find_spec", return_value=None):
+            text_support = backend.supports(ParserSource.from_text("body"), config)
+            docx_support = backend.supports(
+                ParserSource.from_bytes("contract.docx", b"fake"), config
+            )
+
+        self.assertFalse(text_support.supported)
+        self.assertTrue(text_support.can_fallback)
+        self.assertFalse(docx_support.supported)
+        self.assertTrue(docx_support.can_fallback)
+
     def test_docling_convertor_returns_exact_backend_markdown(self):
         calls: list[str] = []
         converter_kwargs: list[dict] = []
@@ -295,7 +310,15 @@ class ParserBackendImplTests(unittest.TestCase):
 
     def test_docx_html_output_is_sanitized_before_exposure(self):
         class FakeMammothResult:
-            value = '<p>ok</p><script>alert("x")</script><img src="x" onerror="bad">'
+            value = (
+                '<p>ok</p><script>alert("x")</script>'
+                '<img src="x" onerror="bad">'
+                '<a href="javascript:alert(1)">bad</a>'
+                '<svg><a xlink:href="javascript:alert(2)">bad</a></svg>'
+                '<iframe src="https://evil.example"></iframe>'
+                '<object data="https://evil.example"></object>'
+                '<embed src="https://evil.example">'
+            )
 
         def fake_convert_to_html(stream: BytesIO) -> FakeMammothResult:
             return FakeMammothResult()
@@ -306,7 +329,7 @@ class ParserBackendImplTests(unittest.TestCase):
         with patch.dict(sys.modules, {"mammoth": module}):
             html = builtin_converter._docx_to_html(b"fake")  # noqa: SLF001
 
-        self.assertEqual(html, '<p>ok</p><img src="x">')
+        self.assertEqual(html, '<p>ok</p><img src="x"><a>bad</a><svg><a>bad</a></svg>')
 
 
 def _run_docling_fake(document_converter_cls: type) -> object:

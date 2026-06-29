@@ -224,10 +224,28 @@ def _sanitize_html(html: str) -> str:
         html,
         flags=re.IGNORECASE | re.DOTALL,
     )
-    return re.sub(
-        r"\s+on[a-zA-Z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)",
+    without_active_elements = re.sub(
+        r"<(?:iframe|object|embed)\b[^>]*>.*?</(?:iframe|object|embed)\s*>",
         "",
         without_scripts,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    without_active_elements = re.sub(
+        r"<(?:iframe|object|embed)\b[^>]*/?>",
+        "",
+        without_active_elements,
+        flags=re.IGNORECASE,
+    )
+    without_event_handlers = re.sub(
+        r"\s+on[a-zA-Z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)",
+        "",
+        without_active_elements,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(
+        r"\s+(?:href|src|xlink:href)\s*=\s*(\"\s*javascript:[^\"]*\"|'\s*javascript:[^']*'|javascript:[^\s>]+)",
+        "",
+        without_event_handlers,
         flags=re.IGNORECASE,
     ).strip()
 
