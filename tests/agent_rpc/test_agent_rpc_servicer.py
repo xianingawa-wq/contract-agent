@@ -372,6 +372,42 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertEqual(request.contract_type, "purchase")
         self.assertEqual(request.our_side, "buyer")
 
+    def test_review_multi_agent_single_mode_ignores_non_callable_review_document(self):
+        class LegacyReviewService(FakeReviewService):
+            review_document = None
+
+            def __init__(self):
+                self.review_calls = []
+
+            def review(self, request):
+                self.review_calls.append(request)
+                return make_review_response()
+
+        from contract_agent.orchestration.protocol import AgentMode
+
+        service = LegacyReviewService()
+        servicer = AgentRpcServicer(app_context=_builtin_context())
+        servicer.review_service = service  # type: ignore[assignment]
+
+        with patch(
+            "contract_agent.services.review_gateway.GatewayRouter._detect_mode",
+            return_value=AgentMode.SINGLE,
+        ):
+            response = servicer.ReviewMultiAgent(
+                agent_pb2.ReviewRequest(
+                    file=agent_pb2.FilePayload(
+                        file_name="contract.txt",
+                        content=b"Section 1 Payment",
+                    ),
+                    contract_type="purchase",
+                    our_side="buyer",
+                ),
+                None,
+            )
+
+        self.assertEqual(response.code, 200)
+        self.assertEqual(len(service.review_calls), 1)
+
     def test_review_multi_agent_parse_failure_writes_rpc_error_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
             logger = AuditLogger(Path(tmp) / "rpc.jsonl")
@@ -391,7 +427,9 @@ class AgentRpcServicerTests(unittest.TestCase):
             ]
 
         self.assertEqual(response.code, 400)
-        rpc_error = next(record for record in records if record["event"] == "grpc.error")
+        rpc_errors = [record for record in records if record.get("event") == "grpc.error"]
+        self.assertTrue(rpc_errors, "Expected grpc.error audit record")
+        rpc_error = rpc_errors[0]
         self.assertEqual(rpc_error["method"], "ReviewMultiAgent")
         self.assertEqual(rpc_error["code"], 400)
         self.assertEqual(rpc_error["error_type"], "UnsupportedFileType")
@@ -505,7 +543,9 @@ class AgentRpcServicerTests(unittest.TestCase):
                 json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()
             ]
 
-        rpc_error = next(record for record in records if record["event"] == "grpc.error")
+        rpc_errors = [record for record in records if record.get("event") == "grpc.error"]
+        self.assertTrue(rpc_errors, "Expected grpc.error audit record")
+        rpc_error = rpc_errors[0]
         self.assertEqual(rpc_error["method"], "ReviewMultiAgentStream")
         self.assertEqual(rpc_error["code"], 400)
         self.assertEqual(rpc_error["error_type"], "UnsupportedFileType")

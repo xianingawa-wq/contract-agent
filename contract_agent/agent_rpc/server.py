@@ -169,8 +169,9 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
 
     def _review_normalized_input(self, normalized: ParsedReviewInput):
         service = self._get_review_service()
-        if hasattr(service, "review_document"):
-            return service.review_document(
+        review_document = getattr(service, "review_document", None)
+        if callable(review_document):
+            return review_document(
                 normalized.document,
                 normalized.contract_type,
                 normalized.our_side or "甲方",
