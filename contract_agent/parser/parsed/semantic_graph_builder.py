@@ -156,16 +156,18 @@ def _block_for_chunk(
     start_offset: int,
     end_offset: int,
 ) -> object | None:
-    cursor = 0
-    while (
-        cursor < len(ordered_blocks)
-        and ordered_blocks[cursor].location.end_offset is not None
-        and ordered_blocks[cursor].location.end_offset < start_offset
-    ):
-        cursor += 1
-    if cursor >= len(ordered_blocks):
+    left = 0
+    right = len(ordered_blocks)
+    while left < right:
+        middle = (left + right) // 2
+        block_end = ordered_blocks[middle].location.end_offset
+        if block_end is not None and block_end < start_offset:
+            left = middle + 1
+        else:
+            right = middle
+    if left >= len(ordered_blocks):
         return None
-    block = ordered_blocks[cursor]
+    block = ordered_blocks[left]
     if block.location.start_offset is not None and block.location.start_offset <= end_offset:
         return block
     return None

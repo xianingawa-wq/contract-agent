@@ -93,7 +93,10 @@ class ContractChunkerTests(unittest.TestCase):
         )
 
     def test_span_chunk_offsets_align_after_trimming_boundary_whitespace(self):
-        raw_text = "  Payment obligation  "
+        prefix = "Intro\n"
+        span_text = "  Payment obligation  "
+        raw_text = prefix + span_text
+        span_start = len(prefix)
         document = ParsedDocument(
             metadata=DocumentMetadata(
                 doc_id="doc",
@@ -107,9 +110,9 @@ class ContractChunkerTests(unittest.TestCase):
                     span_id="p1-b0",
                     page_no=1,
                     block_index=0,
-                    start_offset=0,
-                    end_offset=len(raw_text),
-                    text=raw_text,
+                    start_offset=span_start,
+                    end_offset=span_start + len(span_text),
+                    text=span_text,
                 )
             ],
         )
@@ -148,6 +151,35 @@ class ContractChunkerTests(unittest.TestCase):
 
         self.assertEqual(chunk.source_text, "Delivery obligation")
         self.assertEqual(raw_text[chunk.start_offset : chunk.end_offset], chunk.source_text)
+
+    def test_block_chunk_uses_markdown_when_text_is_blank(self):
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc",
+                file_name="contract.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text="Markdown obligation",
+            blocks=[
+                DocumentBlock(
+                    block_id="p1-b0",
+                    block_type="paragraph",
+                    text="   ",
+                    markdown="Markdown obligation",
+                    location=BlockLocation(
+                        page_no=1,
+                        block_index=0,
+                        start_offset=0,
+                        end_offset=len("Markdown obligation"),
+                    ),
+                )
+            ],
+        )
+
+        chunk = ContractChunker().chunk(document)[0]
+
+        self.assertEqual(chunk.source_text, "Markdown obligation")
 
     def test_unpunctuated_long_sentence_is_hard_split_to_target_chars(self):
         text = "abcdefghij"

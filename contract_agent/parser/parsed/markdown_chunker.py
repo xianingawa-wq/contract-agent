@@ -42,7 +42,7 @@ class ContractChunker:
         return [self._source_from_span(span) for span in document.spans if span.text.strip()]
 
     def _source_from_block(self, block: DocumentBlock) -> _ChunkSource:
-        raw_text = block.text or block.markdown or ""
+        raw_text = _block_source_text(block)
         location_start = block.location.start_offset or 0
         location_end = block.location.end_offset
         normalized = _normalize_text(raw_text)
@@ -160,7 +160,11 @@ class ContractChunker:
 
 
 def _block_text(block: DocumentBlock) -> str:
-    return (block.text or block.markdown or "").strip()
+    return _block_source_text(block).strip()
+
+
+def _block_source_text(block: DocumentBlock) -> str:
+    return block.text if block.text.strip() else block.markdown or ""
 
 
 def _trimmed_text_with_offsets(text: str) -> tuple[str, int, int]:

@@ -471,7 +471,7 @@ def _looks_like_body_title(line: str) -> bool:
         return True
     if re.match(r"^\d+[\).、]\s*\S+", stripped):
         return True
-    if re.match(r"^第.+[条章节]\b", stripped):
+    if re.match(r"^第.+[条章节]\S*", stripped):
         return True
     if (
         re.search(r"[a-z]", stripped)

@@ -406,9 +406,9 @@ class MarkdownCleanerTests(unittest.TestCase):
                 "| --- | --- |",
                 "| rent | 1000 |",
                 "",
-                "| service | owner | due date |",
-                "| --- | --- | --- |",
-                "| cleaning | tenant | monthly |",
+                "| service | owner |",
+                "| --- | --- |",
+                "| cleaning | tenant |",
             ]
         )
 
