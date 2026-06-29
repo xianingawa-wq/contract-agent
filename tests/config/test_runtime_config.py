@@ -252,8 +252,7 @@ class RuntimeConfigTests(unittest.TestCase):
                 self.assertIn(settings_field, Settings.model_fields)
                 self.assertIn(parser_field, ParserConfig.model_fields)
                 default_value = getattr(ParserConfig(), parser_field)
-                if default_value is not None:
-                    self.assertEqual(cursor, default_value)
+                self.assertEqual(cursor, default_value)
 
         env_values = {
             line.split("=", 1)[0]: line.split("=", 1)[1]
@@ -264,11 +263,10 @@ class RuntimeConfigTests(unittest.TestCase):
         for env_key, (_, _, parser_field) in field_map.items():
             with self.subTest(env_key=f"{env_key}-env-value"):
                 default_value = getattr(defaults, parser_field)
-                if default_value is not None:
-                    self.assertEqual(
-                        _env_example_value(env_values[env_key], default_value),
-                        default_value,
-                    )
+                self.assertEqual(
+                    _env_example_value(env_values[env_key], default_value),
+                    default_value,
+                )
 
     def test_apply_model_runtime_config_updates_related_aliases_together(self):
         config = ModelRuntimeConfig(

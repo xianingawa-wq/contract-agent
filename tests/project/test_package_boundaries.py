@@ -202,17 +202,10 @@ def _module_level_import_nodes(tree: ast.Module) -> list[ast.Import | ast.Import
             continue
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             continue
-        if isinstance(node, ast.If):
-            pending = list(node.body) + list(node.orelse) + pending
-            continue
-        if isinstance(node, ast.Try):
-            pending = (
-                list(node.body)
-                + [item for handler in node.handlers for item in handler.body]
-                + list(node.orelse)
-                + list(node.finalbody)
-                + pending
-            )
+        child_statements = [
+            child for child in ast.iter_child_nodes(node) if isinstance(child, ast.stmt)
+        ]
+        pending = child_statements + pending
     return nodes
 
 

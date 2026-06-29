@@ -296,8 +296,8 @@ class ContractParserServiceTests(unittest.TestCase):
                     chunk_level="sentence_group",
                     section_title="Body",
                     page_no=1,
-                    start_offset=0,
-                    end_offset=2000,
+                    start_offset=start,
+                    end_offset=end,
                     source_text=text,
                 )
             )
@@ -324,7 +324,7 @@ class ContractParserServiceTests(unittest.TestCase):
             [
                 {
                     "source": f"chunk:chunk-{index}",
-                    "target": "block:p1-b0",
+                    "target": f"block:p1-b{index}",
                     "type": "derived_from",
                 }
                 for index in range(20)
