@@ -214,7 +214,22 @@ def _docx_to_html(content: bytes) -> str:
         result = mammoth_to_html(BytesIO(content))
     except Exception:
         return ""
-    return result.value.strip() if result.value else ""
+    return _sanitize_html(result.value.strip()) if result.value else ""
+
+
+def _sanitize_html(html: str) -> str:
+    without_scripts = re.sub(
+        r"<script\b[^>]*>.*?</script\s*>",
+        "",
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    return re.sub(
+        r"\s+on[a-zA-Z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)",
+        "",
+        without_scripts,
+        flags=re.IGNORECASE,
+    ).strip()
 
 
 def _ensure_parseable(markdown: str) -> None:

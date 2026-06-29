@@ -13,7 +13,27 @@ from contract_agent.parser.parser_source import ParserSource
 
 
 class ParserBackendRouterTests(unittest.TestCase):
-    def test_default_router_uses_docling_backend_for_text(self):
+    def test_default_router_falls_back_to_builtin_for_text_when_docling_skips(self):
+        router = ParserBackendRouter.default()
+
+        with patch(
+            "contract_agent.parser.convertor.docling_parser_impl.DoclingParserImpl.supports",
+            return_value=ParserBackendSupport(
+                supported=False,
+                confidence=0.0,
+                reason="docling backend supports PDF input only: text",
+                can_fallback=True,
+            ),
+        ):
+            result = router.convert(
+                ParserSource.from_text("第一条 付款", file_name="inline.txt"),
+                ParserConfig(),
+            )
+
+        self.assertEqual(result.backend_name, "builtin")
+        self.assertEqual(result.markdown_content, "第一条 付款")
+
+    def test_default_router_uses_docling_backend_for_pdf(self):
         router = ParserBackendRouter.default()
         with (
             patch(
@@ -28,16 +48,15 @@ class ParserBackendRouterTests(unittest.TestCase):
                 "contract_agent.parser.convertor.docling_parser_impl.DoclingParserImpl.convert",
                 return_value=MarkdownDocument(
                     markdown_content="第一条 付款",
-                    file_name="inline.txt",
-                    file_type="txt",
-                    source_path="inline.txt",
+                    file_name="contract.pdf",
+                    file_type="pdf",
+                    source_path="contract.pdf",
                     backend_name="docling",
                 ),
             ),
         ):
             result = router.convert(
-                ParserSource.from_text("第一条 付款", file_name="inline.txt"),
-                ParserConfig(),
+                ParserSource.from_bytes("contract.pdf", b"fake"), ParserConfig()
             )
 
         self.assertEqual(result.backend_name, "docling")

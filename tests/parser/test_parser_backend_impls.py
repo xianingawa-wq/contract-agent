@@ -3,17 +3,34 @@ import sys
 import tempfile
 import types
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
 from contract_agent.config.config_parser import ParserConfig
 from contract_agent.parser.exception import DocumentLoadError
+from contract_agent.parser.convertor import builtin_markdown_converter as builtin_converter
 from contract_agent.parser.convertor.docling_parser_impl import DoclingParserImpl
 from contract_agent.parser.convertor.markitdown_parser_impl import MarkitdownParserImpl
 from contract_agent.parser.parser_source import ParserSource
 
 
 class ParserBackendImplTests(unittest.TestCase):
+    def test_docling_supports_only_pdf_sources(self):
+        backend = DoclingParserImpl()
+        config = ParserConfig(docling_enabled=True)
+
+        with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
+            pdf_support = backend.supports(ParserSource.from_bytes("contract.pdf", b"fake"), config)
+            text_support = backend.supports(ParserSource.from_text("body"), config)
+            docx_support = backend.supports(
+                ParserSource.from_bytes("contract.docx", b"fake"), config
+            )
+
+        self.assertTrue(pdf_support.supported)
+        self.assertFalse(text_support.supported)
+        self.assertFalse(docx_support.supported)
+
     def test_docling_convertor_returns_exact_backend_markdown(self):
         calls: list[str] = []
         converter_kwargs: list[dict] = []
@@ -256,6 +273,40 @@ class ParserBackendImplTests(unittest.TestCase):
                             ParserSource.from_path(path),
                             ParserConfig(markitdown_enabled=True),
                         )
+
+    def test_markitdown_convertor_rejects_unexpected_result_objects(self):
+        class FakeMarkItDown:
+            def convert(self, source: str) -> object:
+                return object()
+
+        module = types.ModuleType("markitdown")
+        module.MarkItDown = FakeMarkItDown
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "project.docx"
+            path.write_bytes(b"fake")
+            with patch.dict(sys.modules, {"markitdown": module}):
+                with patch("importlib.util.find_spec", return_value=_module_spec("markitdown")):
+                    with self.assertRaisesRegex(DocumentLoadError, "unexpected result"):
+                        MarkitdownParserImpl().convert(
+                            ParserSource.from_path(path),
+                            ParserConfig(markitdown_enabled=True),
+                        )
+
+    def test_docx_html_output_is_sanitized_before_exposure(self):
+        class FakeMammothResult:
+            value = '<p>ok</p><script>alert("x")</script><img src="x" onerror="bad">'
+
+        def fake_convert_to_html(stream: BytesIO) -> FakeMammothResult:
+            return FakeMammothResult()
+
+        module = types.ModuleType("mammoth")
+        module.convert_to_html = fake_convert_to_html
+
+        with patch.dict(sys.modules, {"mammoth": module}):
+            html = builtin_converter._docx_to_html(b"fake")  # noqa: SLF001
+
+        self.assertEqual(html, '<p>ok</p><img src="x">')
 
 
 def _run_docling_fake(document_converter_cls: type) -> object:

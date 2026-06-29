@@ -59,7 +59,7 @@ def _markdown_from_result(result: object) -> str:
     if markdown is None:
         markdown = getattr(result, "markdown", None)
     if markdown is None:
-        markdown = str(result)
+        raise DocumentLoadError("MarkItDown backend returned unexpected result object")
     text = str(markdown)
     if not text.strip():
         raise DocumentLoadError("MarkItDown backend 未返回可解析内容。")

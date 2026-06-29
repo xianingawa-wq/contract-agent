@@ -15,6 +15,18 @@ class ProjectScaffoldingTests(unittest.TestCase):
 
         self.assertTrue(pyproject_dependencies.issubset(requirements))
 
+    def test_protobuf_runtime_matches_generated_grpc_code(self):
+        expected = "protobuf==6.33.5"
+        pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+        requirements = {
+            line.strip()
+            for line in Path("requirements.txt").read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        }
+
+        self.assertIn(expected, pyproject["project"]["dependencies"])
+        self.assertIn(expected, requirements)
+
     def test_env_example_documents_required_runtime_keys(self):
         env_example = Path(".env.example")
         self.assertTrue(env_example.exists())
