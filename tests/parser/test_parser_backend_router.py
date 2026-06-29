@@ -124,6 +124,33 @@ class ParserBackendRouterTests(unittest.TestCase):
             with self.assertRaises(DocumentLoadError):
                 router.convert(ParserSource.from_path(directory), config)
 
+    def test_path_input_passes_validated_resolved_path_to_backend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "contract.txt"
+            path.write_text("body", encoding="utf-8")
+            backend = RecordingPathBackend()
+            router = ParserBackendRouter([backend])
+            config = ParserConfig(
+                default_converter="recording",
+                enabled_converters=["recording"],
+                fallback_order=["recording"],
+                allow_path_input=True,
+                trusted_path_roots=[str(root)],
+            )
+            source = ParserSource(
+                kind="path",
+                file_name="contract.txt",
+                local_path=path,
+                source_path="contract.txt",
+                file_type="txt",
+            )
+
+            router.convert(source, config)
+
+        self.assertEqual(backend.seen_local_path, path.resolve())
+        self.assertTrue(str(backend.seen_source_path).startswith("local:"))
+
 
 class BrokenParserImpl:
     name = "broken"
@@ -133,6 +160,28 @@ class BrokenParserImpl:
 
     def convert(self, source: ParserSource, config: ParserConfig) -> MarkdownDocument:
         raise DocumentLoadError("broken backend failed")
+
+
+class RecordingPathBackend:
+    name = "recording"
+
+    def __init__(self):
+        self.seen_local_path = None
+        self.seen_source_path = None
+
+    def supports(self, source: ParserSource, config: ParserConfig) -> ParserBackendSupport:
+        return ParserBackendSupport(supported=True, confidence=1.0, reason="recording")
+
+    def convert(self, source: ParserSource, config: ParserConfig) -> MarkdownDocument:
+        self.seen_local_path = source.local_path
+        self.seen_source_path = source.source_path
+        return MarkdownDocument(
+            markdown_content="body",
+            file_name=source.file_name,
+            file_type=source.file_type,
+            source_path=source.source_path,
+            backend_name=self.name,
+        )
 
 
 if __name__ == "__main__":

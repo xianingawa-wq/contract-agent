@@ -246,14 +246,23 @@ class ParserModelTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     build()
 
-    def test_parser_source_from_path_keeps_absolute_local_path_but_safe_source_path(self):
-        path = Path("fixtures") / "contract.txt"
+    def test_parser_source_from_path_keeps_stable_safe_path_identifier(self):
+        path = Path("fixtures\nunsafe") / "contract.txt"
 
         source = ParserSource.from_path(path)
 
         self.assertTrue(source.local_path.is_absolute())
         self.assertEqual(source.file_name, "contract.txt")
-        self.assertEqual(source.source_path, "contract.txt")
+        self.assertTrue(source.source_path.startswith("local:"))
+        self.assertIn("contract.txt", source.source_path)
+        self.assertNotIn("\n", source.source_path)
+
+    def test_parser_source_from_path_distinguishes_same_name_files(self):
+        first = ParserSource.from_path(Path("first") / "contract.txt")
+        second = ParserSource.from_path(Path("second") / "contract.txt")
+
+        self.assertEqual(first.file_name, second.file_name)
+        self.assertNotEqual(first.source_path, second.source_path)
 
 
 if __name__ == "__main__":
