@@ -27,7 +27,7 @@ from contract_agent.parser import (
 
 class ContractParserServiceTests(unittest.TestCase):
     def test_parse_text_generates_metadata_spans_and_chunks_without_detectors(self):
-        document = ContractParser().parse_text("第一条 付款\n甲方应支付价款。", "inline.txt")
+        document = _builtin_parser().parse_text("第一条 付款\n甲方应支付价款。", "inline.txt")
 
         self.assertEqual(document.metadata.file_name, "inline.txt")
         self.assertEqual(document.metadata.file_type, "txt")
@@ -47,7 +47,7 @@ class ContractParserServiceTests(unittest.TestCase):
         )
 
     def test_parse_bytes_supports_txt_encodings(self):
-        parser = ContractParser()
+        parser = _builtin_parser()
 
         utf8 = parser.parse_bytes("a.txt", "第一条 付款".encode("utf-8"))
         utf8_sig = parser.parse_bytes("b.txt", "第一条 付款".encode("utf-8-sig"))
@@ -70,7 +70,7 @@ class ContractParserServiceTests(unittest.TestCase):
         buffer = BytesIO()
         docx.save(buffer)
 
-        document = ContractParser().parse_bytes("project.docx", buffer.getvalue())
+        document = _builtin_parser().parse_bytes("project.docx", buffer.getvalue())
 
         self.assertIn("Project Name", document.raw_text)
         self.assertIn("Contract review with MCP and RAG", document.raw_text)
@@ -107,7 +107,7 @@ class ContractParserServiceTests(unittest.TestCase):
         buffer = BytesIO()
         docx.save(buffer)
 
-        document = ContractParser().parse_bytes("duplicate-cells.docx", buffer.getvalue())
+        document = _builtin_parser().parse_bytes("duplicate-cells.docx", buffer.getvalue())
 
         self.assertEqual(document.tables[0].rows[0], ["Penalty", "10%", "10%"])
         table_block = next(block for block in document.blocks if block.block_type == "table")
@@ -123,7 +123,7 @@ class ContractParserServiceTests(unittest.TestCase):
         buffer = BytesIO()
         docx.save(buffer)
 
-        document = ContractParser().parse_bytes("merged-cells.docx", buffer.getvalue())
+        document = _builtin_parser().parse_bytes("merged-cells.docx", buffer.getvalue())
 
         self.assertEqual(document.tables[0].rows[0], ["Merged label", "", "Value"])
         table_block = next(block for block in document.blocks if block.block_type == "table")
@@ -140,7 +140,7 @@ class ContractParserServiceTests(unittest.TestCase):
         buffer = BytesIO()
         docx.save(buffer)
 
-        document = ContractParser().parse_bytes("vertical-merged-cells.docx", buffer.getvalue())
+        document = _builtin_parser().parse_bytes("vertical-merged-cells.docx", buffer.getvalue())
 
         self.assertEqual(document.tables[0].rows, [["Vertical label", "Top"], ["", "Bottom"]])
         table_block = next(block for block in document.blocks if block.block_type == "table")
@@ -158,7 +158,7 @@ class ContractParserServiceTests(unittest.TestCase):
         buffer = BytesIO()
         docx.save(buffer)
 
-        document = ContractParser().parse_bytes("rectangular-merged-cells.docx", buffer.getvalue())
+        document = _builtin_parser().parse_bytes("rectangular-merged-cells.docx", buffer.getvalue())
 
         self.assertEqual(
             document.tables[0].rows,
@@ -177,7 +177,7 @@ class ContractParserServiceTests(unittest.TestCase):
         buffer = BytesIO()
         docx.save(buffer)
 
-        document = ContractParser().parse_bytes("fully-merged-rectangle.docx", buffer.getvalue())
+        document = _builtin_parser().parse_bytes("fully-merged-rectangle.docx", buffer.getvalue())
 
         self.assertEqual(document.tables[0].rows, [["Merged all", ""], ["", ""]])
         table_block = next(block for block in document.blocks if block.block_type == "table")
@@ -253,7 +253,7 @@ class ContractParserServiceTests(unittest.TestCase):
             path = Path(tmp) / "contract.txt"
             path.write_text("第一条 付款", encoding="utf-8")
 
-            document = ContractParser().parse_path(path)
+            document = _builtin_parser().parse_path(path)
 
         self.assertEqual(document.metadata.file_name, "contract.txt")
         self.assertEqual(document.raw_text, "第一条 付款")
@@ -399,10 +399,10 @@ class ContractParserServiceTests(unittest.TestCase):
 
     def test_unsupported_suffix_raises_parser_exception(self):
         with self.assertRaises(UnsupportedFileType):
-            ContractParser().parse_bytes("contract.xlsx", b"data")
+            _builtin_parser().parse_bytes("contract.xlsx", b"data")
 
     def test_empty_or_undecodable_text_raises_clear_parser_exception(self):
-        parser = ContractParser()
+        parser = _builtin_parser()
 
         with self.assertRaises(DocumentParseError):
             parser.parse_text("   \n  ")
@@ -416,6 +416,16 @@ if __name__ == "__main__":
 
 def _module_spec(name: str) -> importlib.machinery.ModuleSpec:
     return importlib.machinery.ModuleSpec(name, loader=None)
+
+
+def _builtin_parser() -> ContractParser:
+    return ContractParser(
+        parser_config=ParserConfig(
+            default_converter="builtin",
+            enabled_converters=["builtin"],
+            fallback_order=["builtin"],
+        )
+    )
 
 
 def _fake_docling_modules(document_converter_cls: type):

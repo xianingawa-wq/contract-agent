@@ -42,6 +42,8 @@ class ConfigPackageTests(unittest.TestCase):
         self.assertEqual(config.app.name, "Contract Review Agent")
         self.assertEqual(config.models.chat.model, "qwen-max")
         self.assertEqual(config.provider.embedding_batch_size, 10)
+        self.assertEqual(config.vector_store.backend, "faiss")
+        self.assertEqual(config.to_settings().vector_backend, "faiss")
         self.assertEqual(config.grpc.port, 50051)
 
     def test_load_app_config_derives_runtime_context_from_yaml(self):

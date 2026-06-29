@@ -15,7 +15,7 @@ class ParserLoggingTests(unittest.TestCase):
         self.assertIn("[Parser][Router]", messages)
         self.assertIn("[Parser][Chunk]", messages)
         self.assertIn("[Parser][Output]", messages)
-        self.assertIn("backend=builtin", messages)
+        self.assertIn("backend=docling", messages)
         self.assertIn("chunks=", messages)
         self.assertNotIn("[Parser][Detector]", messages)
         self.assertNotIn("[Parser][Info]", messages)

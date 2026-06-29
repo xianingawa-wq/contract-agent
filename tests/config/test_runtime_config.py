@@ -43,6 +43,12 @@ class RuntimeConfigTests(unittest.TestCase):
             self.assertEqual(parser_config.chunk_max_chars, 777)
             self.assertEqual(settings.parser_chunk_max_chars, 123)
 
+    def test_runtime_settings_default_vector_backend_uses_local_faiss(self):
+        settings_from_env = load_settings_from_env({})
+
+        self.assertEqual(Settings().vector_backend, "faiss")
+        self.assertEqual(settings_from_env.vector_backend, "faiss")
+
     def test_parser_env_overlays_settings(self):
         settings_from_env = load_settings_from_env(
             {

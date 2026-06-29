@@ -11,14 +11,14 @@ from contract_agent.parser.parser_source import ParserSource
 
 
 class ParserBackendRouterTests(unittest.TestCase):
-    def test_default_router_uses_builtin_backend_for_text(self):
+    def test_default_router_uses_docling_backend_for_text(self):
         router = ParserBackendRouter.default()
         result = router.convert(
             ParserSource.from_text("第一条 付款", file_name="inline.txt"),
             ParserConfig(),
         )
 
-        self.assertEqual(result.backend_name, "builtin")
+        self.assertEqual(result.backend_name, "docling")
         self.assertEqual(result.markdown_content, "第一条 付款")
 
     def test_builtin_backend_does_not_claim_legacy_doc_support(self):

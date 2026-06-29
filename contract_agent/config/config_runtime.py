@@ -91,7 +91,7 @@ class Settings(BaseModel):
     langchain_model: str = "qwen-max"
     langchain_embedding_model: str = "text-embedding-v4"
 
-    vector_backend: str = "milvus"
+    vector_backend: str = "faiss"
     knowledge_vector_store_dir: str = str(PROJECT_ROOT / "knowledge" / "ingested" / "laws_faiss")
     milvus_uri: str = "http://127.0.0.1:19530"
     milvus_collection_name: str = "legal_knowledge_chunks"
@@ -117,7 +117,7 @@ class Settings(BaseModel):
     stream_max_seconds: float = 24.0
     stream_max_chars: int = 900
 
-    parser_default_converter: str = "builtin"
+    parser_default_converter: str = "docling"
     parser_enabled_converters: list[str] = Field(
         default_factory=lambda: DEFAULT_ENABLED_CONVERTERS.copy()
     )
@@ -145,7 +145,7 @@ class Settings(BaseModel):
     parser_chunk_target_chars: int = 500
     parser_min_header_confidence: float = 0.65
     parser_markitdown_enabled: bool = False
-    parser_docling_enabled: bool = False
+    parser_docling_enabled: bool = True
     parser_docling_enable_ocr: bool = True
     parser_docling_ocr_lang: list[str] = Field(default_factory=lambda: ["chinese"])
     parser_docling_force_full_page_ocr: bool = True
@@ -221,7 +221,7 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
         qwen_base_url=chat_base_url,
         langchain_model=chat_model,
         langchain_embedding_model=embedding_model,
-        vector_backend=_env(env, "VECTOR_BACKEND", "milvus") or "milvus",
+        vector_backend=_env(env, "VECTOR_BACKEND", "faiss") or "faiss",
         knowledge_vector_store_dir=_env(
             env,
             "KNOWLEDGE_VECTOR_STORE_DIR",
@@ -254,7 +254,7 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
         max_redraft_chunk_chars=_int_value(_env(env, "MAX_REDRAFT_CHUNK_CHARS"), "12000"),
         stream_max_seconds=_float_value(_env(env, "STREAM_MAX_SECONDS"), "24.0"),
         stream_max_chars=_int_value(_env(env, "STREAM_MAX_CHARS"), "900"),
-        parser_default_converter=_env(env, "PARSER_DEFAULT_CONVERTER", "builtin") or "builtin",
+        parser_default_converter=_env(env, "PARSER_DEFAULT_CONVERTER", "docling") or "docling",
         parser_enabled_converters=_csv_list_value(
             _env(env, "PARSER_ENABLED_CONVERTERS"), DEFAULT_ENABLED_CONVERTERS
         ),
@@ -293,7 +293,7 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
             _env(env, "PARSER_MIN_HEADER_CONFIDENCE"), "0.65"
         ),
         parser_markitdown_enabled=_bool_value(_env(env, "PARSER_MARKITDOWN_ENABLED"), "false"),
-        parser_docling_enabled=_bool_value(_env(env, "PARSER_DOCLING_ENABLED"), "false"),
+        parser_docling_enabled=_bool_value(_env(env, "PARSER_DOCLING_ENABLED"), "true"),
         parser_docling_enable_ocr=_bool_value(_env(env, "PARSER_DOCLING_ENABLE_OCR"), "true"),
         parser_docling_ocr_lang=_csv_list_value(_env(env, "PARSER_DOCLING_OCR_LANG"), ["chinese"]),
         parser_docling_force_full_page_ocr=_bool_value(

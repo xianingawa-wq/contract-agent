@@ -38,7 +38,7 @@ retrieval:
   rerank_max_retries: 0
 
 vector_store:
-  backend: milvus
+  backend: faiss
   knowledge_vector_store_dir: knowledge/ingested/laws_faiss
   milvus_uri: http://127.0.0.1:19530
   milvus_collection_name: legal_knowledge_chunks
@@ -75,11 +75,11 @@ limits:
   stream_max_chars: 900
 
 parser:
-  default_converter: builtin
+  default_converter: docling
   enabled_converters:
-    - builtin
+    - docling
   fallback_order:
-    - builtin
+    - docling
   allow_converter_fallback: true
   strict_converter_availability: false
   allowed_suffixes:
@@ -109,7 +109,7 @@ parser:
   markitdown:
     enabled: false
   docling:
-    enabled: false
+    enabled: true
     enable_ocr: true
     ocr_lang:
       - chinese

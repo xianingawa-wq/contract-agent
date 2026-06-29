@@ -14,9 +14,9 @@ class ParserConfigTests(unittest.TestCase):
     def test_parser_config_defaults_match_design(self):
         config = ParserConfig()
 
-        self.assertEqual(config.default_converter, "builtin")
-        self.assertEqual(config.enabled_converters, ["builtin"])
-        self.assertEqual(config.fallback_order, ["builtin"])
+        self.assertEqual(config.default_converter, "docling")
+        self.assertEqual(config.enabled_converters, ["docling"])
+        self.assertEqual(config.fallback_order, ["docling"])
         self.assertTrue(config.allow_converter_fallback)
         self.assertFalse(config.strict_converter_availability)
         self.assertEqual(config.allowed_suffixes, [".txt", ".doc", ".docx", ".pdf"])
@@ -37,7 +37,7 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(config.chunk_target_chars, 500)
         self.assertEqual(config.min_header_confidence, 0.65)
         self.assertFalse(config.markitdown_enabled)
-        self.assertFalse(config.docling_enabled)
+        self.assertTrue(config.docling_enabled)
         self.assertTrue(config.docling_enable_ocr)
         self.assertEqual(config.docling_ocr_lang, ["chinese"])
         self.assertTrue(config.docling_force_full_page_ocr)
@@ -73,6 +73,14 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(settings.parser_min_detector_confidence, 0.72)
         self.assertEqual(settings.parser_chunk_max_chars, 900)
         self.assertTrue(settings.parser_markitdown_enabled)
+
+    def test_runtime_settings_default_parser_uses_docling(self):
+        settings = load_settings_from_env({})
+
+        self.assertEqual(settings.parser_default_converter, "docling")
+        self.assertEqual(settings.parser_enabled_converters, ["docling"])
+        self.assertEqual(settings.parser_fallback_order, ["docling"])
+        self.assertTrue(settings.parser_docling_enabled)
 
     def test_app_config_to_parser_config_flattens_nested_parser_section_and_upload_limit(self):
         app_config = AppConfig.model_validate(

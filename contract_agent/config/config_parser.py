@@ -5,13 +5,13 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 
-DEFAULT_ENABLED_CONVERTERS = ["builtin"]
+DEFAULT_ENABLED_CONVERTERS = ["docling"]
 DEFAULT_ALLOWED_SUFFIXES = [".txt", ".doc", ".docx", ".pdf"]
 DEFAULT_ENABLED_DETECTORS = ["metadata", "clause_header", "definition", "reference"]
 
 
 class ParserConfig(BaseModel):
-    default_converter: str = "builtin"
+    default_converter: str = "docling"
     enabled_converters: list[str] = Field(default_factory=lambda: DEFAULT_ENABLED_CONVERTERS.copy())
     fallback_order: list[str] = Field(default_factory=lambda: DEFAULT_ENABLED_CONVERTERS.copy())
     allow_converter_fallback: bool = True
@@ -35,7 +35,7 @@ class ParserConfig(BaseModel):
     min_header_confidence: float = 0.65
 
     markitdown_enabled: bool = False
-    docling_enabled: bool = False
+    docling_enabled: bool = True
     docling_enable_ocr: bool = True
     docling_ocr_lang: list[str] = Field(default_factory=lambda: ["chinese"])
     docling_force_full_page_ocr: bool = True

@@ -69,7 +69,7 @@ class RetrievalSection(BaseModel):
 
 
 class VectorStoreSection(BaseModel):
-    backend: str = "milvus"
+    backend: str = "faiss"
     knowledge_vector_store_dir: str = str(PROJECT_ROOT / "knowledge" / "ingested" / "laws_faiss")
     milvus_uri: str = "http://127.0.0.1:19530"
     milvus_collection_name: str = "legal_knowledge_chunks"
@@ -102,6 +102,7 @@ class ParserAdapterSection(BaseModel):
 
 
 class DoclingAdapterSection(ParserAdapterSection):
+    enabled: bool = True
     enable_ocr: bool = True
     ocr_lang: list[str] = Field(default_factory=lambda: ["chinese"])
     force_full_page_ocr: bool = True
@@ -127,7 +128,7 @@ class ParserChunkingSection(BaseModel):
 
 
 class ParserSection(BaseModel):
-    default_converter: str = "builtin"
+    default_converter: str = "docling"
     enabled_converters: list[str] = Field(default_factory=lambda: DEFAULT_ENABLED_CONVERTERS.copy())
     fallback_order: list[str] = Field(default_factory=lambda: DEFAULT_ENABLED_CONVERTERS.copy())
     allow_converter_fallback: bool = True
