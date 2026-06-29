@@ -167,6 +167,22 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             return 400
         return 500
 
+    def _review_normalized_input(self, normalized: ParsedReviewInput):
+        service = self._get_review_service()
+        if hasattr(service, "review_document"):
+            return service.review_document(
+                normalized.document,
+                normalized.contract_type,
+                normalized.our_side or "甲方",
+            )
+        return service.review(
+            ReviewRequest(
+                contract_text=normalized.contract_text,
+                contract_type=normalized.contract_type,
+                our_side=normalized.our_side or "甲方",
+            )
+        )
+
     def Health(self, request, context):
         with self.audit_logger.trace("grpc.Health"):
             health = self._get_review_service().health()
@@ -205,22 +221,8 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
     def Review(self, request, context):
         with self.audit_logger.trace("grpc.Review", contract_type=request.contract_type or None):
             try:
-                service = self._get_review_service()
                 normalized = self._normalize_review_request(request)
-                if hasattr(service, "review_document"):
-                    result = service.review_document(
-                        normalized.document,
-                        normalized.contract_type,
-                        normalized.our_side or "甲方",
-                    )
-                else:
-                    result = service.review(
-                        ReviewRequest(
-                            contract_text=normalized.contract_text,
-                            contract_type=normalized.contract_type,
-                            our_side=normalized.our_side or "甲方",
-                        )
-                    )
+                result = self._review_normalized_input(normalized)
                 return agent_pb2.JsonResponse(code=200, json=result.model_dump_json())
             except ParserError as exc:
                 code = self._parser_error_code(exc)
@@ -351,11 +353,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                     status=PipelineStatus.PENDING,
                 )
                 state.status = PipelineStatus.RUNNING
-                result = self._get_review_service().review_document(
-                    normalized.document,
-                    normalized.contract_type,
-                    normalized.our_side or "甲方",
-                )
+                result = self._review_normalized_input(normalized)
                 state.status = PipelineStatus.COMPLETED
                 return agent_pb2.JsonResponse(
                     code=200,
@@ -442,7 +440,9 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                 ),
             )
         except ParserError as exc:
-            return agent_pb2.JsonResponse(code=self._parser_error_code(exc), error=str(exc))
+            code = self._parser_error_code(exc)
+            self._emit_rpc_error("ReviewMultiAgent", code, exc)
+            return agent_pb2.JsonResponse(code=code, error=str(exc))
         except ValueError as exc:
             return agent_pb2.JsonResponse(code=400, error=str(exc))
         except RuntimeError as exc:
@@ -502,11 +502,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                     status=PipelineStatus.PENDING,
                 )
                 state.status = PipelineStatus.RUNNING
-                result = self._get_review_service().review_document(
-                    normalized.document,
-                    normalized.contract_type,
-                    normalized.our_side or "甲方",
-                )
+                result = self._review_normalized_input(normalized)
                 state.status = PipelineStatus.COMPLETED
                 yield agent_pb2.ChatStreamResponse(
                     event="pipeline_completed",
@@ -626,6 +622,20 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                 data_json=json.dumps(final, ensure_ascii=False),
             )
 
+        except ParserError as exc:
+            code = self._parser_error_code(exc)
+            self._emit_rpc_error("ReviewMultiAgentStream", code, exc)
+            yield agent_pb2.ChatStreamResponse(
+                event="parser_error",
+                data_json=json.dumps(
+                    {
+                        "code": code,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                    ensure_ascii=False,
+                ),
+            )
         except Exception as exc:
             yield agent_pb2.ChatStreamResponse(
                 event="pipeline_failed",
