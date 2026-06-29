@@ -428,7 +428,7 @@ class AgentRpcServicerTests(unittest.TestCase):
 
         self.assertEqual(response.code, 400)
         rpc_errors = [record for record in records if record.get("event") == "grpc.error"]
-        self.assertTrue(rpc_errors, "Expected grpc.error audit record")
+        self.assertEqual(len(rpc_errors), 1, "Expected exactly one grpc.error audit record")
         rpc_error = rpc_errors[0]
         self.assertEqual(rpc_error["method"], "ReviewMultiAgent")
         self.assertEqual(rpc_error["code"], 400)
@@ -505,7 +505,7 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertEqual(request.contract_type, "purchase")
         self.assertEqual(request.our_side, "buyer")
 
-    def test_review_multi_agent_stream_parse_failure_yields_parser_error_and_audit(self):
+    def test_review_multi_agent_stream_parse_failure_yields_pipeline_failed_and_audit(self):
         servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
 
         events = list(
@@ -517,7 +517,7 @@ class AgentRpcServicerTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(events[0].event, "parser_error")
+        self.assertEqual(events[0].event, "pipeline_failed")
         payload = json.loads(events[0].data_json)
         self.assertEqual(payload["code"], 400)
         self.assertEqual(payload["error_type"], "UnsupportedFileType")
@@ -544,7 +544,7 @@ class AgentRpcServicerTests(unittest.TestCase):
             ]
 
         rpc_errors = [record for record in records if record.get("event") == "grpc.error"]
-        self.assertTrue(rpc_errors, "Expected grpc.error audit record")
+        self.assertEqual(len(rpc_errors), 1, "Expected exactly one grpc.error audit record")
         rpc_error = rpc_errors[0]
         self.assertEqual(rpc_error["method"], "ReviewMultiAgentStream")
         self.assertEqual(rpc_error["code"], 400)

@@ -627,7 +627,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             code = self._parser_error_code(exc)
             self._emit_rpc_error("ReviewMultiAgentStream", code, exc)
             yield agent_pb2.ChatStreamResponse(
-                event="parser_error",
+                event="pipeline_failed",
                 data_json=json.dumps(
                     {
                         "code": code,
