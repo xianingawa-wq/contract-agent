@@ -1,22 +1,24 @@
 import json
 import math
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from contract_agent.parser import (
     BlockConfidence,
     BlockLocation,
     ClauseChunk,
     DocumentBlock,
+    DocumentDefinition,
     DocumentFigure,
     DocumentMetadata,
+    DocumentReference,
     DocumentSemanticGraph,
     DocumentSpan,
     DocumentTable,
     ParsedDocument,
 )
 from contract_agent.parser.markdown_document import MarkdownDocument
-from contract_agent.parser.parser_source import ParserSource
+from contract_agent.parser.parser_source import ParserSource, _local_source_path
 
 
 def make_document() -> ParsedDocument:
@@ -91,10 +93,10 @@ class ParserModelTests(unittest.TestCase):
         first = make_document()
         second = make_document()
 
-        first.tables.append({"table_id": "t1", "rows": [["a"]]})
-        first.figures.append({"figure_id": "f1"})
-        first.definitions.append({"term": "price", "definition": "amount"})
-        first.references.append({"source_span_id": "p1-b0", "target": "section 2"})
+        first.tables.append(DocumentTable(table_id="t1", rows=[["a"]]))
+        first.figures.append(DocumentFigure(figure_id="f1"))
+        first.definitions.append(DocumentDefinition(term="price", definition="amount"))
+        first.references.append(DocumentReference(source_span_id="p1-b0", target="section 2"))
 
         self.assertEqual(second.tables, [])
         self.assertEqual(second.figures, [])
@@ -170,8 +172,8 @@ class ParserModelTests(unittest.TestCase):
                 conversion_metadata={"score": math.nan},
             ),
         ]
-        for build in cases:
-            with self.subTest(build=build):
+        for index, build in enumerate(cases):
+            with self.subTest(case=f"json-safe-{index}"):
                 with self.assertRaises(ValueError):
                     build()
 
@@ -249,19 +251,42 @@ class ParserModelTests(unittest.TestCase):
             ),
         ]
 
-        for build in invalid_sources:
-            with self.subTest(build=build):
+        for index, build in enumerate(invalid_sources):
+            with self.subTest(case=f"invalid-source-{index}"):
                 with self.assertRaises(ValueError):
                     build()
 
-    def test_parser_source_from_path_keeps_absolute_local_path_but_safe_source_path(self):
-        path = Path("fixtures") / "contract.txt"
+    def test_parser_source_from_path_keeps_stable_safe_path_identifier(self):
+        path = Path("fixtures\nunsafe") / "contract.txt"
 
         source = ParserSource.from_path(path)
 
         self.assertTrue(source.local_path.is_absolute())
         self.assertEqual(source.file_name, "contract.txt")
-        self.assertEqual(source.source_path, "contract.txt")
+        self.assertTrue(source.source_path.startswith("local:"))
+        self.assertIn("contract.txt", source.source_path)
+        self.assertNotIn("\n", source.source_path)
+
+    def test_parser_source_from_path_sanitizes_local_file_name(self):
+        source = ParserSource.from_path(Path("contract\nsecret\x1b.txt"))
+
+        self.assertEqual(source.file_name, "contract\nsecret\x1b.txt")
+        self.assertIn("contract_secret_.txt", source.source_path)
+        self.assertNotIn("\n", source.source_path)
+        self.assertNotIn("\x1b", source.source_path)
+
+    def test_local_source_path_sanitizes_posix_filename_separators(self):
+        source_path = _local_source_path(PurePosixPath("contract\\secret.txt"))
+
+        self.assertIn("contract_secret.txt", source_path)
+        self.assertNotIn("\\", source_path)
+
+    def test_parser_source_from_path_distinguishes_same_name_files(self):
+        first = ParserSource.from_path(Path("first") / "contract.txt")
+        second = ParserSource.from_path(Path("second") / "contract.txt")
+
+        self.assertEqual(first.file_name, second.file_name)
+        self.assertNotEqual(first.source_path, second.source_path)
 
 
 if __name__ == "__main__":

@@ -3,17 +3,60 @@ import sys
 import tempfile
 import types
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
 from contract_agent.config.config_parser import ParserConfig
 from contract_agent.parser.exception import DocumentLoadError
+from contract_agent.parser.convertor import builtin_markdown_converter as builtin_converter
 from contract_agent.parser.convertor.docling_parser_impl import DoclingParserImpl
 from contract_agent.parser.convertor.markitdown_parser_impl import MarkitdownParserImpl
 from contract_agent.parser.parser_source import ParserSource
 
 
 class ParserBackendImplTests(unittest.TestCase):
+    def test_docling_supports_only_pdf_sources(self):
+        backend = DoclingParserImpl()
+        config = ParserConfig(docling_enabled=True)
+
+        with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
+            pdf_support = backend.supports(ParserSource.from_bytes("contract.pdf", b"fake"), config)
+            text_support = backend.supports(ParserSource.from_text("body"), config)
+            docx_support = backend.supports(
+                ParserSource.from_bytes("contract.docx", b"fake"), config
+            )
+
+        self.assertTrue(pdf_support.supported)
+        self.assertFalse(text_support.supported)
+        self.assertFalse(docx_support.supported)
+
+    def test_docling_support_normalizes_dotted_file_type(self):
+        backend = DoclingParserImpl()
+        config = ParserConfig(docling_enabled=True)
+        source = ParserSource.from_bytes("contract.pdf", b"fake")
+        source.file_type = " .PDF "
+
+        with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
+            support = backend.supports(source, config)
+
+        self.assertTrue(support.supported)
+
+    def test_docling_non_pdf_sources_can_fallback_when_dependency_missing(self):
+        backend = DoclingParserImpl()
+        config = ParserConfig(docling_enabled=True)
+
+        with patch("importlib.util.find_spec", return_value=None):
+            text_support = backend.supports(ParserSource.from_text("body"), config)
+            docx_support = backend.supports(
+                ParserSource.from_bytes("contract.docx", b"fake"), config
+            )
+
+        self.assertFalse(text_support.supported)
+        self.assertTrue(text_support.can_fallback)
+        self.assertFalse(docx_support.supported)
+        self.assertTrue(docx_support.can_fallback)
+
     def test_docling_convertor_returns_exact_backend_markdown(self):
         calls: list[str] = []
         converter_kwargs: list[dict] = []
@@ -100,7 +143,19 @@ class ParserBackendImplTests(unittest.TestCase):
                 calls.append(source)
                 return FakeBackendResult()
 
-        result = _run_docling_fake(FakeDocumentConverter)
+        result = _run_docling_fake(
+            FakeDocumentConverter,
+            ParserConfig(
+                docling_enabled=True,
+                docling_enable_ocr=True,
+                docling_ocr_lang=["chinese"],
+                docling_force_full_page_ocr=True,
+                docling_bitmap_area_threshold=0.02,
+                docling_text_score=0.35,
+                docling_do_table_structure=True,
+                docling_compact_tables=True,
+            ),
+        )
 
         self.assertEqual(result.backend_name, "docling")
         self.assertEqual(result.markdown_content, markdown)
@@ -257,8 +312,73 @@ class ParserBackendImplTests(unittest.TestCase):
                             ParserConfig(markitdown_enabled=True),
                         )
 
+    def test_markitdown_convertor_rejects_unexpected_result_objects(self):
+        class FakeMarkItDown:
+            def convert(self, source: str) -> object:
+                return object()
 
-def _run_docling_fake(document_converter_cls: type) -> object:
+        module = types.ModuleType("markitdown")
+        module.MarkItDown = FakeMarkItDown
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "project.docx"
+            path.write_bytes(b"fake")
+            with patch.dict(sys.modules, {"markitdown": module}):
+                with patch("importlib.util.find_spec", return_value=_module_spec("markitdown")):
+                    with self.assertRaisesRegex(DocumentLoadError, "unexpected result"):
+                        MarkitdownParserImpl().convert(
+                            ParserSource.from_path(path),
+                            ParserConfig(markitdown_enabled=True),
+                        )
+
+    def test_docx_html_output_is_sanitized_before_exposure(self):
+        class FakeMammothResult:
+            value = (
+                '<p>ok</p><script>alert("x")</script>'
+                '<img src="x" onerror="bad">'
+                '<a href="javascript:alert(1)">bad</a>'
+                '<a href="jav&#x61;script:alert(2)">encoded</a>'
+                '<svg><a href="https://safe.example">bad</a></svg>'
+                '<math><mi onclick="bad">x</mi></math>'
+                '<iframe src="https://evil.example"></iframe>'
+                '<object data="https://evil.example"></object>'
+                '<embed src="https://evil.example">hidden</embed>'
+                "</p><span/>"
+                '<p>safe <a href="https://example.com" title="ok">link</a></p>'
+            )
+
+        def fake_convert_to_html(stream: BytesIO) -> FakeMammothResult:
+            return FakeMammothResult()
+
+        module = types.ModuleType("mammoth")
+        module.convert_to_html = fake_convert_to_html
+
+        with patch.dict(sys.modules, {"mammoth": module}):
+            html = builtin_converter._docx_to_html(b"fake")  # noqa: SLF001
+
+        self.assertIn("<p>ok</p>", html)
+        self.assertIn('<img src="x">', html)
+        self.assertIn("<a>bad</a>", html)
+        self.assertIn("<a>encoded</a>", html)
+        self.assertIn("<span></span>", html)
+        self.assertIn(
+            '<p>safe <a href="https://example.com" title="ok">link</a></p>',
+            html,
+        )
+        self.assertNotIn("<script", html)
+        self.assertNotIn("onerror", html)
+        self.assertNotIn("javascript:", html)
+        self.assertNotIn("<svg", html)
+        self.assertNotIn("<math", html)
+        self.assertNotIn("<iframe", html)
+        self.assertNotIn("<object", html)
+        self.assertNotIn("<embed", html)
+
+
+def _run_docling_fake(
+    document_converter_cls: type,
+    parser_config: ParserConfig | None = None,
+) -> object:
     package = types.ModuleType("docling")
     module = types.ModuleType("docling.document_converter")
     base_models = types.ModuleType("docling.datamodel.base_models")
@@ -324,7 +444,7 @@ def _run_docling_fake(document_converter_cls: type) -> object:
             with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
                 return DoclingParserImpl().convert(
                     ParserSource.from_path(path),
-                    ParserConfig(docling_enabled=True),
+                    parser_config or ParserConfig(docling_enabled=True),
                 )
 
 

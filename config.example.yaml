@@ -79,12 +79,15 @@ parser:
   default_converter: docling
   enabled_converters:
     - docling
+    - builtin
   fallback_order:
     - docling
+    - builtin
   allow_converter_fallback: true
   strict_converter_availability: false
   allowed_suffixes:
     - .txt
+    - .doc
     - .docx
     - .pdf
   allow_path_input: false

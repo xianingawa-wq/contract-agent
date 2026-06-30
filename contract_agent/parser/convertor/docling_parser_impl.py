@@ -7,7 +7,7 @@ from contract_agent.config.config_parser import ParserConfig
 from contract_agent.logger.base import ComponentLogger
 from contract_agent.parser.convertor.local_file_source import local_parser_source
 from contract_agent.parser.exception import DocumentLoadError
-from contract_agent.parser.logger import get_parser_logger, parser_log_event
+from contract_agent.parser.logger import get_parser_logger, parser_log_event, safe_source_label
 from contract_agent.parser.markdown_document import MarkdownDocument
 from contract_agent.parser.parser_backend_contract import ParserBackendSupport
 from contract_agent.parser.parser_source import ParserSource
@@ -27,6 +27,14 @@ class DoclingParserImpl:
                 supported=False,
                 reason="docling remote services are disabled by parser safety policy",
             )
+        normalized_file_type = (source.file_type or "").strip().lower().lstrip(".")
+        suffix = f".{normalized_file_type}" if normalized_file_type else ""
+        if source.kind == "text" or suffix != ".pdf":
+            return ParserBackendSupport(
+                supported=False,
+                reason=f"docling backend supports PDF input only: {suffix or source.kind}",
+                can_fallback=True,
+            )
         if importlib.util.find_spec("docling") is None:
             return ParserBackendSupport(supported=False, reason="docling package is not installed")
         return ParserBackendSupport(supported=True, confidence=0.85, reason="docling available")
@@ -36,7 +44,7 @@ class DoclingParserImpl:
             parser_log_event(
                 "DoclingImpl",
                 "开始转换 Markdown source=%s kind=%s",
-                source.source_path,
+                safe_source_label(source.source_path),
                 source.kind,
             )
         )

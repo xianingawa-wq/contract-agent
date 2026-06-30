@@ -4,9 +4,19 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
+from contract_agent.config.config_parser import ParserConfig
 from contract_agent.schemas.review import RiskItem
 from contract_agent.schemas.review import ReviewRequest
 from contract_agent.services.review_service import ReviewService
+
+
+def _builtin_parser_config() -> ParserConfig:
+    return ParserConfig(
+        default_converter="builtin",
+        enabled_converters=["builtin"],
+        fallback_order=["builtin"],
+        docling_enabled=False,
+    )
 
 
 class AuditLoggerTests(unittest.TestCase):
@@ -171,7 +181,10 @@ class AuditLoggerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "audit.jsonl"
-            service = ReviewService(audit_logger=AuditLogger(log_path))
+            service = ReviewService(
+                audit_logger=AuditLogger(log_path),
+                parser_config=_builtin_parser_config(),
+            )
             service.rule_engine = FakeRuleEngine()
             service._require_knowledge_retriever = lambda: FakeRetriever()
             service._require_llm_reviewer = lambda: FakeReviewer()
@@ -219,7 +232,10 @@ class AuditLoggerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "audit.jsonl"
-            service = ReviewService(audit_logger=AuditLogger(log_path))
+            service = ReviewService(
+                audit_logger=AuditLogger(log_path),
+                parser_config=_builtin_parser_config(),
+            )
             service.rule_engine = FakeRuleEngine()
             service._require_knowledge_retriever = lambda: FakeRetriever()
             service._require_llm_reviewer = lambda: FakeReviewer()

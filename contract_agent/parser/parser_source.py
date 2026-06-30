@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import hashlib
 from pathlib import Path
 from typing import Literal
 
@@ -62,7 +63,7 @@ class ParserSource(BaseModel):
             kind="path",
             file_name=resolved.name,
             local_path=resolved,
-            source_path=resolved.name,
+            source_path=_local_source_path(resolved),
             file_type=_file_type(resolved.name),
         )
 
@@ -74,3 +75,11 @@ def _file_type(file_name: str, *, default: str | None = None) -> str:
     if default is not None:
         return default
     return ""
+
+
+def _local_source_path(path: Path) -> str:
+    digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:12]
+    safe_name = "".join(
+        "_" if char in "/\\" or ord(char) < 32 or ord(char) == 127 else char for char in path.name
+    ).strip()
+    return f"local:{digest}:{safe_name or 'source'}"

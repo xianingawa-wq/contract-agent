@@ -82,7 +82,7 @@ class PackageBoundaryTests(unittest.TestCase):
         offenders = []
         for path in parser_dir.rglob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in tree.body:
+            for node in _module_level_import_nodes(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
                         if alias.name.split(".", 1)[0] in optional_roots:
@@ -190,6 +190,39 @@ class PackageBoundaryTests(unittest.TestCase):
                     offenders.append(f"{path.relative_to(root)}:{marker}")
 
         self.assertEqual(offenders, [])
+
+    def test_module_level_import_scan_descends_except_handlers(self):
+        tree = ast.parse(
+            """
+try:
+    pass
+except Exception:
+    import redis
+
+def local_import():
+    import sqlalchemy
+"""
+        )
+
+        imports = _module_level_import_nodes(tree)
+
+        self.assertEqual(len(imports), 1)
+        self.assertIsInstance(imports[0], ast.Import)
+        self.assertEqual(imports[0].names[0].name, "redis")
+
+
+def _module_level_import_nodes(tree: ast.Module) -> list[ast.Import | ast.ImportFrom]:
+    nodes: list[ast.Import | ast.ImportFrom] = []
+    pending: list[ast.AST] = list(tree.body)
+    while pending:
+        node = pending.pop(0)
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            nodes.append(node)
+            continue
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        pending = list(ast.iter_child_nodes(node)) + pending
+    return nodes
 
 
 if __name__ == "__main__":

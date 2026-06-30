@@ -83,6 +83,79 @@ class ContractParserServiceTests(unittest.TestCase):
             any("甲方应支付价款" in item["page_content"] for item in to_rag_documents(document))
         )
 
+    def test_parse_markdown_recognizes_common_list_markers(self):
+        markdown = "\n".join(
+            [
+                "- dash item",
+                "* star item",
+                "+ plus item",
+                "1. ordered item",
+                "2) parenthesized item",
+                "  - indented dash item",
+                "   3. indented ordered item",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.md",
+                file_type="md",
+                source_path="inline",
+                backend_name="builtin",
+            )
+        )
+
+        self.assertEqual([block.block_type for block in document.blocks], ["list_item"] * 7)
+        self.assertEqual(
+            [block.text for block in document.blocks],
+            [
+                "dash item",
+                "star item",
+                "plus item",
+                "ordered item",
+                "parenthesized item",
+                "indented dash item",
+                "indented ordered item",
+            ],
+        )
+
+        ambiguous_markdown = "\n".join(
+            [
+                "\\- escaped marker",
+                "1.23 decimal value",
+                "| - | table cell |",
+            ]
+        )
+
+        ambiguous_document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=ambiguous_markdown,
+                file_name="contract.md",
+                file_type="md",
+                source_path="inline",
+                backend_name="builtin",
+            )
+        )
+
+        self.assertNotIn(
+            "list_item",
+            [block.block_type for block in ambiguous_document.blocks],
+        )
+        extra_ambiguous_document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content="    - code item\n---",
+                file_name="contract.md",
+                file_type="md",
+                source_path="inline",
+                backend_name="builtin",
+            )
+        )
+        self.assertNotIn(
+            "list_item",
+            [block.block_type for block in extra_ambiguous_document.blocks],
+        )
+
     def test_parse_bytes_supports_txt_encodings(self):
         parser = _builtin_parser()
 
@@ -140,6 +213,13 @@ class ContractParserServiceTests(unittest.TestCase):
         self.assertIn("| Project Name |", table_blocks[0].markdown or "")
         self.assertIn("Project Type | Software", document.markdown_content)
         self.assertTrue(any("Reason" in chunk.source_text for chunk in document.clause_chunks))
+        self.assertTrue(
+            all(
+                document.raw_text[chunk.start_offset : chunk.end_offset] == chunk.source_text
+                for chunk in document.clause_chunks
+                if chunk.chunk_level != "table"
+            )
+        )
         self.assertTrue(
             any("Project Name" in item["page_content"] for item in to_rag_documents(document))
         )
@@ -330,7 +410,7 @@ class ContractParserServiceTests(unittest.TestCase):
             ),
             raw_text="\n".join(span.text for span in spans),
             spans=spans,
-            blocks=blocks,
+            blocks=list(reversed(blocks)),
             clause_chunks=chunks,
         )
 
@@ -338,6 +418,154 @@ class ContractParserServiceTests(unittest.TestCase):
 
         derived_edges = [edge for edge in graph.edges if edge["type"] == "derived_from"]
         self.assertLessEqual(len(derived_edges), len(chunks))
+
+    def test_semantic_graph_exactly_links_chunks_with_matching_block_offsets(self):
+        spans = []
+        blocks = []
+        chunks = []
+        cursor = 0
+        for index in range(20):
+            text = f"Block {index}"
+            start = cursor
+            end = start + len(text)
+            span_id = f"p1-b{index}"
+            spans.append(
+                DocumentSpan(
+                    span_id=span_id,
+                    page_no=1,
+                    block_index=index,
+                    start_offset=start,
+                    end_offset=end,
+                    text=text,
+                )
+            )
+            blocks.append(
+                DocumentBlock(
+                    block_id=span_id,
+                    block_type="paragraph",
+                    text=text,
+                    location=BlockLocation(
+                        page_no=1,
+                        block_index=index,
+                        start_offset=start,
+                        end_offset=end,
+                        span_ids=[span_id],
+                    ),
+                )
+            )
+            chunks.append(
+                ClauseChunk(
+                    chunk_id=f"chunk-{index}",
+                    chunk_level="sentence_group",
+                    section_title="Body",
+                    page_no=1,
+                    start_offset=start,
+                    end_offset=end,
+                    source_text=text,
+                )
+            )
+            cursor = end + 1
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc-graph-exact",
+                file_name="graph.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text="\n".join(span.text for span in spans),
+            spans=spans,
+            blocks=list(reversed(blocks)),
+            clause_chunks=chunks,
+        )
+
+        graph = ContractParser()._build_semantic_graph(document)
+
+        derived_edges = [edge for edge in graph.edges if edge["type"] == "derived_from"]
+        self.assertEqual(
+            derived_edges,
+            [
+                {
+                    "source": f"chunk:chunk-{index}",
+                    "target": f"block:p1-b{index}",
+                    "type": "derived_from",
+                }
+                for index in range(20)
+            ],
+        )
+
+    def test_semantic_graph_links_chunks_by_offsets_independent_of_chunk_order(self):
+        blocks = [
+            DocumentBlock(
+                block_id="block-a",
+                block_type="paragraph",
+                text="First block",
+                location=BlockLocation(
+                    page_no=1,
+                    block_index=0,
+                    start_offset=0,
+                    end_offset=11,
+                    span_ids=["span-a"],
+                ),
+            ),
+            DocumentBlock(
+                block_id="block-b",
+                block_type="paragraph",
+                text="Second block",
+                location=BlockLocation(
+                    page_no=1,
+                    block_index=1,
+                    start_offset=12,
+                    end_offset=24,
+                    span_ids=["span-b"],
+                ),
+            ),
+        ]
+        chunks = [
+            ClauseChunk(
+                chunk_id="chunk-b",
+                chunk_level="paragraph",
+                section_title="Second block",
+                page_no=1,
+                start_offset=12,
+                end_offset=24,
+                source_text="Second block",
+            ),
+            ClauseChunk(
+                chunk_id="chunk-a",
+                chunk_level="paragraph",
+                section_title="First block",
+                page_no=1,
+                start_offset=0,
+                end_offset=11,
+                source_text="First block",
+            ),
+        ]
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc-graph-order",
+                file_name="graph.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text="First block\nSecond block",
+            blocks=blocks,
+            clause_chunks=chunks,
+        )
+
+        graph = ContractParser()._build_semantic_graph(document)
+
+        derived_targets = {
+            (edge["source"], edge["target"])
+            for edge in graph.edges
+            if edge["type"] == "derived_from" and str(edge["source"]).startswith("chunk:")
+        }
+        self.assertEqual(
+            derived_targets,
+            {
+                ("chunk:chunk-a", "block:block-a"),
+                ("chunk:chunk-b", "block:block-b"),
+            },
+        )
 
     def test_semantic_graph_definition_node_ids_are_unique_for_repeated_terms(self):
         from contract_agent.parser import DocumentDefinition
@@ -498,6 +726,7 @@ class ContractParserServiceTests(unittest.TestCase):
                 enabled_converters=["markitdown"],
                 fallback_order=["markitdown"],
                 markitdown_enabled=True,
+                allowed_suffixes=[".doc"],
                 allow_path_input=True,
                 trusted_path_roots=[tmp],
             )

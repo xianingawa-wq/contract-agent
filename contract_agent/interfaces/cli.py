@@ -132,16 +132,17 @@ def _review_command(
         stderr.write(f"不是文件：{path}\n")
         return 2
 
-    from contract_agent.services.review_service import ReviewService
-
     try:
+        max_input_bytes = app_context.parser_config.max_input_bytes
+        file_size = path.stat().st_size
+        if max_input_bytes is not None and file_size > max_input_bytes:
+            stderr.write(f"文件大小超过限制：{max_input_bytes} bytes\n")
+            return 2
+        from contract_agent.services.review_service import ReviewService
+
         service = ReviewService(app_context=app_context)
         if hasattr(service, "parser_config"):
             service.parser_config = _parser_config_for_cli_review(path, app_context)
-        max_input_bytes = app_context.parser_config.max_input_bytes
-        if max_input_bytes is not None and path.stat().st_size > max_input_bytes:
-            stderr.write(f"文件大小超过限制：{max_input_bytes} bytes\n")
-            return 2
         response = service.review_file(
             path.name,
             path.read_bytes(),

@@ -42,26 +42,37 @@ class ContractChunker:
         return [self._source_from_span(span) for span in document.spans if span.text.strip()]
 
     def _source_from_block(self, block: DocumentBlock) -> _ChunkSource:
-        text = _block_text(block)
+        raw_text = _block_source_text(block)
+        location_start = block.location.start_offset or 0
+        location_end = block.location.end_offset
+        normalized = _normalize_text(raw_text)
+        if location_end is not None and location_end - location_start == len(raw_text):
+            text, trim_start, trim_end = _trimmed_text_with_offsets(raw_text)
+        elif location_end is not None and location_end - location_start == len(normalized):
+            text = normalized
+            trim_start = 0
+            trim_end = len(text)
+        else:
+            text, trim_start, trim_end = _trimmed_text_with_offsets(raw_text)
         return _ChunkSource(
             source_id=block.block_id,
             chunk_level=block.block_type or "block",
             section_title=_section_title(block.block_type, text),
             page_no=block.location.page_no,
-            start_offset=block.location.start_offset or 0,
-            end_offset=block.location.end_offset or len(text),
+            start_offset=location_start + trim_start,
+            end_offset=location_start + trim_end,
             source_text=text,
         )
 
     def _source_from_span(self, span: DocumentSpan) -> _ChunkSource:
-        text = span.text.strip()
+        text, trim_start, trim_end = _trimmed_text_with_offsets(span.text)
         return _ChunkSource(
             source_id=span.span_id,
             chunk_level="span",
             section_title=_preview(text),
             page_no=span.page_no,
-            start_offset=span.start_offset,
-            end_offset=span.end_offset,
+            start_offset=span.start_offset + trim_start,
+            end_offset=span.start_offset + trim_end,
             source_text=text,
         )
 
@@ -151,7 +162,21 @@ class ContractChunker:
 
 
 def _block_text(block: DocumentBlock) -> str:
-    return (block.markdown or block.text or "").strip()
+    return _block_source_text(block).strip()
+
+
+def _block_source_text(block: DocumentBlock) -> str:
+    return block.text if block.text.strip() else block.markdown or ""
+
+
+def _trimmed_text_with_offsets(text: str) -> tuple[str, int, int]:
+    start = len(text) - len(text.lstrip())
+    end = len(text.rstrip())
+    return text[start:end], start, end
+
+
+def _normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _section_title(block_type: str, text: str) -> str:
