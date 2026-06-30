@@ -14,6 +14,7 @@ from contract_agent.config.config_runtime import (
     settings_to_dict,
     update_settings,
 )
+from contract_agent.config.config_model_store import ProfileLoadError
 from contract_agent.logger.base import Debug, Info, Warn, get_component_logger
 
 
@@ -531,7 +532,14 @@ def _apply_environment_overlay(
         "PARSER_DOCLING_ENABLE_REMOTE_SERVICES",
     )
     copy(environ, data, ("multiagent", "redis_url"), environ.get("REDIS_URL"), "REDIS_URL")
-    copy(environ, data, ("grpc", "port"), _int(environ.get("AGENT_GRPC_PORT")), "AGENT_GRPC_PORT")
+    copy(environ, data, ("grpc", "host"), environ.get("AGENT_GRPC_HOST"), "AGENT_GRPC_HOST")
+    copy(
+        environ,
+        data,
+        ("grpc", "port"),
+        _int_env(environ, "AGENT_GRPC_PORT"),
+        "AGENT_GRPC_PORT",
+    )
     return AppConfig.model_validate(data)
 
 
@@ -539,10 +547,14 @@ def _apply_profile_overlay(config: AppConfig, *, applied: list[str] | None = Non
     path = Path(config.profile.path)
     if not path.exists():
         return config
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except OSError as exc:
+        raise ProfileLoadError(f"CLI profile 配置文件不可读取：{path}：{exc}") from exc
+    except yaml.YAMLError as exc:
+        raise ProfileLoadError(f"CLI profile 配置文件 YAML 无效：{path}：{exc}") from exc
     if not isinstance(raw, Mapping):
-        logger.handle(Warn("Ignored CLI profile with non-mapping root: %s", path))
-        return config
+        raise ProfileLoadError(f"CLI profile 配置文件必须是 YAML mapping：{path}")
     model_overlay = {key: raw[key] for key in ("chat", "embedding", "rerank") if key in raw}
     if not model_overlay and isinstance(raw.get("models"), Mapping):
         model_overlay = dict(raw["models"])
@@ -582,3 +594,13 @@ def _int(value: str | None) -> int | None:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def _int_env(environ: Mapping[str, str], name: str) -> int | None:
+    value = environ.get(name)
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"环境变量 {name} 必须是整数：{value}") from exc

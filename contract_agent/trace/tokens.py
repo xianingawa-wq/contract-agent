@@ -50,7 +50,7 @@ class TokenTrace:
             estimated_input_tokens=input_tokens,
             estimated_output_tokens=output_tokens,
             estimated_total_tokens=input_tokens + output_tokens,
-            records=list(self._records),
+            records=[record.model_copy(deep=True) for record in self._records],
         )
 
     def _add(self, *, label: str, direction: TokenDirection, text: object) -> TokenUsageRecord:

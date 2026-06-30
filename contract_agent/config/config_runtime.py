@@ -1,6 +1,7 @@
 from pathlib import Path
 from collections.abc import Mapping
 from contextlib import contextmanager
+import logging
 from threading import RLock
 from typing import Iterator
 
@@ -15,6 +16,7 @@ from contract_agent.config.config_parser import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _settings_lock = RLock()
+logger = logging.getLogger(__name__)
 
 
 def settings_to_dict(value: BaseModel) -> dict[str, object]:
@@ -43,11 +45,21 @@ def _bool_value(value: str | None, default: str) -> bool:
 
 
 def _int_value(value: str | None, default: str) -> int:
-    return int(value or default)
+    selected = value or default
+    try:
+        return int(selected)
+    except (TypeError, ValueError):
+        logger.warning("忽略非法整数环境变量值：%r，使用默认值 %s", selected, default)
+        return int(default)
 
 
 def _float_value(value: str | None, default: str) -> float:
-    return float(value or default)
+    selected = value or default
+    try:
+        return float(selected)
+    except (TypeError, ValueError):
+        logger.warning("忽略非法浮点数环境变量值：%r，使用默认值 %s", selected, default)
+        return float(default)
 
 
 def _csv_list_value(value: str | None, default: list[str]) -> list[str]:
@@ -59,7 +71,11 @@ def _csv_list_value(value: str | None, default: list[str]) -> list[str]:
 def _optional_int_value(value: str | None) -> int | None:
     if value is None or value.strip() == "":
         return None
-    return int(value)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        logger.warning("忽略非法可选整数环境变量值：%r", value)
+        return None
 
 
 class Settings(BaseModel):
@@ -159,7 +175,7 @@ class Settings(BaseModel):
 def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings:
     import os
 
-    env = environ or os.environ
+    env = os.environ if environ is None else environ
 
     llm_provider = _env(env, "LLM_PROVIDER", "openai_compatible") or "openai_compatible"
     llm_api_key = _first_env(env, "LLM_API_KEY", "OPENAI_API_KEY", "QWEN_API_KEY")
@@ -352,7 +368,9 @@ def settings_snapshot() -> Settings:
 
 def update_settings(values: Mapping[str, object]) -> None:
     with _settings_lock:
-        for key, value in values.items():
+        merged = {**settings_to_dict(settings), **dict(values)}
+        next_settings = Settings.model_validate(merged)
+        for key, value in settings_to_dict(next_settings).items():
             setattr(settings, key, value)
 
 

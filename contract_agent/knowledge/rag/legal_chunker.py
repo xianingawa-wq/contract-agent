@@ -15,7 +15,7 @@ class LegalKnowledgeChunker:
 
     def chunk_file(self, file_path: str) -> list[KnowledgeChunk]:
         path = Path(file_path).expanduser().resolve()
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8-sig")
         return self.chunk_text(text=text, doc_name=path.name, source_path=str(path))
 
     def chunk_text(
@@ -108,7 +108,7 @@ class LegalKnowledgeChunker:
         )
 
     def _normalize_line(self, line: str) -> str:
-        return line.replace("\u3000", " ").strip()
+        return line.replace("\u3000", " ").lstrip("\ufeff").strip()
 
     def _chunk_id(self, doc_name: str, article_label: str, text: str) -> str:
         payload = f"{doc_name}|{article_label}|{text[:40]}"

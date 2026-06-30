@@ -16,12 +16,16 @@ from contract_agent.config.config_model import (
 from contract_agent.config.config_runtime import Settings, settings_snapshot, update_settings
 
 
+class ProfileLoadError(RuntimeError):
+    """Raised when an existing CLI profile cannot be loaded safely."""
+
+
 class EnvironmentChatConfigSource:
     def __init__(self, runtime_settings: Settings | None = None) -> None:
-        self.runtime_settings = runtime_settings
+        self.runtime_settings = runtime_settings or settings_snapshot()
 
     def load(self) -> ModelEndpointConfig:
-        runtime_settings = self.runtime_settings or settings_snapshot()
+        runtime_settings = self.runtime_settings
         return ModelEndpointConfig(
             role=ModelRole.CHAT,
             provider=runtime_settings.chat_provider,
@@ -33,10 +37,10 @@ class EnvironmentChatConfigSource:
 
 class EnvironmentEmbeddingConfigSource:
     def __init__(self, runtime_settings: Settings | None = None) -> None:
-        self.runtime_settings = runtime_settings
+        self.runtime_settings = runtime_settings or settings_snapshot()
 
     def load(self) -> ModelEndpointConfig:
-        runtime_settings = self.runtime_settings or settings_snapshot()
+        runtime_settings = self.runtime_settings
         return ModelEndpointConfig(
             role=ModelRole.EMBEDDING,
             provider=runtime_settings.embedding_provider,
@@ -48,10 +52,10 @@ class EnvironmentEmbeddingConfigSource:
 
 class EnvironmentRerankConfigSource:
     def __init__(self, runtime_settings: Settings | None = None) -> None:
-        self.runtime_settings = runtime_settings
+        self.runtime_settings = runtime_settings or settings_snapshot()
 
     def load(self) -> ModelEndpointConfig:
-        runtime_settings = self.runtime_settings or settings_snapshot()
+        runtime_settings = self.runtime_settings
         return ModelEndpointConfig(
             role=ModelRole.RERANK,
             provider=runtime_settings.rerank_provider,
@@ -64,10 +68,10 @@ class EnvironmentRerankConfigSource:
 
 class EnvironmentModelConfigSource:
     def __init__(self, runtime_settings: Settings | None = None) -> None:
-        self.runtime_settings = runtime_settings
+        self.runtime_settings = runtime_settings or settings_snapshot()
 
     def load(self) -> ModelRuntimeConfig:
-        runtime_settings = self.runtime_settings or settings_snapshot()
+        runtime_settings = self.runtime_settings
         return ModelRuntimeConfig(
             chat=EnvironmentChatConfigSource(runtime_settings).load(),
             embedding=EnvironmentEmbeddingConfigSource(runtime_settings).load(),
@@ -152,12 +156,18 @@ class YamlModelProfileStore:
 
     def load(self) -> ModelRuntimeConfig:
         fallback = self.fallback_source.load()
+        if not self.path.exists():
+            return fallback
         try:
             raw = yaml.safe_load(self.path.read_text(encoding="utf-8"))
-        except (OSError, yaml.YAMLError):
+        except FileNotFoundError:
             return fallback
+        except OSError as exc:
+            raise ProfileLoadError(f"CLI profile 配置文件不可读取：{self.path}：{exc}") from exc
+        except yaml.YAMLError as exc:
+            raise ProfileLoadError(f"CLI profile 配置文件 YAML 无效：{self.path}：{exc}") from exc
         if not isinstance(raw, dict):
-            return fallback
+            raise ProfileLoadError(f"CLI profile 配置文件必须是 YAML mapping：{self.path}")
         return self.codec.decode(raw, fallback)
 
     def save(self, config: ModelRuntimeConfig) -> None:
@@ -274,10 +284,10 @@ def rerank_endpoint_from_base_url(base_url: str) -> str | None:
     base = base_url.strip().rstrip("/")
     if not base:
         return None
+    if "/compatible-mode/" in base:
+        base = base.replace("/compatible-mode/", "/compatible-api/")
     if base.endswith("/reranks"):
         return base
-    if "/compatible-mode/" in base:
-        return base.replace("/compatible-mode/", "/compatible-api/") + "/reranks"
     return f"{base}/reranks"
 
 

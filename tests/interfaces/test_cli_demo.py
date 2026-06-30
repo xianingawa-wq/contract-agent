@@ -135,6 +135,27 @@ rerank:
         self.assertIn("chat.api_key_configured=True", output)
         self.assertNotIn("saved-chat-key", output)
 
+    def test_demo_reports_corrupt_profile_without_ready_status_or_silent_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_path = Path(tmp) / "profile.yaml"
+            profile_path.write_text(
+                "chat:\n  model: broken\n    bad-indent: true\n",
+                encoding="utf-8",
+            )
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            exit_code = main(
+                ["demo", "--profile", str(profile_path), "--skip-db-connect"],
+                stdin=io.StringIO("/exit\n"),
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertNotIn("Profile: ready", stdout.getvalue())
+        self.assertIn("CLI profile", stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

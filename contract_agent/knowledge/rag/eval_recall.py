@@ -77,6 +77,10 @@ def evaluate_samples(
         return []
 
     max_k = max(k_values)
+    if use_rerank and fetch_k < max_k:
+        raise ValueError(
+            f"fetch_k must be greater than or equal to max k ({max_k}) for rerank evaluation."
+        )
     rerank_final_k = max(max_k, final_k)
     results: list[dict[str, Any]] = []
     for sample in samples:
@@ -142,25 +146,42 @@ def compare_with_baseline(
     current_summary: dict[str, Any], baseline_summary: dict[str, Any]
 ) -> dict[str, Any]:
     k_values = [int(k) for k in current_summary.get("k_values", [])]
+    mismatches = _baseline_mismatches(
+        current_summary=current_summary,
+        baseline_summary=baseline_summary,
+    )
     comparison: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "compatible": not mismatches,
+        "mismatches": list(mismatches.keys()),
+        "mismatch_details": mismatches,
         "k_values": k_values,
-        "overall": _delta_stats(
-            current=current_summary.get("overall", {}),
-            baseline=baseline_summary.get("overall", {}),
-            k_values=k_values,
-        ),
-        "by_contract_type": _delta_group_stats(
-            current=current_summary.get("by_contract_type", {}),
-            baseline=baseline_summary.get("by_contract_type", {}),
-            k_values=k_values,
-        ),
-        "by_severity": _delta_group_stats(
-            current=current_summary.get("by_severity", {}),
-            baseline=baseline_summary.get("by_severity", {}),
-            k_values=k_values,
-        ),
+        "overall": {},
+        "by_contract_type": {},
+        "by_severity": {},
     }
+    if mismatches:
+        return comparison
+
+    comparison.update(
+        {
+            "overall": _delta_stats(
+                current=current_summary.get("overall", {}),
+                baseline=baseline_summary.get("overall", {}),
+                k_values=k_values,
+            ),
+            "by_contract_type": _delta_group_stats(
+                current=current_summary.get("by_contract_type", {}),
+                baseline=baseline_summary.get("by_contract_type", {}),
+                k_values=k_values,
+            ),
+            "by_severity": _delta_group_stats(
+                current=current_summary.get("by_severity", {}),
+                baseline=baseline_summary.get("by_severity", {}),
+                k_values=k_values,
+            ),
+        }
+    )
     return comparison
 
 
@@ -471,6 +492,22 @@ def _delta_group_stats(
         )
         for key in keys
     }
+
+
+def _baseline_mismatches(
+    *, current_summary: dict[str, Any], baseline_summary: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    fields = ("dataset_path", "filters", "k_values", "retrieval_config")
+    mismatches: dict[str, dict[str, Any]] = {}
+    for field in fields:
+        current_value = current_summary.get(field)
+        baseline_value = baseline_summary.get(field)
+        if current_value != baseline_value:
+            mismatches[field] = {
+                "current": current_value,
+                "baseline": baseline_value,
+            }
+    return mismatches
 
 
 def _delta_stats(

@@ -14,6 +14,21 @@ def _builtin_parser_settings():
 
 
 class ServiceTests(unittest.TestCase):
+    def test_review_text_rejects_blank_contract(self):
+        with self.assertRaises(ValueError) as exc:
+            review_text("   ", contract_type="purchase")
+
+        self.assertIn("合同正文为空", str(exc.exception))
+
+    def test_missing_contract_type_does_not_default_to_procurement_rules(self):
+        report = review_text(
+            "甲方与乙方签订保密协议。双方承担保密义务。违约责任按实际损失赔偿。",
+            contract_type=None,
+            llm_client=None,
+        )
+
+        self.assertNotIn("ACC_001", [finding.rule_id for finding in report.findings])
+
     def test_reviews_contract_without_llm_configuration(self):
         with temporary_settings(**_builtin_parser_settings()):
             report = review_text(

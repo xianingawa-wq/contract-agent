@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 import tomllib
 import unittest
 
@@ -106,6 +107,55 @@ class ProjectScaffoldingTests(unittest.TestCase):
                     "QWEN_API_KEY 未配置",
                     path.read_text(encoding="utf-8"),
                 )
+
+    def test_docker_image_defaults_to_bundled_faiss_knowledge_assets(self):
+        dockerfile = Path("contract_agent/agent_rpc/Dockerfile").read_text(encoding="utf-8")
+
+        self.assertIn("VECTOR_BACKEND=faiss", dockerfile)
+        self.assertIn("KNOWLEDGE_VECTOR_STORE_DIR=/app/knowledge/ingested/laws_faiss", dockerfile)
+        self.assertIn("COPY knowledge ./knowledge", dockerfile)
+        for asset_path in [
+            "knowledge/ingested/laws_faiss/index.faiss",
+            "knowledge/ingested/laws_faiss/index.pkl",
+        ]:
+            with self.subTest(asset_path=asset_path):
+                result = subprocess.run(
+                    ["git", "check-ignore", "--no-index", asset_path],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+
+    def test_wheel_packages_default_knowledge_assets_without_forced_git_add(self):
+        pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+        package_find = pyproject["tool"]["setuptools"]["packages"]["find"]
+        package_data = pyproject["tool"]["setuptools"].get("package-data", {}).get("knowledge", [])
+
+        self.assertIn("knowledge*", package_find["include"])
+        for asset_pattern in [
+            "README.md",
+            "laws/*.txt",
+            "ingested/laws_chunks.jsonl",
+            "ingested/laws_faiss/index.faiss",
+            "ingested/laws_faiss/index.pkl",
+            "cases/*.jsonl",
+        ]:
+            with self.subTest(asset_pattern=asset_pattern):
+                self.assertIn(asset_pattern, package_data)
+
+        for asset_path in [
+            "knowledge/ingested/laws_faiss/index.faiss",
+            "knowledge/ingested/laws_faiss/index.pkl",
+        ]:
+            with self.subTest(asset_path=asset_path):
+                result = subprocess.run(
+                    ["git", "check-ignore", "--no-index", asset_path],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertNotEqual(result.returncode, 0, result.stdout)
 
 
 if __name__ == "__main__":

@@ -111,3 +111,11 @@ RULES = {
         },
     ],
 }
+
+CONTRACT_TYPE_RULE_ALIASES = {
+    "purchase": "采购合同",
+    "procurement": "采购合同",
+}
+
+for alias, target in CONTRACT_TYPE_RULE_ALIASES.items():
+    RULES[alias] = RULES[target]

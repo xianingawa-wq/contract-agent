@@ -174,6 +174,7 @@ class GatewayRequest(BaseModel):
 class GatewayResponse(BaseModel):
     request_id: str
     pipeline_id: str | None = None
+    contract_id: str | None = None
     mode: AgentMode
     team: Literal["review", "dialogue"]
     error: str | None = None

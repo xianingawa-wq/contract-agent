@@ -26,7 +26,7 @@ def _model_config(ctx: dict[str, Any]) -> ModelRuntimeConfig | None:
 
 
 # ---------------------------------------------------------------------------
-# JSON parsing helper 鈥?extract structured data from LLM responses
+# JSON parsing helper: extract structured data from LLM responses
 # ---------------------------------------------------------------------------
 
 
@@ -44,7 +44,7 @@ def _parse_llm_json(raw: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Agent 1: Parser 鈥?LLM-driven contract parsing with rule-based preprocessing
+# Agent 1: Parser - LLM-driven contract parsing with rule-based preprocessing
 # ---------------------------------------------------------------------------
 
 
@@ -53,7 +53,7 @@ def parser_agent(ctx: dict[str, Any]) -> AgentOutput:
     runtime_settings = _runtime_settings(ctx)
     model_config = _model_config(ctx)
     contract_type: str | None = ctx.get("contract_type")
-    our_side: str = ctx.get("our_side", "鐢叉柟")
+    our_side: str = ctx.get("our_side", "甲方")
 
     from contract_agent.constants.agent_prompts import parser_prompt
     from contract_agent.provider.client import get_chat_model
@@ -83,7 +83,7 @@ def parser_agent(ctx: dict[str, Any]) -> AgentOutput:
 
     llm = get_chat_model(model_config=model_config, runtime_settings=runtime_settings)
     chain = parser_prompt | llm
-    # Truncate contract text for LLM 鈥?full text kept in ctx for downstream agents
+    # Truncate contract text for LLM; full text stays in ctx for downstream agents.
     llm_text = (
         contract_text
         if len(contract_text) <= 1500
@@ -104,7 +104,7 @@ def parser_agent(ctx: dict[str, Any]) -> AgentOutput:
             {
                 "clause_no": c["clause_no"],
                 "section_title": c["section_title"],
-                "type": "鍏朵粬",
+                "type": "其他",
                 "summary": c["text"][:50],
             }
             for c in preprocessed
@@ -134,7 +134,7 @@ def parser_agent(ctx: dict[str, Any]) -> AgentOutput:
 
 
 # ---------------------------------------------------------------------------
-# Agent 2: Risk Checker 鈥?LLM as primary + rule engine as hints
+# Agent 2: Risk Checker - LLM as primary + rule engine as hints
 # ---------------------------------------------------------------------------
 
 
@@ -143,7 +143,7 @@ def risk_checker_agent(ctx: dict[str, Any]) -> AgentOutput:
     runtime_settings = _runtime_settings(ctx)
     model_config = _model_config(ctx)
     contract_type: str = ctx.get("detected_contract_type", runtime_settings.default_contract_type)
-    our_side: str = ctx.get("our_side", "鐢叉柟")
+    our_side: str = ctx.get("our_side", "甲方")
     contract_text: str = ctx.get("contract_text", "")
 
     from contract_agent.constants.agent_prompts import risk_checker_prompt
@@ -237,7 +237,7 @@ def risk_checker_agent(ctx: dict[str, Any]) -> AgentOutput:
 
 
 # ---------------------------------------------------------------------------
-# Agent 3: Legal Reference 鈥?vector retrieval + LLM analysis
+# Agent 3: Legal Reference - vector retrieval + LLM analysis
 # ---------------------------------------------------------------------------
 
 
@@ -252,7 +252,7 @@ def legal_ref_agent(ctx: dict[str, Any]) -> AgentOutput:
         return AgentOutput(
             agent_id="legal_ref",
             status=AgentStatus.SKIPPED,
-            input_summary="鏃犻闄╁彂鐜帮紝璺宠繃娉曟潯寮曠敤",
+            input_summary="无风险发现，跳过法条引用",
             llm_calls=0,
         )
 
@@ -287,7 +287,7 @@ def legal_ref_agent(ctx: dict[str, Any]) -> AgentOutput:
                     {
                         "finding_index": i,
                         "finding_summary": fd.get("summary", "")[:80],
-                        "source": doc.metadata.get("title", "鏈煡"),
+                        "source": doc.metadata.get("title", "未知"),
                         "article": doc.metadata.get("article_label", ""),
                         "snippet": doc.page_content[:300],
                     }
@@ -304,7 +304,7 @@ def legal_ref_agent(ctx: dict[str, Any]) -> AgentOutput:
         return AgentOutput(
             agent_id="legal_ref",
             status=AgentStatus.SKIPPED,
-            input_summary="鏈绱㈠埌鐩稿叧娉曟潯",
+            input_summary="未检索到相关法条",
             llm_calls=0,
         )
 
@@ -334,7 +334,7 @@ def legal_ref_agent(ctx: dict[str, Any]) -> AgentOutput:
 
 
 # ---------------------------------------------------------------------------
-# Agent 4: Redrafter 鈥?LLM-based rewrite generation
+# Agent 4: Redrafter - LLM-based rewrite generation
 # ---------------------------------------------------------------------------
 
 
@@ -349,7 +349,7 @@ def redrafter_agent(ctx: dict[str, Any]) -> AgentOutput:
         return AgentOutput(
             agent_id="redrafter",
             status=AgentStatus.SKIPPED,
-            input_summary="鏃犻闄╁彂鐜帮紝璺宠繃鏀瑰啓",
+            input_summary="无风险发现，跳过改写",
             llm_calls=0,
         )
 

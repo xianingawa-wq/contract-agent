@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 from contract_agent.config.config_parser import ParserConfig
@@ -19,6 +20,83 @@ def _builtin_parser_config() -> ParserConfig:
 
 
 class AuditLoggerTests(unittest.TestCase):
+    def test_audit_logger_normalizes_non_json_payloads_without_breaking_trace(self):
+        from contract_agent.logger.audit import AuditLogger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "trace.jsonl"
+            logger = AuditLogger(log_path)
+            business_executed = False
+
+            with logger.trace(
+                "debug.operation",
+                started_at=datetime(2026, 6, 30, tzinfo=timezone.utc),
+                source_path=Path("contracts/demo.txt"),
+            ):
+                business_executed = True
+
+            records = [
+                json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertTrue(business_executed)
+        started = records[0]
+        self.assertEqual(started["event"], "trace.started")
+        self.assertEqual(started["started_at"], "2026-06-30T00:00:00+00:00")
+        self.assertEqual(started["source_path"], "contracts/demo.txt")
+
+    def test_audit_logger_payload_cannot_override_reserved_fields(self):
+        from contract_agent.logger.audit import AuditLogger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "trace.jsonl"
+            logger = AuditLogger(log_path)
+
+            with logger.trace("debug.operation") as trace_id:
+                with logger.span("stage.outer") as span_id:
+                    logger.emit(
+                        "custom.event",
+                        timestamp="not-a-time",
+                        scope="wrong",
+                        prefix="wrong",
+                        trace_id="wrong",
+                        span_id="wrong",
+                        parent_span_id="wrong",
+                    )
+
+            custom = next(
+                json.loads(line)
+                for line in log_path.read_text(encoding="utf-8").splitlines()
+                if json.loads(line)["event"] == "custom.event"
+            )
+
+        self.assertNotEqual(custom["timestamp"], "not-a-time")
+        self.assertEqual(custom["scope"], "audit")
+        self.assertEqual(custom["prefix"], "[Audit]")
+        self.assertEqual(custom["trace_id"], trace_id)
+        self.assertEqual(custom["span_id"], span_id)
+        self.assertNotIn("parent_span_id", custom)
+
+    def test_audit_logger_handles_non_string_keys_cycles_and_deep_payloads(self):
+        from contract_agent.logger.audit import AuditLogger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "trace.jsonl"
+            logger = AuditLogger(log_path, _extra={42: "answer"})
+            cyclic: dict[str, object] = {}
+            cyclic["self"] = cyclic
+            deep: object = "leaf"
+            for _ in range(32):
+                deep = {"child": deep}
+
+            logger.emit("custom.event", cyclic=cyclic, deep=deep)
+
+            record = json.loads(log_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(record["42"], "answer")
+        self.assertEqual(record["cyclic"]["self"], "<cycle>")
+        self.assertIn("<max-depth>", json.dumps(record["deep"], ensure_ascii=False))
+
     def test_audit_logger_records_trace_spans_and_failures(self):
         from contract_agent.logger.audit import AuditLogger
 

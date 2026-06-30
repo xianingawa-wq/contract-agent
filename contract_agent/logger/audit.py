@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -14,6 +15,7 @@ from contract_agent.config import PROJECT_ROOT
 
 
 DEFAULT_AUDIT_LOG_PATH = PROJECT_ROOT / ".run" / "audit.jsonl"
+MAX_PAYLOAD_DEPTH = 16
 _trace_id_var: ContextVar[str | None] = ContextVar("contract_agent_trace_id", default=None)
 _span_stack_var: ContextVar[tuple[str, ...]] = ContextVar("contract_agent_span_stack", default=())
 
@@ -26,16 +28,17 @@ class AuditLogger:
     _extra: dict[str, Any] = field(default_factory=dict)
 
     def emit(self, event: str, **payload: Any) -> None:
-        record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "scope": self.scope,
-            "prefix": self.prefix,
-            "event": event,
-        }
+        record: dict[str, Any] = self._safe_payload(self._extra)
+        record.update(self._safe_payload(payload))
+        record.update(
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "scope": self.scope,
+                "prefix": self.prefix,
+                "event": event,
+            }
+        )
         record.update(self._current_context())
-        if self._extra:
-            record.update(self._extra)
-        record.update(payload)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False))
@@ -129,6 +132,69 @@ class AuditLogger:
 
     def _elapsed_ms(self, started: float) -> float:
         return round((time.perf_counter() - started) * 1000, 3)
+
+    def _safe_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        reserved = {
+            "timestamp",
+            "scope",
+            "prefix",
+            "event",
+            "trace_id",
+            "span_id",
+            "parent_span_id",
+        }
+        normalized: dict[str, Any] = {}
+        for key, value in payload.items():
+            safe_key = str(key)
+            if safe_key in reserved:
+                continue
+            normalized[safe_key] = self._normalize_value(value)
+        return normalized
+
+    def _normalize_value(
+        self,
+        value: Any,
+        *,
+        _seen: set[int] | None = None,
+        _depth: int = 0,
+    ) -> Any:
+        if isinstance(value, str | int | float | bool) or value is None:
+            return value
+        if isinstance(value, Path):
+            return value.as_posix()
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if _depth >= MAX_PAYLOAD_DEPTH:
+            return "<max-depth>"
+        seen = _seen if _seen is not None else set()
+        if isinstance(value, Mapping):
+            value_id = id(value)
+            if value_id in seen:
+                return "<cycle>"
+            seen.add(value_id)
+            try:
+                return {
+                    str(key): self._normalize_value(item, _seen=seen, _depth=_depth + 1)
+                    for key, item in value.items()
+                }
+            finally:
+                seen.remove(value_id)
+        if isinstance(value, list | tuple | set):
+            value_id = id(value)
+            if value_id in seen:
+                return "<cycle>"
+            seen.add(value_id)
+            try:
+                return [
+                    self._normalize_value(item, _seen=seen, _depth=_depth + 1) for item in value
+                ]
+            finally:
+                seen.remove(value_id)
+        try:
+            json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+        return value
 
 
 def get_audit_logger(path: Path | None = None) -> AuditLogger:

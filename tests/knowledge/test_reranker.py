@@ -28,6 +28,29 @@ class RerankerConfigTests(unittest.TestCase):
 
         self.assertEqual(reranker.endpoint, "https://rerank.example.test/v1/reranks")
 
+    def test_reranker_keeps_full_rerank_endpoint_idempotent(self):
+        runtime_settings = Settings(
+            rerank_base_url="https://rerank.example.test/v1/reranks/",
+            rerank_endpoint=None,
+        )
+
+        reranker = QwenReranker(runtime_settings=runtime_settings)
+
+        self.assertEqual(reranker.endpoint, "https://rerank.example.test/v1/reranks")
+
+    def test_reranker_normalizes_full_compatible_mode_rerank_endpoint(self):
+        runtime_settings = Settings(
+            rerank_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1/reranks/",
+            rerank_endpoint=None,
+        )
+
+        reranker = QwenReranker(runtime_settings=runtime_settings)
+
+        self.assertEqual(
+            reranker.endpoint,
+            "https://dashscope.aliyuncs.com/compatible-api/v1/reranks",
+        )
+
     def test_reranker_factory_creates_qwen_reranker_from_endpoint_config(self):
         endpoint = ModelEndpointConfig(
             role=ModelRole.RERANK,

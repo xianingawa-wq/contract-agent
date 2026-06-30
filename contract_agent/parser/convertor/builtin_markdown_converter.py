@@ -80,7 +80,7 @@ def load_path(file_path: str | Path) -> tuple[str, BuiltinMarkdownContent]:
 
 
 def _parse_txt_bytes(content: bytes) -> str:
-    encodings = ("utf-8-sig", "utf-8", "gb18030")
+    encodings = _txt_decode_candidates(content)
     last_error: UnicodeDecodeError | None = None
     for encoding in encodings:
         try:
@@ -90,7 +90,15 @@ def _parse_txt_bytes(content: bytes) -> str:
             )
         except UnicodeDecodeError as exc:
             last_error = exc
-    raise DocumentLoadError("无法使用 utf-8、utf-8-sig 或 gb18030 解码文本文件。") from last_error
+    raise DocumentLoadError(
+        "无法使用 utf-8、utf-8-sig、utf-16 或 gb18030 解码文本文件。"
+    ) from last_error
+
+
+def _txt_decode_candidates(content: bytes) -> tuple[str, ...]:
+    if content.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return ("utf-16", "utf-8-sig", "utf-8", "gb18030")
+    return ("utf-8-sig", "utf-8", "gb18030")
 
 
 def _parse_docx_bytes(content: bytes) -> str:

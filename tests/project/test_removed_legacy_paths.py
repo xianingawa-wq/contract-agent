@@ -59,11 +59,13 @@ class RemovedLegacyPathTests(unittest.TestCase):
                     self.assertFalse(hasattr(package, name))
 
     def test_runtime_environment_reads_stay_inside_config_package(self):
-        root = Path(__file__).resolve().parents[1]
+        root = Path(__file__).resolve().parents[2]
+        source_files = list((root / "contract_agent").rglob("*.py"))
+        self.assertGreater(len(source_files), 0)
         env_call_pattern = re.compile(r"os\.(?:getenv|environ)")
         offenders: list[str] = []
 
-        for path in (root / "contract_agent").rglob("*.py"):
+        for path in source_files:
             relative = path.relative_to(root)
             if relative.parts[:2] == ("contract_agent", "config"):
                 continue

@@ -162,10 +162,29 @@ class ContractParserServiceTests(unittest.TestCase):
         utf8 = parser.parse_bytes("a.txt", "第一条 付款".encode("utf-8"))
         utf8_sig = parser.parse_bytes("b.txt", "第一条 付款".encode("utf-8-sig"))
         gb18030 = parser.parse_bytes("c.txt", "第一条 付款".encode("gb18030"))
+        utf16 = parser.parse_bytes("d.txt", "采购合同\n甲方：A公司".encode("utf-16"))
 
         self.assertEqual(utf8.raw_text, "第一条 付款")
         self.assertEqual(utf8_sig.raw_text, "第一条 付款")
         self.assertEqual(gb18030.raw_text, "第一条 付款")
+        self.assertEqual(utf16.raw_text, "采购合同\n甲方：A公司")
+
+    def test_utf8_bom_does_not_pollute_first_txt_chunk(self):
+        document = _builtin_parser().parse_bytes(
+            "bom.txt",
+            "\ufeff第一条 标的\n甲方：A\n乙方：B".encode("utf-8"),
+        )
+
+        self.assertNotIn("\ufeff", document.raw_text)
+        self.assertEqual(document.clause_chunks[0].source_text, "第一条 标的")
+
+    def test_corrupt_docx_and_pdf_raise_user_input_parser_errors(self):
+        parser = _builtin_parser()
+
+        with self.assertRaisesRegex(DocumentLoadError, "docx"):
+            parser.parse_bytes("bad.docx", b"not a real file")
+        with self.assertRaisesRegex(DocumentLoadError, "pdf"):
+            parser.parse_bytes("bad.pdf", b"not a real file")
 
     def test_parse_docx_preserves_table_content_in_dom_markdown_chunks_and_rag(self):
         docx = Document()
@@ -756,7 +775,7 @@ class ContractParserServiceTests(unittest.TestCase):
         with self.assertRaises(DocumentParseError):
             parser.parse_text("   \n  ")
         with self.assertRaises(DocumentLoadError):
-            parser.parse_bytes("contract.txt", b"\xff\xfe\x00\xff")
+            parser.parse_bytes("contract.txt", b"\xff")
 
 
 def _module_spec(name: str) -> importlib.machinery.ModuleSpec:

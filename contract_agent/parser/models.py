@@ -17,7 +17,7 @@ class DocumentMetadata(BaseModel):
     party_a: str | None = None
     party_b: str | None = None
     signed_date: str | None = None
-    page_count: int = 0
+    page_count: int = Field(default=0, ge=0)
 
 
 class DocumentSpan(BaseModel):

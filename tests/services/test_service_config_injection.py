@@ -3,6 +3,7 @@ import json
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from contract_agent.logger.audit import AuditLogger
 from contract_agent.config import Settings, temporary_settings
@@ -85,6 +86,64 @@ class ServiceConfigInjectionTests(unittest.TestCase):
         self.assertIn("chat.review", span_names)
         self.assertIn("[Service][Chat]", {record.get("prefix") for record in records})
         self.assertEqual(len({record.get("trace_id") for record in records}), 1)
+
+    def test_router_output_falls_back_when_query_is_not_text(self):
+        service = ChatService(
+            runtime_settings=Settings(chat_api_key="chat-key"),
+            review_service=object(),
+        )
+        payload = ChatRequest(messages=[ChatMessage(role="user", content="查询付款违约责任")])
+
+        parsed = service._parse_router_output(
+            '{"intent":"search","query":{"text":"付款违约"},"reason":{"why":"ok"}}',
+            payload,
+        )
+
+        self.assertEqual(parsed["intent"], "search")
+        self.assertEqual(parsed["query"], "查询付款违约责任")
+        self.assertIsInstance(parsed["query"], str)
+        self.assertIsInstance(parsed["reason"], str)
+
+    def test_review_stream_yields_start_before_review_work_runs(self):
+        calls: list[str] = []
+
+        class FakeReviewService:
+            def review(self, payload: Any) -> ReviewResponse:
+                calls.append("review")
+                return ReviewResponse(
+                    summary=ReviewSummary(
+                        contract_type="采购合同", overall_risk="info", risk_count=0
+                    ),
+                    extracted_fields=ExtractedFields(),
+                    risks=[],
+                    report=ReviewReport(
+                        generated_at=datetime.now(timezone.utc),
+                        overview="ok",
+                        key_findings=[],
+                        next_actions=[],
+                    ),
+                )
+
+        service = ChatService(
+            runtime_settings=Settings(chat_api_key="chat-key"),
+            review_service=FakeReviewService(),  # type: ignore[arg-type]
+        )
+        service._route_intent = lambda payload: {"intent": "review", "query": "审查合同"}  # type: ignore[method-assign]
+
+        stream = service.chat_stream(
+            ChatRequest(
+                messages=[ChatMessage(role="user", content="请审查合同")],
+                contract_text="甲方与乙方签订采购合同。",
+            )
+        )
+        try:
+            first_event = next(stream)
+        finally:
+            stream.close()
+
+        self.assertEqual(first_event["event"], "start")
+        self.assertEqual(first_event["data"]["intent"], "review")
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":

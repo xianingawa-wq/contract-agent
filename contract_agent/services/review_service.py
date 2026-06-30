@@ -21,6 +21,7 @@ from contract_agent.schemas.review import (
     ReviewSummary,
 )
 from contract_agent.trace.tokens import TokenTrace
+from contract_agent.services.contract_type_normalizer import normalize_contract_type
 from contract_agent.services.classifier import ContractClassifier
 from contract_agent.services.extractor import ContractExtractor
 from contract_agent.services.rule_engine import RuleEngine
@@ -129,7 +130,11 @@ class ReviewService:
     ) -> ReviewResponse:
         contract_text = document.raw_text
         with self.audit_logger.span("review.classify"):
-            detected_contract_type = contract_type or self.classifier.classify(contract_text)
+            detected_contract_type = (
+                normalize_contract_type(contract_type)
+                if contract_type and contract_type.strip()
+                else self.classifier.classify(contract_text)
+            )
         self.audit_logger.emit(
             "review.started",
             contract_type=detected_contract_type or self.settings.default_contract_type,

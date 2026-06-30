@@ -6,6 +6,7 @@ from contract_agent.config import (
     ModelEndpointConfig,
     ModelRole,
     ModelRuntimeConfig,
+    ProfileLoadError,
     YamlModelProfileStore,
     create_model_config_resolver,
     create_model_profile_service,
@@ -103,6 +104,66 @@ chat:
         self.assertEqual(config.chat.model, "profile-chat-model")
         self.assertEqual(config.embedding.role, ModelRole.EMBEDDING)
         self.assertEqual(config.rerank.role, ModelRole.RERANK)
+
+    def test_corrupt_yaml_profile_raises_clear_error_instead_of_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "profile.yaml"
+            path.write_text("chat:\n  model: broken\n    bad-indent: true\n", encoding="utf-8")
+            store = YamlModelProfileStore(path)
+
+            with self.assertRaises(ProfileLoadError) as captured:
+                store.load()
+
+        self.assertIn("CLI profile", str(captured.exception))
+        self.assertIn("profile.yaml", str(captured.exception))
+
+    def test_non_mapping_yaml_profile_raises_clear_error_instead_of_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "profile.yaml"
+            path.write_text("- not\n- a\n- mapping\n", encoding="utf-8")
+            store = YamlModelProfileStore(path)
+
+            with self.assertRaises(ProfileLoadError):
+                store.load()
+
+    def test_profile_store_missing_after_exists_check_returns_fallback(self):
+        fallback = ModelRuntimeConfig(
+            chat=ModelEndpointConfig(
+                role=ModelRole.CHAT,
+                provider="openai_compatible",
+                base_url="https://fallback-chat.example.test/v1",
+                api_key="",
+                model="fallback-chat",
+            ),
+            embedding=ModelEndpointConfig(
+                role=ModelRole.EMBEDDING,
+                provider="openai_compatible",
+                base_url="https://fallback-embedding.example.test/v1",
+                api_key="",
+                model="fallback-embedding",
+            ),
+            rerank=ModelEndpointConfig(
+                role=ModelRole.RERANK,
+                provider="qwen",
+                base_url="https://fallback-rerank.example.test/v1",
+                api_key="",
+                model="fallback-rerank",
+            ),
+        )
+
+        class FallbackSource:
+            def load(self) -> ModelRuntimeConfig:
+                return fallback
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "profile.yaml"
+            path.write_text("chat:\n  model: race\n", encoding="utf-8")
+            store = YamlModelProfileStore(path, fallback_source=FallbackSource())
+            path.unlink()
+
+            loaded = store.load()
+
+        self.assertEqual(loaded, fallback)
 
 
 if __name__ == "__main__":

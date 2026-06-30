@@ -1,9 +1,16 @@
 import unittest
+from unittest.mock import patch
 
 from contract_agent.memory import cold_store, hot_store, manager, models, repository, warm_store
-from contract_agent.orchestration.protocol import AgentOutput, AgentStatus
+from contract_agent.config import Settings, temporary_settings
+from contract_agent.orchestration.protocol import (
+    AgentMode,
+    AgentOutput,
+    AgentStatus,
+    PipelineState,
+    PipelineStatus,
+)
 from contract_agent.runtime import database
-from contract_agent.config import temporary_settings
 
 
 class MemoryPersistenceTests(unittest.TestCase):
@@ -17,12 +24,75 @@ class MemoryPersistenceTests(unittest.TestCase):
         self.assertTrue(hasattr(manager, "MemoryManager"))
         self.assertTrue(hasattr(repository, "AgentOutputRepository"))
 
+    def test_cold_layer_uses_chinese_unknown_source_when_document_has_no_title(self):
+        class FakeDocument:
+            page_content = "合同内容"
+            metadata = {}
+
+        class FakeRetriever:
+            def __init__(self, store) -> None:
+                self.store = store
+
+            def retrieve_documents(self, query, k):
+                return [FakeDocument()]
+
+        layer = cold_store.ColdLayer()
+        layer.is_available = lambda: True
+
+        from unittest.mock import patch
+
+        with (
+            patch(
+                "contract_agent.knowledge.rag.vector_store.load_vector_store", return_value=object()
+            ),
+            patch(
+                "contract_agent.knowledge.rag.retriever.ContractKnowledgeRetriever",
+                FakeRetriever,
+            ),
+        ):
+            results = layer.search("付款", top_k=1)
+
+        self.assertEqual(results[0]["source"], "未知")
+
+    def test_memory_manager_degrades_when_warm_persistence_has_no_postgres_dsn(self):
+        class FakeHotLayer:
+            def __init__(self, config) -> None:
+                self.saved_state = None
+
+            def set_pipeline_state(self, state) -> None:
+                self.saved_state = state
+
+            def close(self) -> None:
+                pass
+
+        runtime_settings = Settings(postgres_dsn=None)
+        state = PipelineState(
+            pipeline_id="pipeline-no-dsn",
+            contract_id="contract-no-dsn",
+            mode=AgentMode.MULTI_AUTO,
+            team="review",
+            status=PipelineStatus.COMPLETED,
+            agent_outputs={
+                "summarizer": AgentOutput(
+                    agent_id="summarizer",
+                    status=AgentStatus.COMPLETED,
+                    structured_data={"review_report": {"summary": "完成"}},
+                )
+            },
+        )
+
+        with patch("contract_agent.memory.manager.HotLayer", FakeHotLayer):
+            memory = manager.MemoryManager(runtime_settings=runtime_settings)
+            memory.save_pipeline_result(state)
+
+        self.assertIs(memory.hot.saved_state, state)
+
     def test_agent_output_repository_persists_and_filters_outputs(self):
         database._engine = None
         database._session_factory = None
         try:
             with temporary_settings(postgres_dsn="sqlite+pysqlite:///:memory:"):
-                repo = repository.AgentOutputRepository()
+                repo = repository.AgentOutputRepository(ensure_schema=True)
                 repo.save_pipeline_outputs(
                     "pipeline-1",
                     "contract-1",
@@ -53,6 +123,22 @@ class MemoryPersistenceTests(unittest.TestCase):
         finally:
             database._engine = None
             database._session_factory = None
+
+    def test_agent_output_repository_honors_disabled_schema_ensure(self):
+        repo = repository.AgentOutputRepository(
+            runtime_settings=Settings(postgres_dsn="sqlite+pysqlite:///:memory:"),
+            ensure_schema=False,
+        )
+
+        with (
+            patch("contract_agent.memory.repository.ensure_runtime_schema") as ensure_schema,
+            patch("contract_agent.memory.repository.session_scope") as session_scope,
+        ):
+            session_scope.side_effect = RuntimeError("stop before database work")
+            with self.assertRaisesRegex(RuntimeError, "stop before database work"):
+                repo.save_pipeline_outputs("pipeline-1", "contract-1", {})
+
+        self.assertFalse(ensure_schema.called)
 
     def test_warm_layer_delegates_to_repository(self):
         class FakeRepository:

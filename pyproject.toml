@@ -40,7 +40,18 @@ contract-agent = "contract_agent.interfaces.cli:main"
 contract-agent-grpc = "contract_agent.agent_rpc.server:serve"
 
 [tool.setuptools.packages.find]
-include = ["contract_agent*"]
+include = ["contract_agent*", "knowledge*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+knowledge = [
+  "README.md",
+  "laws/*.txt",
+  "ingested/laws_chunks.jsonl",
+  "ingested/laws_faiss/index.faiss",
+  "ingested/laws_faiss/index.pkl",
+  "cases/*.jsonl",
+]
 
 [tool.ruff]
 line-length = 100

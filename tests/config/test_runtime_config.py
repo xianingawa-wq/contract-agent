@@ -1,16 +1,25 @@
+import os
+import subprocess
+import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from pydantic import ValidationError
 import yaml
 
 from contract_agent.config import ModelEndpointConfig, ModelRole, ModelRuntimeConfig
 from contract_agent.config import apply_model_runtime_config
 from contract_agent.config import (
+    EnvironmentChatConfigSource,
+    EnvironmentEmbeddingConfigSource,
+    EnvironmentRerankConfigSource,
     Settings,
     load_settings_from_env,
     settings,
     settings_snapshot,
     temporary_settings,
+    update_settings,
 )
 from contract_agent.config.config_parser import ParserConfig
 
@@ -69,6 +78,93 @@ class RuntimeConfigTests(unittest.TestCase):
 
         self.assertEqual(Settings().vector_backend, "faiss")
         self.assertEqual(settings_from_env.vector_backend, "faiss")
+
+    def test_role_environment_sources_use_construction_time_snapshot(self):
+        with temporary_settings(
+            chat_model="snapshot-chat",
+            embedding_model="snapshot-embedding",
+            rerank_model="snapshot-rerank",
+        ):
+            chat_source = EnvironmentChatConfigSource()
+            embedding_source = EnvironmentEmbeddingConfigSource()
+            rerank_source = EnvironmentRerankConfigSource()
+
+        with temporary_settings(
+            chat_model="changed-chat",
+            embedding_model="changed-embedding",
+            rerank_model="changed-rerank",
+        ):
+            self.assertEqual(chat_source.load().model, "snapshot-chat")
+            self.assertEqual(embedding_source.load().model, "snapshot-embedding")
+            self.assertEqual(rerank_source.load().model, "snapshot-rerank")
+
+    def test_role_environment_sources_honor_explicit_settings_injection(self):
+        injected = Settings(
+            chat_model="injected-chat",
+            embedding_model="injected-embedding",
+            rerank_model="injected-rerank",
+        )
+
+        self.assertEqual(EnvironmentChatConfigSource(injected).load().model, "injected-chat")
+        self.assertEqual(
+            EnvironmentEmbeddingConfigSource(injected).load().model, "injected-embedding"
+        )
+        self.assertEqual(EnvironmentRerankConfigSource(injected).load().model, "injected-rerank")
+
+    def test_update_settings_validates_types_before_mutating_global_settings(self):
+        with temporary_settings(retrieval_fetch_k=12, chat_model="before-invalid-update"):
+            with self.assertRaises(ValidationError):
+                update_settings(
+                    {
+                        "retrieval_fetch_k": "not-an-int",
+                        "chat_model": "must-not-be-written",
+                    }
+                )
+
+            snapshot = settings_snapshot()
+
+        self.assertEqual(snapshot.retrieval_fetch_k, 12)
+        self.assertEqual(snapshot.chat_model, "before-invalid-update")
+
+    def test_update_settings_accepts_numeric_strings_after_validation(self):
+        with temporary_settings(retrieval_fetch_k=12):
+            update_settings({"retrieval_fetch_k": "20"})
+            snapshot = settings_snapshot()
+
+        self.assertEqual(snapshot.retrieval_fetch_k, 20)
+        self.assertIs(type(snapshot.retrieval_fetch_k), int)
+
+    def test_empty_environ_mapping_does_not_read_process_environment(self):
+        with patch.dict("os.environ", {"CHAT_MODEL": "leaked-real-env"}, clear=False):
+            settings_from_empty_env = load_settings_from_env({})
+
+        self.assertNotEqual(settings_from_empty_env.chat_model, "leaked-real-env")
+        self.assertEqual(settings_from_empty_env.chat_model, Settings().chat_model)
+
+    def test_public_config_import_survives_invalid_integer_environment_value(self):
+        env = {
+            "EMBEDDING_BATCH_SIZE": "not-an-int",
+            "PYTHONPATH": str(Path.cwd()),
+        }
+        for key in ("PATH", "SYSTEMROOT", "WINDIR"):
+            if key in os.environ:
+                env[key] = os.environ[key]
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import contract_agent.config.config_runtime as runtime; "
+                "print(runtime.settings.embedding_batch_size)",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), str(Settings().embedding_batch_size))
 
     def test_parser_env_overlays_settings(self):
         settings_from_env = load_settings_from_env(
