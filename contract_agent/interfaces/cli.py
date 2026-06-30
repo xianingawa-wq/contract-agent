@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import TextIO
@@ -10,6 +12,10 @@ from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
 from contract_agent.config import AppContext, configure_runtime, create_model_profile_service
 from contract_agent.config import settings_snapshot
 from contract_agent.schemas.review import ReviewResponse
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CONSOLE_FRONTEND_SOURCE_DIR = PROJECT_ROOT / "frontend" / "console"
+CONSOLE_FRONTEND_ENTRY = PROJECT_ROOT / "frontend" / "console" / "dist" / "cli.js"
 
 
 def main(
@@ -37,6 +43,8 @@ def main(
         return _review_command(args, stdout, stderr, app_context)
     if args.command == "config":
         return _config_command(stdout)
+    if args.command == "console":
+        return _console_command(args, stderr)
 
     parser.print_help(stdout)
     return 0
@@ -59,13 +67,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="show database configuration without opening a connection",
     )
 
+    console = subcommands.add_parser("console", help="open the React terminal console")
+    console.add_argument(
+        "--profile",
+        default=str(DEFAULT_PROFILE_PATH),
+        help="path to local CLI initialization profile",
+    )
+
     review = subcommands.add_parser("review", help="review a plain text contract")
     review.add_argument("path", help="path to a UTF-8 text contract")
     review.add_argument(
         "--type", dest="contract_type", default=None, help="contract type, e.g. purchase"
     )
     review.add_argument(
-        "--side", dest="our_side", default="鐢叉柟", help="our side, e.g. buyer, seller, 鐢叉柟"
+        "--side", dest="our_side", default="甲方", help="our side, e.g. buyer, seller, 甲方"
     )
     review.add_argument("--format", choices=("markdown", "json"), default="markdown")
 
@@ -83,6 +98,38 @@ def _demo_command(args: argparse.Namespace, stdin: TextIO, stdout: TextIO, stder
         profile_path=profile,
         skip_db_connect=skip_db_connect,
     )
+
+
+def _console_command(args: argparse.Namespace, stderr: TextIO) -> int:
+    if CONSOLE_FRONTEND_ENTRY.exists():
+        args.frontend_mode = "dist"
+    elif (CONSOLE_FRONTEND_SOURCE_DIR / "package.json").exists():
+        if not (CONSOLE_FRONTEND_SOURCE_DIR / "node_modules").exists():
+            stderr.write("React CLI 前端依赖尚未安装。\n")
+            stderr.write("请先进入 frontend/console 执行 npm install。\n")
+            return 2
+        args.frontend_mode = "source"
+    else:
+        stderr.write("React CLI 前端尚未构建。\n")
+        stderr.write("请先进入 frontend/console 执行 npm install 和 npm run build。\n")
+        return 2
+    return _run_console_frontend(args)
+
+
+def _run_console_frontend(args: argparse.Namespace) -> int:
+    env = os.environ.copy()
+    env["CONTRACT_AGENT_PYTHON"] = sys.executable
+    env["CONTRACT_AGENT_PROFILE"] = str(getattr(args, "profile", DEFAULT_PROFILE_PATH))
+    env["CONTRACT_AGENT_ROOT"] = str(PROJECT_ROOT)
+    config_path = getattr(args, "config", None)
+    if config_path:
+        env["CONTRACT_AGENT_CONFIG"] = str(config_path)
+    if getattr(args, "frontend_mode", "dist") == "source":
+        command = ["npm", "run", "start", "--prefix", str(CONSOLE_FRONTEND_SOURCE_DIR)]
+    else:
+        command = ["node", str(CONSOLE_FRONTEND_ENTRY)]
+    completed = subprocess.run(command, env=env, check=False)
+    return completed.returncode
 
 
 def _review_command(

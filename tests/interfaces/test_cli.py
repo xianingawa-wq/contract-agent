@@ -135,6 +135,33 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["risk_count"], 1)
         self.assertEqual(payload["report"]["overview"], "service review completed")
 
+    def test_review_command_defaults_our_side_to_chinese_party_a(self):
+        class FakeReviewService:
+            calls = []
+
+            def __init__(self, app_context=None):
+                self.app_context = app_context
+
+            def review_file(self, file_name, content, contract_type, our_side):
+                self.calls.append((file_name, content, contract_type, our_side))
+                return make_review_response()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "contract.txt"
+            path.write_text("buyer pays 100 percent upfront.", encoding="utf-8")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with patch(
+                "contract_agent.services.review_service.ReviewService",
+                FakeReviewService,
+            ):
+                exit_code = main(["review", str(path)], stdout=stdout, stderr=stderr)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(FakeReviewService.calls[0][3], "甲方")
+        self.assertNotEqual(FakeReviewService.calls[0][3], "鐢叉柟")
+
     def test_review_command_reports_service_failure_without_traceback(self):
         class BrokenReviewService:
             def __init__(self, app_context=None):
@@ -245,6 +272,95 @@ rerank:
             cli.DEFAULT_PROFILE_PATH = original_profile_path
             for key, value in original_settings.items():
                 setattr(settings, key, value)
+
+    def test_console_command_reports_missing_frontend_build(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with (
+            patch("contract_agent.interfaces.cli.CONSOLE_FRONTEND_ENTRY", Path("missing.js")),
+            patch("contract_agent.interfaces.cli.CONSOLE_FRONTEND_SOURCE_DIR", Path("missing-src")),
+        ):
+            exit_code = main(["console"], stdout=stdout, stderr=stderr)
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("React CLI 前端尚未构建", stderr.getvalue())
+        self.assertIn("frontend/console", stderr.getvalue())
+
+    def test_console_command_launches_frontend_when_build_exists(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entry = Path(tmp) / "cli.js"
+            entry.write_text("console.log('ok')", encoding="utf-8")
+
+            with (
+                patch("contract_agent.interfaces.cli.CONSOLE_FRONTEND_ENTRY", entry),
+                patch("contract_agent.interfaces.cli._run_console_frontend") as run_frontend,
+            ):
+                run_frontend.return_value = 0
+                exit_code = main(
+                    ["--config", "config.example.yaml", "console", "--profile", "profile.yaml"],
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "")
+        run_frontend.assert_called_once()
+        args = run_frontend.call_args.args[0]
+        self.assertEqual(args.profile, "profile.yaml")
+        self.assertEqual(args.config, "config.example.yaml")
+
+    def test_console_command_uses_source_frontend_when_dist_is_missing(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source_dir = Path(tmp) / "frontend" / "console"
+            source_dir.mkdir(parents=True)
+            (source_dir / "package.json").write_text("{}", encoding="utf-8")
+            (source_dir / "node_modules").mkdir()
+
+            with (
+                patch(
+                    "contract_agent.interfaces.cli.CONSOLE_FRONTEND_ENTRY", Path(tmp) / "dist.js"
+                ),
+                patch("contract_agent.interfaces.cli.CONSOLE_FRONTEND_SOURCE_DIR", source_dir),
+                patch("contract_agent.interfaces.cli._run_console_frontend") as run_frontend,
+            ):
+                run_frontend.return_value = 0
+                exit_code = main(["console"], stdout=stdout, stderr=stderr)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        args = run_frontend.call_args.args[0]
+        self.assertEqual(args.frontend_mode, "source")
+
+    def test_console_command_reports_missing_frontend_dependencies(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source_dir = Path(tmp) / "frontend" / "console"
+            source_dir.mkdir(parents=True)
+            (source_dir / "package.json").write_text("{}", encoding="utf-8")
+
+            with (
+                patch(
+                    "contract_agent.interfaces.cli.CONSOLE_FRONTEND_ENTRY", Path(tmp) / "dist.js"
+                ),
+                patch("contract_agent.interfaces.cli.CONSOLE_FRONTEND_SOURCE_DIR", source_dir),
+            ):
+                exit_code = main(["console"], stdout=stdout, stderr=stderr)
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("React CLI 前端依赖尚未安装", stderr.getvalue())
+        self.assertIn("npm install", stderr.getvalue())
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .coverage
+node_modules/
 
 # Build and package artifacts
 dist/

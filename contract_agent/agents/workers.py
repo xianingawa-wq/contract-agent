@@ -53,7 +53,7 @@ def parser_agent(ctx: dict[str, Any]) -> AgentOutput:
     runtime_settings = _runtime_settings(ctx)
     model_config = _model_config(ctx)
     contract_type: str | None = ctx.get("contract_type")
-    our_side: str = ctx.get("our_side", "鐢叉柟")
+    our_side: str = ctx.get("our_side", "甲方")
 
     from contract_agent.constants.agent_prompts import parser_prompt
     from contract_agent.provider.client import get_chat_model
@@ -143,7 +143,7 @@ def risk_checker_agent(ctx: dict[str, Any]) -> AgentOutput:
     runtime_settings = _runtime_settings(ctx)
     model_config = _model_config(ctx)
     contract_type: str = ctx.get("detected_contract_type", runtime_settings.default_contract_type)
-    our_side: str = ctx.get("our_side", "鐢叉柟")
+    our_side: str = ctx.get("our_side", "甲方")
     contract_text: str = ctx.get("contract_text", "")
 
     from contract_agent.constants.agent_prompts import risk_checker_prompt
