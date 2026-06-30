@@ -19,7 +19,7 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(config.fallback_order, ["docling", "builtin"])
         self.assertTrue(config.allow_converter_fallback)
         self.assertFalse(config.strict_converter_availability)
-        self.assertEqual(config.allowed_suffixes, [".txt", ".docx", ".pdf"])
+        self.assertEqual(config.allowed_suffixes, [".txt", ".doc", ".docx", ".pdf"])
         self.assertFalse(config.allow_path_input)
         self.assertFalse(config.allow_url_input)
         self.assertEqual(config.trusted_path_roots, [])
@@ -153,7 +153,14 @@ class ParserConfigTests(unittest.TestCase):
 
     def test_contract_parser_uses_injected_parser_config_without_global_mutation(self):
         parser = ContractParser(
-            parser_config=ParserConfig(chunk_max_chars=20, chunk_target_chars=10)
+            parser_config=ParserConfig(
+                default_converter="builtin",
+                enabled_converters=["builtin"],
+                fallback_order=["builtin"],
+                docling_enabled=False,
+                chunk_max_chars=20,
+                chunk_target_chars=10,
+            )
         )
         document = parser.parse_text("第一条 长条款\n" + "。".join(["长句"] * 30) + "。")
 

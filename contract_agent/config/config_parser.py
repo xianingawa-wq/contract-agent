@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 DEFAULT_ENABLED_CONVERTERS = ["docling", "builtin"]
-DEFAULT_ALLOWED_SUFFIXES = [".txt", ".docx", ".pdf"]
+DEFAULT_ALLOWED_SUFFIXES = [".txt", ".doc", ".docx", ".pdf"]
 DEFAULT_ENABLED_DETECTORS = ["metadata", "clause_header", "definition", "reference"]
 
 

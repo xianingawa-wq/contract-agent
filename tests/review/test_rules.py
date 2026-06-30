@@ -1,7 +1,17 @@
 import unittest
 
+from contract_agent.config import temporary_settings
 from contract_agent.review.models import ReviewRequest, Severity
 from contract_agent.review.rules import run_rules
+
+
+def _builtin_parser_settings():
+    return {
+        "parser_default_converter": "builtin",
+        "parser_enabled_converters": ["builtin"],
+        "parser_fallback_order": ["builtin"],
+        "parser_docling_enabled": False,
+    }
 
 
 class RuleTests(unittest.TestCase):
@@ -12,7 +22,8 @@ class RuleTests(unittest.TestCase):
             our_side="buyer",
         )
 
-        findings = run_rules(request)
+        with temporary_settings(**_builtin_parser_settings()):
+            findings = run_rules(request)
 
         self.assertEqual(findings[0].severity, Severity.HIGH)
         self.assertIn("全额预付款", findings[0].title)
@@ -25,7 +36,8 @@ class RuleTests(unittest.TestCase):
             our_side="buyer",
         )
 
-        findings = run_rules(request)
+        with temporary_settings(**_builtin_parser_settings()):
+            findings = run_rules(request)
 
         titles = [finding.title for finding in findings]
         self.assertIn("争议管辖可能不利", titles)

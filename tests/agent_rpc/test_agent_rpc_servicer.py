@@ -10,7 +10,13 @@ import grpc
 from contract_agent.agent_rpc import agent_pb2, agent_pb2_grpc
 from contract_agent.agent_rpc.server import AgentRpcServicer
 from contract_agent.logger.audit import AuditLogger
-from contract_agent.config import AppConfig, Settings, configure_runtime
+from contract_agent.config import (
+    AppConfig,
+    AppContext,
+    Settings,
+    settings_snapshot,
+    temporary_settings,
+)
 from contract_agent.config.config_parser import ParserConfig
 from contract_agent.orchestration.protocol import AgentOutput, AgentStatus, PipelineStatus
 from contract_agent.schemas.review import (
@@ -28,22 +34,32 @@ class FakeReviewService:
 
 
 def _builtin_context():
-    return configure_runtime(
-        AppConfig.model_validate(
-            {
-                "parser": {
-                    "default_converter": "builtin",
-                    "enabled_converters": ["builtin"],
-                    "fallback_order": ["builtin"],
-                    "docling": {"enabled": False},
-                },
-                "models": {
-                    "chat": {"api_key": "chat-key", "model": "qwen-max"},
-                    "embedding": {"model": "text-embedding-v4"},
-                    "rerank": {"provider": "qwen", "model": "qwen3-rerank"},
-                },
-            }
-        )
+    return _context_from_config(
+        {
+            "parser": {
+                "default_converter": "builtin",
+                "enabled_converters": ["builtin"],
+                "fallback_order": ["builtin"],
+                "docling": {"enabled": False},
+            },
+            "models": {
+                "chat": {"api_key": "chat-key", "model": "qwen-max"},
+                "embedding": {"model": "text-embedding-v4"},
+                "rerank": {"provider": "qwen", "model": "qwen3-rerank"},
+            },
+        }
+    )
+
+
+def _context_from_config(config_data: dict) -> AppContext:
+    config = AppConfig.model_validate(config_data)
+    return AppContext(
+        config=config,
+        settings=config.to_settings(),
+        model_config=config.to_model_runtime_config(),
+        retrieval_config=config.to_retrieval_config(),
+        multiagent_config=config.to_multiagent_config(),
+        parser_config=config.to_parser_config(),
     )
 
 
@@ -210,9 +226,7 @@ class AgentRpcServicerTests(unittest.TestCase):
             def review_document(self, *args, **kwargs):
                 raise AssertionError("Review RPC must reject oversize text before review_document")
 
-        context = configure_runtime(
-            AppConfig.model_validate({"limits": {"max_upload_size_bytes": 8}})
-        )
+        context = _context_from_config({"limits": {"max_upload_size_bytes": 8}})
         servicer = AgentRpcServicer(app_context=context)
         servicer.review_service = ReviewServiceSpy()  # type: ignore[assignment]
 
@@ -551,14 +565,16 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertEqual(rpc_error["error_type"], "UnsupportedFileType")
 
     def test_app_context_parser_config_is_passed_to_review_service_and_parser(self):
-        context = configure_runtime(
-            AppConfig.model_validate(
-                {
-                    "parser": {
-                        "chunking": {"max_chars": 20, "target_chars": 10},
-                    }
+        context = _context_from_config(
+            {
+                "parser": {
+                    "default_converter": "builtin",
+                    "enabled_converters": ["builtin"],
+                    "fallback_order": ["builtin"],
+                    "docling": {"enabled": False},
+                    "chunking": {"max_chars": 20, "target_chars": 10},
                 }
-            )
+            }
         )
         servicer = AgentRpcServicer(app_context=context)
 
@@ -571,6 +587,17 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertIs(servicer.parser_config, context.parser_config)
         self.assertIs(service.parser_config, context.parser_config)
         self.assertGreater(len(document.clause_chunks), 1)
+
+    def test_builtin_context_does_not_mutate_global_runtime_settings(self):
+        with temporary_settings(chat_api_key="global-key", parser_default_converter="docling"):
+            before = settings_snapshot()
+            context = _builtin_context()
+            after = settings_snapshot()
+
+        self.assertEqual(after.chat_api_key, before.chat_api_key)
+        self.assertEqual(after.parser_default_converter, before.parser_default_converter)
+        self.assertEqual(context.settings.chat_api_key, "chat-key")
+        self.assertEqual(context.parser_config.default_converter, "builtin")
 
     def test_runtime_settings_without_context_derives_parser_config_snapshot(self):
         servicer = AgentRpcServicer(

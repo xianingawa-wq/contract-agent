@@ -15,6 +15,27 @@ from contract_agent.config import (
 from contract_agent.config.config_parser import ParserConfig
 
 
+def _env_example_value(raw_value: str, default_value: object) -> object:
+    if raw_value == "":
+        return (
+            None
+            if default_value is None
+            else ([] if isinstance(default_value, list) else raw_value)
+        )
+    if isinstance(default_value, bool):
+        normalized = raw_value.lower()
+        if normalized not in {"true", "false"}:
+            raise ValueError(f"Invalid boolean value in .env.example: {raw_value!r}")
+        return normalized == "true"
+    if isinstance(default_value, int):
+        return int(raw_value)
+    if isinstance(default_value, float):
+        return float(raw_value)
+    if isinstance(default_value, list):
+        return [item.strip() for item in raw_value.split(",") if item.strip()]
+    return raw_value
+
+
 class RuntimeConfigTests(unittest.TestCase):
     def test_load_settings_from_env_keeps_defaults_instance_scoped(self):
         first = load_settings_from_env({"CHAT_MODEL": "chat-a", "LLM_API_KEY": "key-a"})
@@ -233,6 +254,26 @@ class RuntimeConfigTests(unittest.TestCase):
                     cursor = cursor[part]
                 self.assertIn(settings_field, Settings.model_fields)
                 self.assertIn(parser_field, ParserConfig.model_fields)
+                default_value = getattr(ParserConfig(), parser_field)
+                self.assertEqual(cursor, default_value)
+
+        env_values = {
+            line.split("=", 1)[0]: line.split("=", 1)[1]
+            for line in (repo_root / ".env.example").read_text(encoding="utf-8").splitlines()
+            if line.startswith("PARSER_")
+        }
+        defaults = ParserConfig()
+        for env_key, (_, _, parser_field) in field_map.items():
+            with self.subTest(env_key=f"{env_key}-env-value"):
+                default_value = getattr(defaults, parser_field)
+                self.assertEqual(
+                    _env_example_value(env_values[env_key], default_value),
+                    default_value,
+                )
+
+    def test_env_example_bool_parser_rejects_invalid_literals(self):
+        with self.assertRaisesRegex(ValueError, "Invalid boolean value"):
+            _env_example_value("flase", False)
 
     def test_apply_model_runtime_config_updates_related_aliases_together(self):
         config = ModelRuntimeConfig(

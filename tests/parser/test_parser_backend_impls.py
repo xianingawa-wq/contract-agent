@@ -143,7 +143,19 @@ class ParserBackendImplTests(unittest.TestCase):
                 calls.append(source)
                 return FakeBackendResult()
 
-        result = _run_docling_fake(FakeDocumentConverter)
+        result = _run_docling_fake(
+            FakeDocumentConverter,
+            ParserConfig(
+                docling_enabled=True,
+                docling_enable_ocr=True,
+                docling_ocr_lang=["chinese"],
+                docling_force_full_page_ocr=True,
+                docling_bitmap_area_threshold=0.02,
+                docling_text_score=0.35,
+                docling_do_table_structure=True,
+                docling_compact_tables=True,
+            ),
+        )
 
         self.assertEqual(result.backend_name, "docling")
         self.assertEqual(result.markdown_content, markdown)
@@ -363,7 +375,10 @@ class ParserBackendImplTests(unittest.TestCase):
         self.assertNotIn("<embed", html)
 
 
-def _run_docling_fake(document_converter_cls: type) -> object:
+def _run_docling_fake(
+    document_converter_cls: type,
+    parser_config: ParserConfig | None = None,
+) -> object:
     package = types.ModuleType("docling")
     module = types.ModuleType("docling.document_converter")
     base_models = types.ModuleType("docling.datamodel.base_models")
@@ -429,7 +444,7 @@ def _run_docling_fake(document_converter_cls: type) -> object:
             with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
                 return DoclingParserImpl().convert(
                     ParserSource.from_path(path),
-                    ParserConfig(docling_enabled=True),
+                    parser_config or ParserConfig(docling_enabled=True),
                 )
 
 

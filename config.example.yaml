@@ -86,6 +86,7 @@ parser:
   strict_converter_availability: false
   allowed_suffixes:
     - .txt
+    - .doc
     - .docx
     - .pdf
   allow_path_input: false

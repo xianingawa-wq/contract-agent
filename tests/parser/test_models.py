@@ -8,8 +8,10 @@ from contract_agent.parser import (
     BlockLocation,
     ClauseChunk,
     DocumentBlock,
+    DocumentDefinition,
     DocumentFigure,
     DocumentMetadata,
+    DocumentReference,
     DocumentSemanticGraph,
     DocumentSpan,
     DocumentTable,
@@ -91,10 +93,10 @@ class ParserModelTests(unittest.TestCase):
         first = make_document()
         second = make_document()
 
-        first.tables.append({"table_id": "t1", "rows": [["a"]]})
-        first.figures.append({"figure_id": "f1"})
-        first.definitions.append({"term": "price", "definition": "amount"})
-        first.references.append({"source_span_id": "p1-b0", "target": "section 2"})
+        first.tables.append(DocumentTable(table_id="t1", rows=[["a"]]))
+        first.figures.append(DocumentFigure(figure_id="f1"))
+        first.definitions.append(DocumentDefinition(term="price", definition="amount"))
+        first.references.append(DocumentReference(source_span_id="p1-b0", target="section 2"))
 
         self.assertEqual(second.tables, [])
         self.assertEqual(second.figures, [])
@@ -170,8 +172,8 @@ class ParserModelTests(unittest.TestCase):
                 conversion_metadata={"score": math.nan},
             ),
         ]
-        for build in cases:
-            with self.subTest(build=build):
+        for index, build in enumerate(cases):
+            with self.subTest(case=f"json-safe-{index}"):
                 with self.assertRaises(ValueError):
                     build()
 
@@ -241,8 +243,8 @@ class ParserModelTests(unittest.TestCase):
             ),
         ]
 
-        for build in invalid_sources:
-            with self.subTest(build=build):
+        for index, build in enumerate(invalid_sources):
+            with self.subTest(case=f"invalid-source-{index}"):
                 with self.assertRaises(ValueError):
                     build()
 

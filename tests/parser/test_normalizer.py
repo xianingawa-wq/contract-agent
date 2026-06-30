@@ -17,6 +17,7 @@ class ReviewInputNormalizerTests(unittest.TestCase):
             contract_text="第一条 付款",
             contract_type="采购合同",
             our_side="甲方",
+            parser=_builtin_parser(),
         )
 
         self.assertIsInstance(normalized, ParsedReviewInput)
@@ -30,11 +31,13 @@ class ReviewInputNormalizerTests(unittest.TestCase):
         from_bytes = normalize_review_input(
             file_name="contract.txt",
             content="第一条 付款".encode("utf-8"),
+            parser=_builtin_parser(),
         )
         from_grpc = normalize_review_input(
             file_name="contract.txt",
             content="第一条 付款".encode("utf-8"),
             source_kind="grpc_file",
+            parser=_builtin_parser(),
         )
 
         self.assertEqual(from_bytes.source_kind, "bytes")
@@ -107,6 +110,7 @@ class ReviewInputNormalizerTests(unittest.TestCase):
             file_name="contract.txt",
             content=b"Plain bytes",
             source_kind="grpc_file",
+            parser=_builtin_parser(),
         )
 
         self.assertEqual(normalized.source_kind, "grpc_file")
@@ -122,6 +126,17 @@ class ReviewInputNormalizerTests(unittest.TestCase):
                     file_path=path,
                     parser=ContractParser(parser_config=ParserConfig(allow_path_input=False)),
                 )
+
+
+def _builtin_parser() -> ContractParser:
+    return ContractParser(
+        parser_config=ParserConfig(
+            default_converter="builtin",
+            enabled_converters=["builtin"],
+            fallback_order=["builtin"],
+            docling_enabled=False,
+        )
+    )
 
 
 if __name__ == "__main__":
