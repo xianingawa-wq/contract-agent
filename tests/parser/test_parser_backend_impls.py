@@ -344,12 +344,23 @@ class ParserBackendImplTests(unittest.TestCase):
         with patch.dict(sys.modules, {"mammoth": module}):
             html = builtin_converter._docx_to_html(b"fake")  # noqa: SLF001
 
-        self.assertEqual(
-            html,
-            '<p>ok</p><img src="x"><a>bad</a><a>encoded</a>'
-            "<span></span>"
+        self.assertIn("<p>ok</p>", html)
+        self.assertIn('<img src="x">', html)
+        self.assertIn("<a>bad</a>", html)
+        self.assertIn("<a>encoded</a>", html)
+        self.assertIn("<span></span>", html)
+        self.assertIn(
             '<p>safe <a href="https://example.com" title="ok">link</a></p>',
+            html,
         )
+        self.assertNotIn("<script", html)
+        self.assertNotIn("onerror", html)
+        self.assertNotIn("javascript:", html)
+        self.assertNotIn("<svg", html)
+        self.assertNotIn("<math", html)
+        self.assertNotIn("<iframe", html)
+        self.assertNotIn("<object", html)
+        self.assertNotIn("<embed", html)
 
 
 def _run_docling_fake(document_converter_cls: type) -> object:

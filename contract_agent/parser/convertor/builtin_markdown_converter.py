@@ -318,13 +318,21 @@ class _HtmlAllowlistSanitizer(HTMLParser):
             if tag_name in _DROP_HTML_CONTENT_TAGS:
                 self._drop_depth -= 1
             return
-        if tag_name in _ALLOWED_HTML_TAGS and self._open_tags and self._open_tags[-1] == tag_name:
-            self.parts.append(f"</{tag_name}>")
-            self._open_tags.pop()
+        if tag_name in _ALLOWED_HTML_TAGS and tag_name in self._open_tags:
+            while self._open_tags:
+                open_tag = self._open_tags.pop()
+                self.parts.append(f"</{open_tag}>")
+                if open_tag == tag_name:
+                    break
 
     def handle_data(self, data: str) -> None:
         if not self._drop_depth:
             self.parts.append(escape(data, quote=False))
+
+    def close(self) -> None:
+        super().close()
+        while self._open_tags:
+            self.parts.append(f"</{self._open_tags.pop()}>")
 
     def _render_attrs(self, tag_name: str, attrs: list[tuple[str, str | None]]) -> str:
         allowed = _GLOBAL_HTML_ATTRS | _ALLOWED_HTML_ATTRS.get(tag_name, set())
