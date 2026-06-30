@@ -7,9 +7,28 @@ from typing import TextIO
 
 from contract_agent.interfaces.console import run_console_demo
 from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
-from contract_agent.config import AppContext, configure_runtime, create_model_profile_service
+from contract_agent.config import (
+    AppContext,
+    ParserConfig,
+    ProfileLoadError,
+    configure_runtime,
+    create_model_profile_service,
+)
 from contract_agent.config import settings_snapshot
 from contract_agent.schemas.review import ReviewResponse
+
+
+_CONTRACT_TYPE_ALIASES = {
+    "purchase": "采购合同",
+    "procurement": "采购合同",
+    "general": "通用合同",
+}
+_SIDE_ALIASES = {
+    "buyer": "甲方",
+    "seller": "乙方",
+    "party_a": "甲方",
+    "party_b": "乙方",
+}
 
 
 def main(
@@ -25,11 +44,17 @@ def main(
     _prefer_utf8(stdout)
     _prefer_utf8(stderr)
     parser = _build_parser()
-    args = parser.parse_args(argv)
-    app_context = configure_runtime(config_path=getattr(args, "config", None))
-
-    if args.command not in {None, "demo"}:
-        _load_default_profile_if_present()
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    try:
+        app_context = configure_runtime(config_path=getattr(args, "config", None))
+        if args.command not in {None, "demo"} and getattr(args, "config", None) is None:
+            _load_default_profile_if_present()
+    except (OSError, ValueError, ProfileLoadError) as exc:
+        stderr.write(f"{exc}\n")
+        return 2
 
     if args.command in {None, "demo"}:
         return _demo_command(args, stdin, stdout, stderr)
@@ -44,10 +69,11 @@ def main(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="contract-agent")
-    parser.add_argument("--config", default=None, help="path to runtime YAML config")
+    _add_config_argument(parser)
     subcommands = parser.add_subparsers(dest="command")
 
     demo = subcommands.add_parser("demo", help="open the interactive local agent console demo")
+    _add_config_argument(demo)
     demo.add_argument(
         "--profile",
         default=str(DEFAULT_PROFILE_PATH),
@@ -60,17 +86,27 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     review = subcommands.add_parser("review", help="review a plain text contract")
-    review.add_argument("path", help="path to a UTF-8 text contract")
+    _add_config_argument(review)
+    review.add_argument("path", help="path to a text contract")
     review.add_argument(
         "--type", dest="contract_type", default=None, help="contract type, e.g. purchase"
     )
     review.add_argument(
-        "--side", dest="our_side", default="鐢叉柟", help="our side, e.g. buyer, seller, 鐢叉柟"
+        "--side", dest="our_side", default="甲方", help="our side, e.g. buyer, seller, 甲方"
     )
     review.add_argument("--format", choices=("markdown", "json"), default="markdown")
 
-    subcommands.add_parser("config", help="print active model configuration")
+    config = subcommands.add_parser("config", help="print active model configuration")
+    _add_config_argument(config)
     return parser
+
+
+def _add_config_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--config",
+        default=argparse.SUPPRESS,
+        help="path to runtime YAML config",
+    )
 
 
 def _demo_command(args: argparse.Namespace, stdin: TextIO, stdout: TextIO, stderr: TextIO) -> int:
@@ -98,8 +134,10 @@ def _review_command(
 
     from contract_agent.services.review_service import ReviewService
 
-    service = ReviewService(app_context=app_context)
     try:
+        service = ReviewService(app_context=app_context)
+        if hasattr(service, "parser_config"):
+            service.parser_config = _parser_config_for_cli_review(path, app_context)
         max_input_bytes = app_context.parser_config.max_input_bytes
         if max_input_bytes is not None and path.stat().st_size > max_input_bytes:
             stderr.write(f"文件大小超过限制：{max_input_bytes} bytes\n")
@@ -107,10 +145,18 @@ def _review_command(
         response = service.review_file(
             path.name,
             path.read_bytes(),
-            contract_type=args.contract_type,
-            our_side=args.our_side,
+            contract_type=_normalize_contract_type_arg(args.contract_type),
+            our_side=_normalize_side_arg(args.our_side),
         )
-    except Exception:
+    except _parser_error_types() as exc:
+        stderr.write(f"输入文件无法审查：{exc}\n")
+        return 2
+    except Exception as exc:
+        from contract_agent.parser import ParserError
+
+        if isinstance(exc, ParserError):
+            stderr.write(f"输入文件无法审查：{exc}\n")
+            return 2
         stderr.write("审查失败：服务暂不可用，请检查模型和知识库配置。\n")
         return 1
 
@@ -170,6 +216,47 @@ def _render_service_review_markdown(response: ReviewResponse) -> str:
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _normalize_contract_type_arg(contract_type: str | None) -> str | None:
+    if contract_type is None:
+        return None
+    normalized = contract_type.strip()
+    if not normalized:
+        return None
+    return _CONTRACT_TYPE_ALIASES.get(normalized.lower(), normalized)
+
+
+def _normalize_side_arg(our_side: str | None) -> str:
+    if our_side is None:
+        return "甲方"
+    normalized = our_side.strip()
+    if not normalized:
+        return "甲方"
+    return _SIDE_ALIASES.get(normalized.lower(), normalized)
+
+
+def _parser_config_for_cli_review(path: Path, app_context: AppContext) -> ParserConfig:
+    parser_config = app_context.parser_config
+    if path.suffix.lower() != ".txt":
+        return parser_config
+    data = parser_config.model_dump()
+    data["default_converter"] = "builtin"
+    data["enabled_converters"] = _prepend_unique("builtin", parser_config.enabled_converters)
+    data["fallback_order"] = _prepend_unique("builtin", parser_config.fallback_order)
+    return ParserConfig.model_validate(data)
+
+
+def _prepend_unique(item: str, values: list[str]) -> list[str]:
+    result = [item]
+    result.extend(value for value in values if value != item)
+    return result
+
+
+def _parser_error_types() -> tuple[type[Exception], ...]:
+    from contract_agent.parser import ParserError, ReviewInputError
+
+    return (ParserError, ReviewInputError)
 
 
 def _config_command(stdout: TextIO) -> int:

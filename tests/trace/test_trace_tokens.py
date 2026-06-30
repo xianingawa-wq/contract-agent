@@ -16,6 +16,17 @@ class TraceTokenTests(unittest.TestCase):
         self.assertEqual(summary.estimated_total_tokens, 45)
         self.assertEqual(summary.records[0].label, "contract")
 
+    def test_token_trace_summary_records_are_snapshots(self):
+        from contract_agent.trace.tokens import TokenTrace
+
+        trace = TokenTrace()
+        trace.add_input("contract", "abcd")
+
+        summary = trace.summary()
+        summary.records[0].estimated_tokens = 999
+
+        self.assertEqual(trace.summary().estimated_total_tokens, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

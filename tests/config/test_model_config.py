@@ -104,6 +104,30 @@ chat:
         self.assertEqual(config.embedding.role, ModelRole.EMBEDDING)
         self.assertEqual(config.rerank.role, ModelRole.RERANK)
 
+    def test_corrupt_yaml_profile_raises_clear_error_instead_of_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "profile.yaml"
+            path.write_text("chat:\n  model: broken\n    bad-indent: true\n", encoding="utf-8")
+            store = YamlModelProfileStore(path)
+
+            with self.assertRaises(Exception) as captured:
+                store.load()
+
+        self.assertEqual(captured.exception.__class__.__name__, "ProfileLoadError")
+        self.assertIn("CLI profile", str(captured.exception))
+        self.assertIn("profile.yaml", str(captured.exception))
+
+    def test_non_mapping_yaml_profile_raises_clear_error_instead_of_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "profile.yaml"
+            path.write_text("- not\n- a\n- mapping\n", encoding="utf-8")
+            store = YamlModelProfileStore(path)
+
+            with self.assertRaises(Exception) as captured:
+                store.load()
+
+        self.assertEqual(captured.exception.__class__.__name__, "ProfileLoadError")
+
 
 if __name__ == "__main__":
     unittest.main()

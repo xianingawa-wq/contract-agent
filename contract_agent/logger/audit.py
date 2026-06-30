@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -26,16 +27,17 @@ class AuditLogger:
     _extra: dict[str, Any] = field(default_factory=dict)
 
     def emit(self, event: str, **payload: Any) -> None:
-        record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "scope": self.scope,
-            "prefix": self.prefix,
-            "event": event,
-        }
+        record: dict[str, Any] = self._safe_payload(self._extra)
+        record.update(self._safe_payload(payload))
+        record.update(
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "scope": self.scope,
+                "prefix": self.prefix,
+                "event": event,
+            }
+        )
         record.update(self._current_context())
-        if self._extra:
-            record.update(self._extra)
-        record.update(payload)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False))
@@ -129,6 +131,39 @@ class AuditLogger:
 
     def _elapsed_ms(self, started: float) -> float:
         return round((time.perf_counter() - started) * 1000, 3)
+
+    def _safe_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            key: self._normalize_value(value)
+            for key, value in payload.items()
+            if key
+            not in {
+                "timestamp",
+                "scope",
+                "prefix",
+                "event",
+                "trace_id",
+                "span_id",
+                "parent_span_id",
+            }
+        }
+
+    def _normalize_value(self, value: Any) -> Any:
+        if isinstance(value, str | int | float | bool) or value is None:
+            return value
+        if isinstance(value, Path):
+            return value.as_posix()
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, Mapping):
+            return {str(key): self._normalize_value(item) for key, item in value.items()}
+        if isinstance(value, list | tuple | set):
+            return [self._normalize_value(item) for item in value]
+        try:
+            json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+        return value
 
 
 def get_audit_logger(path: Path | None = None) -> AuditLogger:

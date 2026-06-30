@@ -197,6 +197,85 @@ class SupervisorAgentTests(unittest.TestCase):
             execution_order, ["parser", "risk_checker", "legal_ref", "redrafter", "summarizer"]
         )
 
+    def test_legal_ref_skipped_without_error_does_not_block_redrafter(self):
+        llm = FakeSupervisorLlm(
+            [
+                '{"thought":"call review agents","action":"call_agents","agents":["parser","risk_checker","legal_ref","redrafter"]}',
+                '{"thought":"finish","action":"finish","final_report":{"summary":"done","key_findings":[]}}',
+            ]
+        )
+        supervisor = SupervisorAgent(
+            MultiAgentConfig(
+                supervisor_max_rounds=2, max_parallel_agents=4, agent_timeout_seconds=2
+            ),
+            llm=llm,
+        )
+        execution_order = []
+
+        def parser_agent(ctx):
+            execution_order.append("parser")
+            return AgentOutput(
+                agent_id="parser",
+                status=AgentStatus.COMPLETED,
+                input_summary="parsed",
+                structured_data={"parsed_clauses": [{"clause_no": "1", "summary": "付款"}]},
+            )
+
+        def risk_checker_agent(ctx):
+            execution_order.append("risk_checker")
+            return AgentOutput(
+                agent_id="risk_checker",
+                status=AgentStatus.COMPLETED,
+                input_summary="found risk",
+                structured_data={
+                    "risk_findings": [
+                        {
+                            "clause": "1",
+                            "risk": "medium",
+                            "summary": "付款期限不明确",
+                        }
+                    ]
+                },
+            )
+
+        def legal_ref_agent(ctx):
+            execution_order.append("legal_ref")
+            self.assertIn("risk_findings", ctx)
+            return AgentOutput(
+                agent_id="legal_ref",
+                status=AgentStatus.SKIPPED,
+                input_summary="未检索到相关法条",
+                structured_data={"legal_refs": []},
+            )
+
+        def redrafter_agent(ctx):
+            execution_order.append("redrafter")
+            self.assertEqual(ctx["legal_refs"], [])
+            return AgentOutput(
+                agent_id="redrafter",
+                status=AgentStatus.COMPLETED,
+                input_summary="redrafted",
+                structured_data={"redraft_suggestions": [{"finding_index": 0}]},
+            )
+
+        supervisor.register_agent("parser", parser_agent)
+        supervisor.register_agent("risk_checker", risk_checker_agent)
+        supervisor.register_agent("legal_ref", legal_ref_agent)
+        supervisor.register_agent("redrafter", redrafter_agent)
+        state = PipelineState(
+            pipeline_id="pipeline-skipped-legal-ref",
+            contract_id="contract-skipped-legal-ref",
+            mode=AgentMode.MULTI_AUTO,
+            team="review",
+            status=PipelineStatus.PENDING,
+        )
+
+        result = supervisor.run(state, {"contract_text": "合同正文"})
+
+        self.assertEqual(result.agent_outputs["legal_ref"].status, AgentStatus.SKIPPED)
+        self.assertEqual(result.agent_outputs["redrafter"].status, AgentStatus.COMPLETED)
+        self.assertEqual(execution_order, ["parser", "risk_checker", "legal_ref", "redrafter"])
+
     def test_supervisor_writes_trace_spans_for_rounds_and_agents(self):
         llm = FakeSupervisorLlm(
             [

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from contract_agent.config import (
     MultiAgentConfig,
+    ProfileLoadError,
     RetrievalConfig,
     Settings,
     configure_runtime,
@@ -100,6 +101,31 @@ class ConfigPackageTests(unittest.TestCase):
 
         self.assertEqual(config.parser.trusted_path_roots, [trusted.as_posix()])
 
+    def test_redis_url_environment_overlay_is_documented_and_applied(self):
+        config = load_app_config(
+            Path("missing-config.yaml"), environ={"REDIS_URL": "redis://redis:6379/2"}
+        )
+        env_example = Path(".env.example").read_text(encoding="utf-8")
+
+        self.assertEqual(config.multiagent.redis_url, "redis://redis:6379/2")
+        self.assertIn("REDIS_URL=", env_example)
+
+    def test_invalid_agent_grpc_port_environment_value_has_clear_error(self):
+        with self.assertRaisesRegex(ValueError, "AGENT_GRPC_PORT.*not-an-int"):
+            load_app_config(
+                Path("missing-config.yaml"),
+                environ={"AGENT_GRPC_PORT": "not-an-int"},
+            )
+
+    def test_default_repo_local_cli_profile_path_is_gitignored(self):
+        gitignore_lines = {
+            line.strip()
+            for line in Path(".gitignore").read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+
+        self.assertTrue({".run/", ".run/cli_profile.yaml"} & gitignore_lines)
+
     def test_configure_runtime_logs_yaml_env_profile_and_injection(self):
         with TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -148,6 +174,34 @@ class ConfigPackageTests(unittest.TestCase):
         self.assertIn("models.chat", logs)
         self.assertIn("[Config][Info] Runtime config injected", logs)
         self.assertNotIn("super-secret-key", logs)
+
+    def test_configured_cli_profile_non_mapping_raises_clear_error(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            profile_path = tmp / "cli_profile.yaml"
+            profile_path.write_text("- not\n- a\n- mapping\n", encoding="utf-8")
+            config_path = tmp / "config.yaml"
+            config_path.write_text(
+                "\n".join(["profile:", f"  path: {profile_path.as_posix()}"]),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ProfileLoadError, "CLI profile.*YAML mapping"):
+                configure_runtime(config_path=config_path, environ={})
+
+    def test_configured_cli_profile_corrupt_yaml_raises_clear_error(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            profile_path = tmp / "cli_profile.yaml"
+            profile_path.write_text("models:\n  chat: [unterminated\n", encoding="utf-8")
+            config_path = tmp / "config.yaml"
+            config_path.write_text(
+                "\n".join(["profile:", f"  path: {profile_path.as_posix()}"]),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ProfileLoadError, "CLI profile.*YAML 无效"):
+                configure_runtime(config_path=config_path, environ={})
 
 
 if __name__ == "__main__":

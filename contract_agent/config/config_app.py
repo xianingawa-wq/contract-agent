@@ -84,6 +84,7 @@ class DatabaseSection(BaseModel):
 
 
 class GrpcSection(BaseModel):
+    host: str = "127.0.0.1"
     port: int = 50051
     max_workers: int = 16
     max_message_bytes: int = 10 * 1024 * 1024

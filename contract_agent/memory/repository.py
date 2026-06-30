@@ -20,11 +20,18 @@ class AgentOutputRepository:
     """Repository for persisted multi-agent outputs."""
 
     def __init__(
-        self, runtime_settings: Settings | None = None, ensure_schema: bool = True
+        self, runtime_settings: Settings | None = None, ensure_schema: bool = False
     ) -> None:
         self.settings = runtime_settings or settings_snapshot()
+        self._schema_ready = False
         if ensure_schema:
-            ensure_runtime_schema(self.settings)
+            self._ensure_schema()
+
+    def _ensure_schema(self) -> None:
+        if self._schema_ready:
+            return
+        ensure_runtime_schema(self.settings)
+        self._schema_ready = True
 
     def save_pipeline_outputs(
         self,
@@ -32,6 +39,7 @@ class AgentOutputRepository:
         contract_id: str,
         agent_outputs: dict[str, AgentOutput],
     ) -> None:
+        self._ensure_schema()
         with session_scope(self.settings) as session:
             for agent_id, output in agent_outputs.items():
                 session.add(
@@ -46,6 +54,7 @@ class AgentOutputRepository:
                 )
 
     def get_latest_review_report(self, contract_id: str) -> dict[str, Any] | None:
+        self._ensure_schema()
         with session_scope(self.settings) as session:
             record = (
                 session.query(AgentOutputRecord)
@@ -67,6 +76,7 @@ class AgentOutputRepository:
         agent_id: str | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
+        self._ensure_schema()
         with session_scope(self.settings) as session:
             query = session.query(AgentOutputRecord).filter(
                 AgentOutputRecord.contract_id == contract_id

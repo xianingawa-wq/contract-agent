@@ -13,6 +13,7 @@ class InterfaceEntrypointTests(unittest.TestCase):
 
         self.assertEqual(payload["service"], "agent-python")
         self.assertIn("Python app only keeps agent capabilities", payload["message"])
+        self.assertEqual(payload["http_api"], "root-only")
 
 
 if __name__ == "__main__":

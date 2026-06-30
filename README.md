@@ -30,11 +30,19 @@ The project contains the Python agent capabilities for parsing contracts, runnin
 Install dependencies, then start the gRPC service:
 
 ```powershell
-pip install -e .
+pip install -e ".[dev]"
 contract-agent-grpc
 ```
 
-The default gRPC port is `50051`; override it in `.run/config.yaml` or, for deployment overlays, with `AGENT_GRPC_PORT`.
+The default gRPC bind address is `127.0.0.1:50051`; override it in `.run/config.yaml` or, for deployment overlays, with `AGENT_GRPC_HOST` and `AGENT_GRPC_PORT`. Only bind externally on a trusted network.
+
+Before submitting changes, mirror the CI quality gates locally:
+
+```powershell
+.venv\Scripts\python.exe -m ruff format --check contract_agent tests
+.venv\Scripts\python.exe -m ruff check contract_agent tests
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
 
 Run a local rule-based review without external services:
 

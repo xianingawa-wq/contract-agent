@@ -226,14 +226,10 @@ class SupervisorAgent:
         timeout = self.config.agent_timeout_seconds
 
         completed = {
-            aid
-            for aid, output in state.agent_outputs.items()
-            if output.status == AgentStatus.COMPLETED
+            aid for aid, output in state.agent_outputs.items() if self._satisfies_dependency(output)
         }
         failed = {
-            aid
-            for aid, output in state.agent_outputs.items()
-            if output.status in {AgentStatus.FAILED, AgentStatus.SKIPPED, AgentStatus.CANCELLED}
+            aid for aid, output in state.agent_outputs.items() if self._blocks_dependency(output)
         }
 
         pending = self._normalize_agent_ids(agent_ids)
@@ -300,7 +296,7 @@ class SupervisorAgent:
                 ):
                     output = self._notification_to_output(notification)
                 results[notification.agent_id] = output
-                if output.status == AgentStatus.COMPLETED:
+                if self._satisfies_dependency(output):
                     completed.add(notification.agent_id)
                     ctx.update(output.structured_data)
                 else:
@@ -358,6 +354,16 @@ class SupervisorAgent:
             agent_id=notification.agent_id,
             status=status,
             error_message=notification.error_message,
+        )
+
+    def _satisfies_dependency(self, output: AgentOutput) -> bool:
+        return output.status == AgentStatus.COMPLETED or (
+            output.status == AgentStatus.SKIPPED and not output.error_message
+        )
+
+    def _blocks_dependency(self, output: AgentOutput) -> bool:
+        return output.status in {AgentStatus.FAILED, AgentStatus.CANCELLED} or (
+            output.status == AgentStatus.SKIPPED and bool(output.error_message)
         )
 
     def _build_accumulated(self, agent_outputs: dict[str, AgentOutput]) -> str:

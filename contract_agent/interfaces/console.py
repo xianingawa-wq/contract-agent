@@ -6,7 +6,7 @@ from typing import TextIO
 from sqlalchemy import text
 
 from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
-from contract_agent.config import create_model_profile_service
+from contract_agent.config import ProfileLoadError, create_model_profile_service
 from contract_agent.config import (
     DEFAULT_PROVIDER_OPTIONS,
     ModelEndpointConfig,
@@ -36,12 +36,16 @@ def run_console_demo(
     profile_service = create_model_profile_service(profile_path or DEFAULT_PROFILE_PATH)
     _write_welcome(stdout)
 
-    if profile_service.has_profile():
-        model_config = profile_service.load()
-        stdout.write("Profile: ready\n")
-    else:
-        model_config = _run_initialization_wizard(stdin, stdout, profile_service.load())
-        profile_service.save(model_config)
+    try:
+        if profile_service.has_profile():
+            model_config = profile_service.load()
+            stdout.write("Profile: ready\n")
+        else:
+            model_config = _run_initialization_wizard(stdin, stdout, profile_service.load())
+            profile_service.save(model_config)
+    except ProfileLoadError as exc:
+        stderr.write(f"{exc}\n")
+        return 2
 
     profile_service.apply_to_settings(model_config)
     database_status = _check_database(skip_connect=skip_db_connect)

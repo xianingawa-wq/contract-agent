@@ -64,6 +64,7 @@ class GatewayRouter:
 
         return GatewayResponse(
             request_id=request_id,
+            contract_id=contract_id,
             mode=mode,
             team=team,
         )
@@ -73,7 +74,7 @@ class GatewayRouter:
     ) -> PipelineState:
         return PipelineState(
             pipeline_id=response.pipeline_id or str(uuid.uuid4()),
-            contract_id=contract_id or "unknown",
+            contract_id=contract_id or response.contract_id or "unknown",
             mode=response.mode,
             team=response.team,
             status=PipelineStatus.PENDING,

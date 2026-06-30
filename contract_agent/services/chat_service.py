@@ -74,12 +74,12 @@ class ChatService:
                 query = intent_payload.get("query") or self._latest_user_message(payload)
 
             if intent == "review":
-                with self.audit_logger.span("chat.review", query_length=len(query)):
-                    response = self._handle_review(payload, query)
                 yield {
                     "event": "start",
-                    "data": {"intent": response.intent, "tool_used": response.tool_used},
+                    "data": {"intent": "review", "tool_used": "review"},
                 }
+                with self.audit_logger.span("chat.review", query_length=len(query)):
+                    response = self._handle_review(payload, query)
                 for delta in self._chunk_text(response.answer):
                     yield {"event": "delta", "data": {"delta": delta}}
                 yield {"event": "done", "data": response.model_dump(mode="json")}
@@ -384,13 +384,20 @@ class ChatService:
                 data = json.loads(match.group(0))
                 intent = data.get("intent")
                 if intent in {"search", "review", "advice", "chat"}:
+                    query = data.get("query")
+                    if not isinstance(query, str) or not query.strip():
+                        query = latest
+                    else:
+                        query = query.strip()
+                    reason = data.get("reason")
+                    reason = reason.strip() if isinstance(reason, str) and reason.strip() else ""
                     if intent == "review" and not self._is_explicit_review_request(latest):
                         return {
                             "intent": "advice",
-                            "query": data.get("query") or latest,
+                            "query": query,
                             "reason": "review-downgraded-to-advice",
                         }
-                    return data
+                    return {"intent": intent, "query": query, "reason": reason}
             except json.JSONDecodeError:
                 import logging
 

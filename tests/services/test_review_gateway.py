@@ -38,6 +38,15 @@ class GatewayRouterTests(unittest.TestCase):
         self.assertEqual(event.data["mode"], state.mode.value)
         self.assertEqual(event.data["team"], state.team)
 
+    def test_create_pipeline_state_uses_contract_id_from_route_response(self):
+        router = GatewayRouter()
+
+        response = router.route("审查合同", contract_id="contract-123")
+        state = router.create_pipeline_state(response)
+
+        self.assertEqual(response.contract_id, "contract-123")
+        self.assertEqual(state.contract_id, "contract-123")
+
 
 if __name__ == "__main__":
     unittest.main()

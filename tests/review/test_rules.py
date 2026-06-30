@@ -5,6 +5,18 @@ from contract_agent.review.rules import run_rules
 
 
 class RuleTests(unittest.TestCase):
+    def test_general_contract_runs_common_rules_once(self):
+        request = ReviewRequest(
+            text="保密协议正文。双方承担保密义务。",
+            contract_type="general",
+            our_side="buyer",
+        )
+
+        findings = run_rules(request)
+        rule_ids = [finding.rule_id for finding in findings]
+
+        self.assertEqual(len(rule_ids), len(set(rule_ids)))
+
     def test_flags_full_advance_payment_for_buyer(self):
         request = ReviewRequest(
             text="第二条 付款方式：甲方应于合同签订后5日内支付100%合同价款。",
@@ -29,6 +41,19 @@ class RuleTests(unittest.TestCase):
 
         titles = [finding.title for finding in findings]
         self.assertIn("争议管辖可能不利", titles)
+
+    def test_missing_contract_type_runs_only_common_rules_for_non_purchase_text(self):
+        request = ReviewRequest(
+            text="保密协议正文。双方承担保密义务。",
+            contract_type=None,
+            our_side="buyer",
+        )
+
+        findings = run_rules(request)
+        rule_ids = [finding.rule_id for finding in findings]
+
+        self.assertIn("GEN_001", rule_ids)
+        self.assertNotIn("ACC_001", rule_ids)
 
 
 if __name__ == "__main__":

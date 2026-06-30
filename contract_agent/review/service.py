@@ -17,6 +17,9 @@ def review_text(
     our_side: str = "甲方",
     llm_client: LLMEnricher | None = None,
 ) -> ReviewReport:
+    if not text.strip():
+        raise ValueError("合同正文为空，无法审查。")
+
     request = ReviewRequest(
         text=text, contract_type=contract_type, our_side=normalize_side(our_side)
     )

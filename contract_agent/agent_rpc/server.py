@@ -184,6 +184,123 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             )
         )
 
+    def _build_multiagent_final_payload(
+        self, state: PipelineState, *, include_event_type: bool = False
+    ) -> dict[str, Any]:
+        report = {}
+        risk_findings = []
+        redraft_suggestions = []
+        legal_refs = []
+
+        supervisor_output = state.agent_outputs.get("supervisor")
+        if supervisor_output:
+            report = supervisor_output.structured_data.get("review_report", {})
+
+        risk_out = state.agent_outputs.get("risk_checker")
+        if risk_out:
+            risk_findings = risk_out.structured_data.get("risk_findings", [])
+
+        redraft_out = state.agent_outputs.get("redrafter")
+        if redraft_out:
+            redraft_suggestions = redraft_out.structured_data.get("redraft_suggestions", [])
+
+        legal_out = state.agent_outputs.get("legal_ref")
+        if legal_out:
+            legal_refs = legal_out.structured_data.get("legal_refs", [])
+
+        payload: dict[str, Any] = {
+            "pipeline_id": state.pipeline_id,
+            "mode": state.mode.value,
+            "status": state.status.value,
+            "report": report,
+            "risk_findings": risk_findings,
+            "redraft_suggestions": redraft_suggestions,
+            "legal_refs": legal_refs,
+            "agent_summaries": [
+                {
+                    "agent_id": aid,
+                    "status": ao.status.value,
+                    "input_summary": ao.input_summary,
+                    "findings_count": len(ao.findings),
+                    "error_message": ao.error_message,
+                }
+                for aid, ao in state.agent_outputs.items()
+            ]
+            + [
+                {
+                    "agent_id": err["agent_id"],
+                    "status": "failed",
+                    "input_summary": "",
+                    "findings_count": 0,
+                    "error_message": err["error"],
+                }
+                for err in state.errors
+                if err["agent_id"] not in state.agent_outputs
+            ],
+        }
+        if include_event_type:
+            payload["event_type"] = "pipeline_completed"
+        return payload
+
+    def _normalize_redraft_input(self, request) -> tuple[str, str, str, list[dict[str, str]]]:
+        contract_text = request.contract_text or ""
+        if not contract_text.strip():
+            raise ValueError("contract_text 不能为空。")
+
+        contract_type = (request.contract_type or "").strip() or self.settings.default_contract_type
+        our_side = (request.our_side or "").strip() or "甲方"
+        accepted_issues_raw = request.accepted_issues_json or "[]"
+        accepted_issues = self._parse_accepted_issues_json(accepted_issues_raw)
+        return contract_text, contract_type, our_side, accepted_issues
+
+    def _parse_accepted_issues_json(self, raw_json: str) -> list[dict[str, str]]:
+        if not raw_json.strip():
+            raw_json = "[]"
+        parsed = json.loads(raw_json)
+        if not isinstance(parsed, list):
+            raise ValueError("accepted_issues_json 必须是 JSON 数组。")
+
+        accepted_issues: list[dict[str, str]] = []
+        for index, item in enumerate(parsed, start=1):
+            if not isinstance(item, dict):
+                raise ValueError(f"accepted_issues_json 第 {index} 项必须是对象。")
+            normalized: dict[str, str] = {}
+            for field in ("message", "suggestion", "location"):
+                value = item.get(field)
+                if value is None:
+                    normalized[field] = ""
+                    continue
+                if not isinstance(value, str):
+                    raise ValueError(
+                        f"accepted_issues_json 第 {index} 项字段 {field} 必须是字符串。"
+                    )
+                normalized[field] = value.strip()
+            if not any(normalized.values()):
+                raise ValueError(
+                    f"accepted_issues_json 第 {index} 项缺少 message、suggestion 或 location。"
+                )
+            accepted_issues.append(normalized)
+        return accepted_issues
+
+    def _normalize_embed_document_request(self, request) -> dict[str, str]:
+        doc_id = (request.doc_id or "").strip()
+        text = (request.text or "").strip()
+        source_type = (request.source_type or "").strip().lower()
+        title = (request.title or "").strip()
+
+        if not doc_id:
+            raise ValueError("doc_id 不能为空。")
+        if not text:
+            raise ValueError("text 不能为空。")
+        if source_type not in {"template", "clause"}:
+            raise ValueError("source_type 必须是 template 或 clause。")
+        return {
+            "doc_id": doc_id,
+            "text": text,
+            "source_type": source_type,
+            "title": title or doc_id,
+        }
+
     def Health(self, request, context):
         with self.audit_logger.trace("grpc.Health"):
             health = self._get_review_service().health()
@@ -286,7 +403,9 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
     def Redraft(self, request, context):
         with self.audit_logger.trace("grpc.Redraft", contract_type=request.contract_type):
             try:
-                accepted_issues = json.loads(request.accepted_issues_json)
+                contract_text, contract_type, our_side, accepted_issues = (
+                    self._normalize_redraft_input(request)
+                )
                 if not self.settings.chat_api_key:
                     raise RuntimeError(
                         "CHAT_API_KEY 或 LLM_API_KEY 未配置，无法生成合同修订稿。QWEN_API_KEY 仍可作为兼容别名。"
@@ -299,9 +418,9 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                     )
                 editor = self.contract_editor
                 revised = editor.redraft_contract(
-                    contract_text=request.contract_text,
-                    contract_type=request.contract_type,
-                    our_side=request.our_side,
+                    contract_text=contract_text,
+                    contract_type=contract_type,
+                    our_side=our_side,
                     accepted_issues=accepted_issues,
                 )
                 return agent_pb2.JsonResponse(
@@ -402,43 +521,9 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             except Exception:
                 pass
 
-            report = {}
-            supervisor_output = state.agent_outputs.get("supervisor")
-            if supervisor_output:
-                report = supervisor_output.structured_data.get("review_report", {})
-
             return agent_pb2.JsonResponse(
                 code=200,
-                json=json.dumps(
-                    {
-                        "pipeline_id": state.pipeline_id,
-                        "mode": state.mode.value,
-                        "status": state.status.value,
-                        "report": report,
-                        "agent_summaries": [
-                            {
-                                "agent_id": aid,
-                                "status": ao.status.value,
-                                "input_summary": ao.input_summary,
-                                "findings_count": len(ao.findings),
-                                "error_message": ao.error_message,
-                            }
-                            for aid, ao in state.agent_outputs.items()
-                        ]
-                        + [
-                            {
-                                "agent_id": err["agent_id"],
-                                "status": "failed",
-                                "input_summary": "",
-                                "findings_count": 0,
-                                "error_message": err["error"],
-                            }
-                            for err in state.errors
-                            if err["agent_id"] not in state.agent_outputs
-                        ],
-                    },
-                    ensure_ascii=False,
-                ),
+                json=json.dumps(self._build_multiagent_final_payload(state), ensure_ascii=False),
             )
         except ParserError as exc:
             code = self._parser_error_code(exc)
@@ -577,47 +662,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                 )
 
             # Final result — include actual findings from agents, not just LLM summary
-            report = {}
-            risk_findings = []
-            redraft_suggestions = []
-            legal_refs = []
-
-            supervisor_output = state.agent_outputs.get("supervisor")
-            if supervisor_output:
-                report = supervisor_output.structured_data.get("review_report", {})
-
-            risk_out = state.agent_outputs.get("risk_checker")
-            if risk_out:
-                risk_findings = risk_out.structured_data.get("risk_findings", [])
-
-            redraft_out = state.agent_outputs.get("redrafter")
-            if redraft_out:
-                redraft_suggestions = redraft_out.structured_data.get("redraft_suggestions", [])
-
-            legal_out = state.agent_outputs.get("legal_ref")
-            if legal_out:
-                legal_refs = legal_out.structured_data.get("legal_refs", [])
-
-            final = {
-                "event_type": "pipeline_completed",
-                "pipeline_id": state.pipeline_id,
-                "mode": state.mode.value,
-                "status": state.status.value,
-                "report": report,
-                "risk_findings": risk_findings,
-                "redraft_suggestions": redraft_suggestions,
-                "legal_refs": legal_refs,
-                "agent_summaries": [
-                    {
-                        "agent_id": aid,
-                        "status": ao.status.value,
-                        "input_summary": ao.input_summary,
-                        "findings_count": len(ao.findings),
-                        "error_message": ao.error_message,
-                    }
-                    for aid, ao in state.agent_outputs.items()
-                ],
-            }
+            final = self._build_multiagent_final_payload(state, include_event_type=True)
             yield agent_pb2.ChatStreamResponse(
                 event="pipeline_completed",
                 data_json=json.dumps(final, ensure_ascii=False),
@@ -648,6 +693,7 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
             "grpc.EmbedDocument", doc_id=request.doc_id, source_type=request.source_type
         ):
             try:
+                normalized = self._normalize_embed_document_request(request)
                 from contract_agent.knowledge.repository import KnowledgeChunkRepository
                 from contract_agent.schemas.knowledge import KnowledgeChunk
                 from contract_agent.knowledge.rag.knowledge_documents import (
@@ -660,15 +706,15 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                 )
 
                 chunk = KnowledgeChunk(
-                    chunk_id=request.doc_id,
-                    doc_name=request.title or "template",
-                    doc_type="template",
-                    title=request.title or "template",
-                    text=request.text,
-                    source_path=f"template/{request.source_type}",
+                    chunk_id=normalized["doc_id"],
+                    doc_name=normalized["title"],
+                    doc_type=normalized["source_type"],
+                    title=normalized["title"],
+                    text=normalized["text"],
+                    source_path=f"{normalized['source_type']}/{normalized['doc_id']}",
                 )
                 repo = KnowledgeChunkRepository(runtime_settings=self.settings)
-                repo.upsert_chunks([chunk], version="template")
+                repo.upsert_chunks([chunk], version=normalized["source_type"])
 
                 documents = build_knowledge_documents([chunk])
 
@@ -693,8 +739,11 @@ class AgentRpcServicer(agent_pb2_grpc.AgentRpcServiceServicer):
                     )
 
                 return agent_pb2.JsonResponse(
-                    code=200, json=json.dumps({"status": "ok", "doc_id": request.doc_id})
+                    code=200, json=json.dumps({"status": "ok", "doc_id": normalized["doc_id"]})
                 )
+            except ValueError as exc:
+                self._emit_rpc_error("EmbedDocument", 400, exc)
+                return agent_pb2.JsonResponse(code=400, error=str(exc))
             except Exception as exc:
                 self._emit_rpc_error("EmbedDocument", 500, exc)
                 return agent_pb2.JsonResponse(code=500, error=f"embed failed: {exc}")
@@ -722,7 +771,8 @@ def serve(config_path: str | None = None) -> None:
         AgentRpcServicer(app_context=context), server
     )
     port = context.config.grpc.port
-    server.add_insecure_port(f"0.0.0.0:{port}")
+    host = context.config.grpc.host.strip() or "127.0.0.1"
+    server.add_insecure_port(f"{host}:{port}")
     server.start()
     server.wait_for_termination()
 

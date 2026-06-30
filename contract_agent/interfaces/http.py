@@ -8,5 +8,6 @@ app = FastAPI(title="Contract Agent (Python)", version="2.0.0")
 def root() -> dict[str, str]:
     return {
         "service": "agent-python",
+        "http_api": "root-only",
         "message": "SaaS API has been split to SpringBoot. Python app only keeps agent capabilities.",
     }

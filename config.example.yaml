@@ -63,6 +63,7 @@ multiagent:
   context_force_threshold: 0.9
 
 grpc:
+  host: 127.0.0.1
   port: 50051
   max_workers: 16
   max_message_bytes: 10485760

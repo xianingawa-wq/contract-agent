@@ -5,10 +5,13 @@ from contract_agent.parser import ContractParser
 from contract_agent.services.rule_engine import RuleEngine
 
 
+_COMMON_CONTRACT_TYPE = "通用合同"
+_RULE_ENGINE_COMMON_ONLY_TYPE = "__common_only__"
+
 _CONTRACT_TYPE_ALIASES = {
     "purchase": "采购合同",
     "procurement": "采购合同",
-    "general": "通用合同",
+    "general": _COMMON_CONTRACT_TYPE,
 }
 
 _SIDE_ALIASES = {
@@ -21,8 +24,11 @@ _SIDE_ALIASES = {
 
 def normalize_contract_type(contract_type: str | None) -> str:
     if not contract_type:
-        return "采购合同"
-    return _CONTRACT_TYPE_ALIASES.get(contract_type.strip().lower(), contract_type)
+        return _COMMON_CONTRACT_TYPE
+    normalized = contract_type.strip()
+    if not normalized:
+        return _COMMON_CONTRACT_TYPE
+    return _CONTRACT_TYPE_ALIASES.get(normalized.lower(), normalized)
 
 
 def normalize_side(our_side: str | None) -> str:
@@ -35,7 +41,10 @@ def run_rules(request: ReviewRequest) -> list[Finding]:
     parser = ContractParser()
     document = parser.parse_text(request.text)
     contract_type = normalize_contract_type(request.contract_type)
-    risks = RuleEngine().check(contract_type, document)
+    engine_contract_type = (
+        _RULE_ENGINE_COMMON_ONLY_TYPE if contract_type == _COMMON_CONTRACT_TYPE else contract_type
+    )
+    risks = RuleEngine().check(engine_contract_type, document)
 
     findings = [
         Finding(

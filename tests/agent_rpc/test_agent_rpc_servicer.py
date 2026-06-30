@@ -8,11 +8,16 @@ from unittest.mock import patch
 import grpc
 
 from contract_agent.agent_rpc import agent_pb2, agent_pb2_grpc
-from contract_agent.agent_rpc.server import AgentRpcServicer
+from contract_agent.agent_rpc.server import AgentRpcServicer, serve
 from contract_agent.logger.audit import AuditLogger
 from contract_agent.config import AppConfig, Settings, configure_runtime
 from contract_agent.config.config_parser import ParserConfig
-from contract_agent.orchestration.protocol import AgentOutput, AgentStatus, PipelineStatus
+from contract_agent.orchestration.protocol import (
+    AgentMode,
+    AgentOutput,
+    AgentStatus,
+    PipelineStatus,
+)
 from contract_agent.schemas.review import (
     ExtractedFields,
     HealthResponse,
@@ -64,6 +69,57 @@ def make_review_response() -> ReviewResponse:
 
 
 class AgentRpcServicerTests(unittest.TestCase):
+    def _capture_serve_bind_target(self, *, host_env: str | None = None, port: int = 50051) -> str:
+        class ServerStarted(RuntimeError):
+            pass
+
+        class FakeServer:
+            def __init__(self) -> None:
+                self.targets: list[str] = []
+
+            def add_insecure_port(self, target: str) -> int:
+                self.targets.append(target)
+                return 1
+
+            def start(self) -> None:
+                raise ServerStarted()
+
+            def wait_for_termination(self) -> None:
+                raise AssertionError("serve() should not wait after fake start")
+
+        fake_server = FakeServer()
+        context = configure_runtime(
+            AppConfig.model_validate({"grpc": {"host": host_env or "127.0.0.1", "port": port}})
+        )
+
+        with (
+            patch("contract_agent.agent_rpc.server.configure_runtime", return_value=context),
+            patch("contract_agent.agent_rpc.server.grpc.server", return_value=fake_server),
+            patch(
+                "contract_agent.agent_rpc.server.agent_pb2_grpc.add_AgentRpcServiceServicer_to_server"
+            ),
+            self.assertRaises(ServerStarted),
+        ):
+            serve()
+
+        self.assertEqual(len(fake_server.targets), 1)
+        return fake_server.targets[0]
+
+    def test_serve_binds_localhost_by_default(self):
+        self.assertEqual(self._capture_serve_bind_target(), "127.0.0.1:50051")
+
+    def test_serve_allows_explicit_grpc_host_override(self):
+        target = self._capture_serve_bind_target(host_env="0.0.0.0", port=50052)
+
+        self.assertEqual(target, "0.0.0.0:50052")
+
+    def test_agent_rpc_docker_healthcheck_uses_agent_grpc_port(self):
+        dockerfile = Path("contract_agent/agent_rpc/Dockerfile").read_text(encoding="utf-8")
+        healthcheck = dockerfile.split("HEALTHCHECK", 1)[1]
+
+        self.assertIn("AGENT_GRPC_PORT", healthcheck)
+        self.assertNotIn("50051), timeout", healthcheck)
+
     def test_health_uses_injected_services_without_starting_network_server(self):
         servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
         servicer.review_service = FakeReviewService()  # type: ignore[assignment]
@@ -91,6 +147,124 @@ class AgentRpcServicerTests(unittest.TestCase):
 
         self.assertEqual(response.code, 503)
         self.assertIn("CHAT_API_KEY 或 LLM_API_KEY 未配置", response.error)
+
+    def test_redraft_rejects_malformed_accepted_issues_without_calling_editor(self):
+        class EditorSpy:
+            def __init__(self) -> None:
+                self.called = False
+
+            def redraft_contract(self, **kwargs):
+                self.called = True
+                raise AssertionError("invalid accepted_issues_json must be rejected first")
+
+        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+        editor = EditorSpy()
+        servicer.contract_editor = editor  # type: ignore[assignment]
+
+        for accepted_issues_json in ["{}", '"text"', '["bad"]', "[{}]"]:
+            with self.subTest(accepted_issues_json=accepted_issues_json):
+                response = servicer.Redraft(
+                    agent_pb2.RedraftRequest(
+                        contract_text="合同正文",
+                        contract_type="采购合同",
+                        our_side="甲方",
+                        accepted_issues_json=accepted_issues_json,
+                    ),
+                    None,
+                )
+
+                self.assertEqual(response.code, 400)
+                self.assertFalse(editor.called)
+
+    def test_redraft_treats_blank_accepted_issues_json_as_empty_list(self):
+        class EditorSpy:
+            def __init__(self) -> None:
+                self.kwargs = None
+
+            def redraft_contract(self, **kwargs):
+                self.kwargs = kwargs
+                return "修订稿"
+
+        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+        editor = EditorSpy()
+        servicer.contract_editor = editor  # type: ignore[assignment]
+
+        for raw_json in ["", "   "]:
+            with self.subTest(raw_json=raw_json):
+                editor.kwargs = None
+
+                response = servicer.Redraft(
+                    agent_pb2.RedraftRequest(
+                        contract_text="合同正文",
+                        contract_type="采购合同",
+                        our_side="甲方",
+                        accepted_issues_json=raw_json,
+                    ),
+                    None,
+                )
+
+                self.assertEqual(response.code, 200)
+                self.assertIsNotNone(editor.kwargs)
+                self.assertEqual(editor.kwargs["accepted_issues"], [])
+
+    def test_redraft_rejects_blank_contract_text_without_calling_editor(self):
+        class EditorSpy:
+            def __init__(self) -> None:
+                self.called = False
+
+            def redraft_contract(self, **kwargs):
+                self.called = True
+                raise AssertionError("blank contract_text must be rejected first")
+
+        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+        editor = EditorSpy()
+        servicer.contract_editor = editor  # type: ignore[assignment]
+
+        response = servicer.Redraft(
+            agent_pb2.RedraftRequest(
+                contract_text="   ",
+                contract_type="采购合同",
+                our_side="甲方",
+                accepted_issues_json="[]",
+            ),
+            None,
+        )
+
+        self.assertEqual(response.code, 400)
+        self.assertFalse(editor.called)
+
+    def test_redraft_defaults_blank_contract_type_and_our_side_before_calling_editor(self):
+        class EditorSpy:
+            def __init__(self) -> None:
+                self.kwargs = None
+
+            def redraft_contract(self, **kwargs):
+                self.kwargs = kwargs
+                return "修订稿"
+
+        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+        editor = EditorSpy()
+        servicer.contract_editor = editor  # type: ignore[assignment]
+
+        response = servicer.Redraft(
+            agent_pb2.RedraftRequest(
+                contract_text="合同正文",
+                contract_type=" ",
+                our_side=" ",
+                accepted_issues_json='[{"message":" 风险 ","suggestion":" 建议 ","location":" 条款 "}]',
+            ),
+            None,
+        )
+
+        self.assertEqual(response.code, 200)
+        self.assertEqual(json.loads(response.json), {"revised_text": "修订稿"})
+        self.assertIsNotNone(editor.kwargs)
+        self.assertEqual(editor.kwargs["contract_type"], servicer.settings.default_contract_type)
+        self.assertEqual(editor.kwargs["our_side"], "甲方")
+        self.assertEqual(
+            editor.kwargs["accepted_issues"],
+            [{"message": "风险", "suggestion": "建议", "location": "条款"}],
+        )
 
     def test_health_writes_rpc_trace(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -169,6 +343,77 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertEqual(payload["status"], "completed")
         self.assertEqual(payload["report"], {"overall_risk": "low"})
         self.assertEqual(payload["agent_summaries"][0]["agent_id"], "supervisor")
+
+    def test_review_multi_agent_non_streaming_includes_structured_agent_results(self):
+        def fake_run(state, initial_input, on_event=None):
+            state.status = PipelineStatus.COMPLETED
+            state.agent_outputs["supervisor"] = AgentOutput(
+                agent_id="supervisor",
+                status=AgentStatus.COMPLETED,
+                input_summary="summary",
+                structured_data={"review_report": {"overall_risk": "medium"}},
+            )
+            state.agent_outputs["risk_checker"] = AgentOutput(
+                agent_id="risk_checker",
+                status=AgentStatus.COMPLETED,
+                input_summary="risk",
+                structured_data={"risk_findings": [{"rule_id": "RISK-1"}]},
+            )
+            state.agent_outputs["legal_ref"] = AgentOutput(
+                agent_id="legal_ref",
+                status=AgentStatus.COMPLETED,
+                input_summary="legal",
+                structured_data={"legal_refs": [{"article": "民法典第1条"}]},
+            )
+            state.agent_outputs["redrafter"] = AgentOutput(
+                agent_id="redrafter",
+                status=AgentStatus.COMPLETED,
+                input_summary="redraft",
+                structured_data={"redraft_suggestions": [{"after": "修订条款"}]},
+            )
+            return state
+
+        class FakeMemoryManager:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def save_pipeline_result(self, state):
+                pass
+
+        class FakeEventPublisher:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def publish(self, event):
+                pass
+
+        servicer = AgentRpcServicer(app_context=_builtin_context())
+
+        with (
+            patch("contract_agent.memory.manager.MemoryManager", FakeMemoryManager),
+            patch("contract_agent.orchestration.events.EventPublisher", FakeEventPublisher),
+            patch("contract_agent.orchestration.supervisor.SupervisorAgent") as supervisor_cls,
+            patch(
+                "contract_agent.services.review_gateway.GatewayRouter._detect_mode",
+                return_value=AgentMode.MULTI_AUTO,
+            ),
+        ):
+            supervisor_cls.return_value.run.side_effect = fake_run
+            response = servicer.ReviewMultiAgent(
+                agent_pb2.ReviewRequest(
+                    contract_text="合同正文",
+                    contract_type="采购合同",
+                    our_side="甲方",
+                ),
+                None,
+            )
+
+        self.assertEqual(response.code, 200)
+        payload = json.loads(response.json)
+        self.assertEqual(payload["report"], {"overall_risk": "medium"})
+        self.assertEqual(payload["risk_findings"], [{"rule_id": "RISK-1"}])
+        self.assertEqual(payload["legal_refs"], [{"article": "民法典第1条"}])
+        self.assertEqual(payload["redraft_suggestions"], [{"after": "修订条款"}])
 
     def test_review_file_input_uses_normalized_document_without_review_file_branch(self):
         class ReviewServiceSpy(FakeReviewService):
@@ -434,6 +679,34 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertEqual(rpc_error["code"], 400)
         self.assertEqual(rpc_error["error_type"], "UnsupportedFileType")
 
+    def test_review_multi_agent_rejects_empty_request_before_pipeline_setup(self):
+        with (
+            patch("contract_agent.memory.manager.MemoryManager") as memory_cls,
+            patch("contract_agent.orchestration.supervisor.SupervisorAgent") as supervisor_cls,
+        ):
+            response = AgentRpcServicer(app_context=_builtin_context()).ReviewMultiAgent(
+                agent_pb2.ReviewRequest(),
+                None,
+            )
+
+        self.assertEqual(response.code, 400)
+        self.assertFalse(memory_cls.called)
+        self.assertFalse(supervisor_cls.called)
+
+    def test_review_multi_agent_rejects_blank_text_before_pipeline_setup(self):
+        with (
+            patch("contract_agent.memory.manager.MemoryManager") as memory_cls,
+            patch("contract_agent.orchestration.supervisor.SupervisorAgent") as supervisor_cls,
+        ):
+            response = AgentRpcServicer(app_context=_builtin_context()).ReviewMultiAgent(
+                agent_pb2.ReviewRequest(contract_text="   "),
+                None,
+            )
+
+        self.assertEqual(response.code, 400)
+        self.assertFalse(memory_cls.called)
+        self.assertFalse(supervisor_cls.called)
+
     def test_review_multi_agent_stream_file_input_passes_parsed_text_to_supervisor(self):
         captured_inputs = []
 
@@ -549,6 +822,93 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertEqual(rpc_error["method"], "ReviewMultiAgentStream")
         self.assertEqual(rpc_error["code"], 400)
         self.assertEqual(rpc_error["error_type"], "UnsupportedFileType")
+
+    def test_review_multi_agent_stream_rejects_empty_request_before_pipeline_setup(self):
+        with patch("contract_agent.orchestration.supervisor.SupervisorAgent") as supervisor_cls:
+            events = list(
+                AgentRpcServicer(app_context=_builtin_context()).ReviewMultiAgentStream(
+                    agent_pb2.ReviewRequest(),
+                    None,
+                )
+            )
+
+        self.assertEqual(events[0].event, "pipeline_failed")
+        payload = json.loads(events[0].data_json)
+        self.assertEqual(payload["code"], 400)
+        self.assertFalse(supervisor_cls.called)
+
+    def test_parse_file_returns_400_for_corrupt_docx_and_pdf_uploads(self):
+        servicer = AgentRpcServicer(app_context=_builtin_context())
+
+        for file_name in ("bad.docx", "bad.pdf"):
+            with self.subTest(file_name=file_name):
+                response = servicer.ParseFile(
+                    agent_pb2.ParseFileRequest(file_name=file_name, content=b"not a real file"),
+                    None,
+                )
+
+                self.assertEqual(response.code, 400)
+                self.assertNotIn("unexpected error", response.error)
+
+    def test_embed_document_uses_source_type_as_doc_type_metadata(self):
+        captured_chunks = []
+        captured_documents = []
+
+        class FakeRepository:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def upsert_chunks(self, chunks, version):
+                captured_chunks.extend(chunks)
+
+        class FakeVectorStore:
+            def add_documents(self, documents):
+                captured_documents.extend(documents)
+
+        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+
+        with (
+            patch("contract_agent.knowledge.repository.KnowledgeChunkRepository", FakeRepository),
+            patch(
+                "contract_agent.knowledge.rag.vector_store.load_vector_store",
+                return_value=FakeVectorStore(),
+            ),
+            patch("contract_agent.knowledge.rag.vector_store.save_vector_store"),
+        ):
+            response = servicer.EmbedDocument(
+                agent_pb2.EmbedDocumentRequest(
+                    doc_id="clause-1",
+                    text="违约责任条款",
+                    source_type="clause",
+                    title="违约责任",
+                ),
+                None,
+            )
+
+        self.assertEqual(response.code, 200)
+        self.assertEqual(captured_chunks[0].doc_type, "clause")
+        self.assertEqual(captured_documents[0].metadata["doc_type"], "clause")
+
+    def test_embed_document_rejects_blank_required_fields_and_invalid_source_type(self):
+        servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
+        requests = [
+            agent_pb2.EmbedDocumentRequest(doc_id="", text="正文", source_type="template"),
+            agent_pb2.EmbedDocumentRequest(doc_id="doc-1", text="   ", source_type="template"),
+            agent_pb2.EmbedDocumentRequest(doc_id="doc-1", text="正文", source_type="unknown"),
+            agent_pb2.EmbedDocumentRequest(doc_id="doc-1", text="正文", source_type=""),
+        ]
+
+        for request in requests:
+            with (
+                self.subTest(request=request),
+                patch("contract_agent.knowledge.repository.KnowledgeChunkRepository") as repo_cls,
+                patch("contract_agent.knowledge.rag.vector_store.load_vector_store") as load_store,
+            ):
+                response = servicer.EmbedDocument(request, None)
+
+                self.assertEqual(response.code, 400)
+                self.assertFalse(repo_cls.called)
+                self.assertFalse(load_store.called)
 
     def test_app_context_parser_config_is_passed_to_review_service_and_parser(self):
         context = configure_runtime(

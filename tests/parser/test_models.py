@@ -177,6 +177,14 @@ class ParserModelTests(unittest.TestCase):
 
     def test_location_offsets_and_page_indexes_are_validated(self):
         with self.assertRaises(ValueError):
+            DocumentMetadata(
+                doc_id="bad",
+                file_name="contract.txt",
+                file_type="txt",
+                source_path="inline",
+                page_count=-7,
+            )
+        with self.assertRaises(ValueError):
             DocumentSpan(
                 span_id="bad",
                 page_no=0,

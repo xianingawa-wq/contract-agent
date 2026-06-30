@@ -1,12 +1,19 @@
 from contract_agent.rulesets.built_in import RULES
 from contract_agent.parser import ClauseChunk, ParsedDocument
 from contract_agent.schemas.review import RiskItem
+from contract_agent.services.contract_type_normalizer import normalize_contract_type
 
 
 class RuleEngine:
     def check(self, contract_type: str, document: ParsedDocument) -> list[RiskItem]:
         risks: list[RiskItem] = []
-        rules = RULES.get("通用合同", []) + RULES.get(contract_type, [])
+        normalized_contract_type = normalize_contract_type(contract_type)
+        specific_rules = (
+            []
+            if normalized_contract_type == "通用合同"
+            else RULES.get(normalized_contract_type, [])
+        )
+        rules = RULES.get("通用合同", []) + specific_rules
 
         for rule in rules:
             if rule.get("check_scope") == "document":

@@ -48,13 +48,13 @@ class RiskItem(BaseModel):
     basis_sources: list[KnowledgeReference] = Field(default_factory=list)
     clause_no: str | None = None
     section_title: str | None = None
-    page_no: int | None = None
-    start_offset: int | None = None
-    end_offset: int | None = None
+    page_no: int | None = Field(default=None, ge=0)
+    start_offset: int | None = Field(default=None, ge=0)
+    end_offset: int | None = Field(default=None, ge=0)
     chunk_level: str | None = None
 
     @model_validator(mode="after")
-    def validate_offsets(self):
+    def validate_offsets(self) -> "RiskItem":
         if (
             self.start_offset is not None
             and self.end_offset is not None
