@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from contract_agent.parser.models import DocumentSemanticGraph, ParsedDocument
+from bisect import bisect_left, bisect_right
+
+from contract_agent.parser.models import (
+    ClauseChunk,
+    DocumentBlock,
+    DocumentSemanticGraph,
+    ParsedDocument,
+)
 
 
 def build_semantic_graph(document: ParsedDocument) -> DocumentSemanticGraph:
@@ -23,7 +30,7 @@ def build_semantic_graph(document: ParsedDocument) -> DocumentSemanticGraph:
     block_nodes_by_id: dict[str, str] = {}
     block_nodes_by_span_id: dict[str, str] = {}
     ordered_blocks = _blocks_ordered_by_offset(document)
-    block_cursor = 0
+    blocks_by_chunk_id = _blocks_by_chunk_id(ordered_blocks, document.clause_chunks)
     for block in document.blocks:
         node_id = f"block:{block.block_id}"
         block_nodes_by_id[block.block_id] = node_id
@@ -84,12 +91,7 @@ def build_semantic_graph(document: ParsedDocument) -> DocumentSemanticGraph:
         if previous_chunk_node_id:
             edges.append({"source": previous_chunk_node_id, "target": node_id, "type": "next"})
         previous_chunk_node_id = node_id
-        block, block_cursor = _next_block_for_chunk(
-            ordered_blocks,
-            block_cursor,
-            chunk.start_offset,
-            chunk.end_offset,
-        )
+        block = blocks_by_chunk_id.get(chunk.chunk_id)
         if block is not None:
             block_node_id = block_nodes_by_id.get(block.block_id)
             if block_node_id:
@@ -142,7 +144,7 @@ def build_semantic_graph(document: ParsedDocument) -> DocumentSemanticGraph:
     )
 
 
-def _blocks_ordered_by_offset(document: ParsedDocument) -> list:
+def _blocks_ordered_by_offset(document: ParsedDocument) -> list[DocumentBlock]:
     return sorted(
         [
             block
@@ -153,24 +155,48 @@ def _blocks_ordered_by_offset(document: ParsedDocument) -> list:
     )
 
 
-def _next_block_for_chunk(
-    ordered_blocks: list,
-    cursor: int,
+def _blocks_by_chunk_id(
+    ordered_blocks: list[DocumentBlock],
+    chunks: list[ClauseChunk],
+) -> dict[str, DocumentBlock]:
+    if not ordered_blocks or not chunks:
+        return {}
+
+    starts = [int(block.location.start_offset) for block in ordered_blocks]
+    prefix_max_ends: list[int] = []
+    max_end = -1
+    for block in ordered_blocks:
+        max_end = max(max_end, int(block.location.end_offset))
+        prefix_max_ends.append(max_end)
+
+    blocks_by_chunk_id: dict[str, DocumentBlock] = {}
+    for chunk in chunks:
+        block = _block_for_chunk(
+            ordered_blocks,
+            starts,
+            prefix_max_ends,
+            chunk.start_offset,
+            chunk.end_offset,
+        )
+        if block is not None:
+            blocks_by_chunk_id[chunk.chunk_id] = block
+    return blocks_by_chunk_id
+
+
+def _block_for_chunk(
+    ordered_blocks: list[DocumentBlock],
+    starts: list[int],
+    prefix_max_ends: list[int],
     start_offset: int,
     end_offset: int,
-) -> tuple[object | None, int]:
-    while (
-        cursor < len(ordered_blocks)
-        and ordered_blocks[cursor].location.end_offset is not None
-        and ordered_blocks[cursor].location.end_offset < start_offset
-    ):
-        cursor += 1
-    if cursor >= len(ordered_blocks):
-        return None, cursor
-    block = ordered_blocks[cursor]
-    if block.location.start_offset is not None and block.location.start_offset <= end_offset:
-        return block, cursor
-    return None, cursor
+) -> DocumentBlock | None:
+    right = bisect_right(starts, end_offset)
+    if right == 0:
+        return None
+    index = bisect_left(prefix_max_ends, start_offset, 0, right)
+    if index >= right:
+        return None
+    return ordered_blocks[index]
 
 
 def _preview(text: str, limit: int = 120) -> str:
