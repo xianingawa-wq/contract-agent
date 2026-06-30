@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from contract_agent.memory import cold_store, hot_store, manager, models, repository, warm_store
 from contract_agent.config import Settings, temporary_settings
@@ -64,8 +65,6 @@ class MemoryPersistenceTests(unittest.TestCase):
             def close(self) -> None:
                 pass
 
-        from unittest.mock import patch
-
         runtime_settings = Settings(postgres_dsn=None)
         state = PipelineState(
             pipeline_id="pipeline-no-dsn",
@@ -93,7 +92,7 @@ class MemoryPersistenceTests(unittest.TestCase):
         database._session_factory = None
         try:
             with temporary_settings(postgres_dsn="sqlite+pysqlite:///:memory:"):
-                repo = repository.AgentOutputRepository()
+                repo = repository.AgentOutputRepository(ensure_schema=True)
                 repo.save_pipeline_outputs(
                     "pipeline-1",
                     "contract-1",
@@ -124,6 +123,22 @@ class MemoryPersistenceTests(unittest.TestCase):
         finally:
             database._engine = None
             database._session_factory = None
+
+    def test_agent_output_repository_honors_disabled_schema_ensure(self):
+        repo = repository.AgentOutputRepository(
+            runtime_settings=Settings(postgres_dsn="sqlite+pysqlite:///:memory:"),
+            ensure_schema=False,
+        )
+
+        with (
+            patch("contract_agent.memory.repository.ensure_runtime_schema") as ensure_schema,
+            patch("contract_agent.memory.repository.session_scope") as session_scope,
+        ):
+            session_scope.side_effect = RuntimeError("stop before database work")
+            with self.assertRaisesRegex(RuntimeError, "stop before database work"):
+                repo.save_pipeline_outputs("pipeline-1", "contract-1", {})
+
+        self.assertFalse(ensure_schema.called)
 
     def test_warm_layer_delegates_to_repository(self):
         class FakeRepository:

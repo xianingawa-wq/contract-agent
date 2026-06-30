@@ -64,8 +64,8 @@ class OpenAIProvider:
                     tools=tools,
                     previous_response_id=previous_response_id,
                 )
-            except Exception:
-                if previous_response_id:
+            except Exception as exc:
+                if previous_response_id or tools or not self._is_responses_unsupported(exc):
                     raise
         return self._chat_completion_create(
             input=input, instructions=instructions, model=model, tools=tools
@@ -97,8 +97,9 @@ class OpenAIProvider:
                     },
                 )
                 return loads_json_object(extract_output_text(response))
-            except Exception:
-                pass
+            except Exception as exc:
+                if not self._is_responses_unsupported(exc):
+                    raise
 
         completion = self.client.chat.completions.create(
             model=model or self.config.chat_model,
@@ -133,7 +134,9 @@ class OpenAIProvider:
                     tools=tools,
                     previous_response_id=None,
                 )
-            except Exception:
+            except Exception as exc:
+                if not self._is_responses_unsupported(exc):
+                    raise
                 return self._run_chat_tool_loop(
                     input=input,
                     tools=tools,
@@ -191,9 +194,10 @@ class OpenAIProvider:
         model: str | None,
         max_rounds: int,
     ) -> ModelResponse:
+        chat_tools = self._chat_tools(tools)
         messages = input_to_messages(input, instructions)
         response = self._chat_completion_create_from_messages(
-            messages=messages, model=model, tools=tools
+            messages=messages, model=model, tools=chat_tools
         )
         for _ in range(max_rounds):
             if not response.tool_calls:
@@ -203,9 +207,30 @@ class OpenAIProvider:
             response = self._chat_completion_create_from_messages(
                 messages=messages,
                 model=model,
-                tools=tools,
+                tools=chat_tools,
             )
         raise RuntimeError("Tool loop exceeded max rounds.")
+
+    def _chat_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        chat_tools: list[dict[str, Any]] = []
+        for tool in tools:
+            if tool.get("type") != "function":
+                chat_tools.append(tool)
+                continue
+            if isinstance(tool.get("function"), dict):
+                chat_tools.append(tool)
+                continue
+            name = tool.get("name")
+            if not name:
+                chat_tools.append(tool)
+                continue
+            function: dict[str, Any] = {"name": name}
+            if tool.get("description"):
+                function["description"] = tool["description"]
+            if isinstance(tool.get("parameters"), dict):
+                function["parameters"] = tool["parameters"]
+            chat_tools.append({"type": "function", "function": function})
+        return chat_tools
 
     def _responses_tool_outputs(
         self,
@@ -282,6 +307,22 @@ class OpenAIProvider:
             tools=tools,
         )
         return self._chat_completion_to_model_response(completion)
+
+    def _is_responses_unsupported(self, exc: Exception) -> bool:
+        status_code = getattr(exc, "status_code", None)
+        if status_code not in {400, 404, 405, 501}:
+            return False
+        message = str(exc).lower()
+        markers = (
+            "responses",
+            "response api",
+            "unsupported",
+            "not found",
+            "unknown url",
+            "invalid url",
+            "method not allowed",
+        )
+        return any(marker in message for marker in markers)
 
     def _chat_completion_to_model_response(self, completion: Any) -> ModelResponse:
         message = completion.choices[0].message

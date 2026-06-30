@@ -15,6 +15,7 @@ class RuleTests(unittest.TestCase):
         findings = run_rules(request)
         rule_ids = [finding.rule_id for finding in findings]
 
+        self.assertIn("GEN_001", rule_ids)
         self.assertEqual(len(rule_ids), len(set(rule_ids)))
 
     def test_flags_full_advance_payment_for_buyer(self):

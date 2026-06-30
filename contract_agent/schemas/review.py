@@ -48,7 +48,7 @@ class RiskItem(BaseModel):
     basis_sources: list[KnowledgeReference] = Field(default_factory=list)
     clause_no: str | None = None
     section_title: str | None = None
-    page_no: int | None = Field(default=None, ge=0)
+    page_no: int | None = Field(default=None, ge=1)
     start_offset: int | None = Field(default=None, ge=0)
     end_offset: int | None = Field(default=None, ge=0)
     chunk_level: str | None = None

@@ -160,6 +160,8 @@ class YamlModelProfileStore:
             return fallback
         try:
             raw = yaml.safe_load(self.path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return fallback
         except OSError as exc:
             raise ProfileLoadError(f"CLI profile 配置文件不可读取：{self.path}：{exc}") from exc
         except yaml.YAMLError as exc:
@@ -282,10 +284,10 @@ def rerank_endpoint_from_base_url(base_url: str) -> str | None:
     base = base_url.strip().rstrip("/")
     if not base:
         return None
+    if "/compatible-mode/" in base:
+        base = base.replace("/compatible-mode/", "/compatible-api/")
     if base.endswith("/reranks"):
         return base
-    if "/compatible-mode/" in base:
-        return base.replace("/compatible-mode/", "/compatible-api/") + "/reranks"
     return f"{base}/reranks"
 
 

@@ -30,13 +30,13 @@ class WarmLayer:
         try:
             self.repository.save_pipeline_outputs(pipeline_id, contract_id, agent_outputs)
         except Exception as exc:
-            logger.warning("Warm 层持久化已降级跳过：%s", exc)
+            logger.warning("Warm 层持久化已降级跳过：%s", type(exc).__name__)
 
     def get_review_results(self, contract_id: str) -> dict[str, Any] | None:
         try:
             return self.repository.get_latest_review_report(contract_id)
         except Exception as exc:
-            logger.warning("Warm 层读取已降级跳过：%s", exc)
+            logger.warning("Warm 层读取已降级跳过：%s", type(exc).__name__)
             return None
 
     def get_agent_outputs_for_contract(
@@ -47,5 +47,5 @@ class WarmLayer:
         try:
             return self.repository.list_outputs(contract_id, agent_id=agent_id, limit=20)
         except Exception as exc:
-            logger.warning("Warm 层列表读取已降级跳过：%s", exc)
+            logger.warning("Warm 层列表读取已降级跳过：%s", type(exc).__name__)
             return []

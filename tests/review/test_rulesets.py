@@ -1,6 +1,7 @@
 import unittest
 
 from contract_agent.parser import ClauseChunk, DocumentMetadata, ParsedDocument
+from contract_agent.rulesets.built_in import RULES
 from contract_agent.services.rule_engine import RuleEngine
 
 
@@ -31,6 +32,12 @@ def make_purchase_document() -> ParsedDocument:
 
 
 class RulesetAliasTests(unittest.TestCase):
+    def test_purchase_alias_points_to_procurement_rules(self):
+        rule_ids = {rule["rule_id"] for rule in RULES["purchase"]}
+
+        self.assertIn("PAY_001", rule_ids)
+        self.assertIn("ACC_001", rule_ids)
+
     def test_rule_engine_accepts_purchase_alias_from_rulesets(self):
         risks = RuleEngine().check("purchase", make_purchase_document())
         rule_ids = [risk.rule_id for risk in risks]

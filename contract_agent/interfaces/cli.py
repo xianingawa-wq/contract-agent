@@ -151,6 +151,9 @@ def _review_command(
     except _parser_error_types() as exc:
         stderr.write(f"输入文件无法审查：{exc}\n")
         return 2
+    except OSError as exc:
+        stderr.write(f"输入文件无法读取：{exc}\n")
+        return 2
     except Exception as exc:
         from contract_agent.parser import ParserError
 

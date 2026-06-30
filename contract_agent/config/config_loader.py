@@ -548,7 +548,7 @@ def _apply_profile_overlay(config: AppConfig, *, applied: list[str] | None = Non
     if not path.exists():
         return config
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except OSError as exc:
         raise ProfileLoadError(f"CLI profile 配置文件不可读取：{path}：{exc}") from exc
     except yaml.YAMLError as exc:

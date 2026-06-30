@@ -15,6 +15,7 @@ from contract_agent.config import PROJECT_ROOT
 
 
 DEFAULT_AUDIT_LOG_PATH = PROJECT_ROOT / ".run" / "audit.jsonl"
+MAX_PAYLOAD_DEPTH = 16
 _trace_id_var: ContextVar[str | None] = ContextVar("contract_agent_trace_id", default=None)
 _span_stack_var: ContextVar[tuple[str, ...]] = ContextVar("contract_agent_span_stack", default=())
 
@@ -133,32 +134,62 @@ class AuditLogger:
         return round((time.perf_counter() - started) * 1000, 3)
 
     def _safe_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        return {
-            key: self._normalize_value(value)
-            for key, value in payload.items()
-            if key
-            not in {
-                "timestamp",
-                "scope",
-                "prefix",
-                "event",
-                "trace_id",
-                "span_id",
-                "parent_span_id",
-            }
+        reserved = {
+            "timestamp",
+            "scope",
+            "prefix",
+            "event",
+            "trace_id",
+            "span_id",
+            "parent_span_id",
         }
+        normalized: dict[str, Any] = {}
+        for key, value in payload.items():
+            safe_key = str(key)
+            if safe_key in reserved:
+                continue
+            normalized[safe_key] = self._normalize_value(value)
+        return normalized
 
-    def _normalize_value(self, value: Any) -> Any:
+    def _normalize_value(
+        self,
+        value: Any,
+        *,
+        _seen: set[int] | None = None,
+        _depth: int = 0,
+    ) -> Any:
         if isinstance(value, str | int | float | bool) or value is None:
             return value
         if isinstance(value, Path):
             return value.as_posix()
         if isinstance(value, datetime):
             return value.isoformat()
+        if _depth >= MAX_PAYLOAD_DEPTH:
+            return "<max-depth>"
+        seen = _seen if _seen is not None else set()
         if isinstance(value, Mapping):
-            return {str(key): self._normalize_value(item) for key, item in value.items()}
+            value_id = id(value)
+            if value_id in seen:
+                return "<cycle>"
+            seen.add(value_id)
+            try:
+                return {
+                    str(key): self._normalize_value(item, _seen=seen, _depth=_depth + 1)
+                    for key, item in value.items()
+                }
+            finally:
+                seen.remove(value_id)
         if isinstance(value, list | tuple | set):
-            return [self._normalize_value(item) for item in value]
+            value_id = id(value)
+            if value_id in seen:
+                return "<cycle>"
+            seen.add(value_id)
+            try:
+                return [
+                    self._normalize_value(item, _seen=seen, _depth=_depth + 1) for item in value
+                ]
+            finally:
+                seen.remove(value_id)
         try:
             json.dumps(value, ensure_ascii=False)
         except TypeError:

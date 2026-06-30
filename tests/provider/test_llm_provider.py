@@ -77,12 +77,21 @@ class FakeResponses:
 
 
 class FailingResponses:
-    def __init__(self) -> None:
+    def __init__(self, exc: Exception | None = None) -> None:
         self.calls: list[dict] = []
+        self.exc = exc or ResponsesUnsupportedError("responses unsupported")
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
-        raise RuntimeError("responses unsupported")
+        raise self.exc
+
+
+class ResponsesUnsupportedError(RuntimeError):
+    status_code = 404
+
+
+class ResponsesServiceError(RuntimeError):
+    status_code = 500
 
 
 class LLMProviderTests(unittest.TestCase):
@@ -278,10 +287,9 @@ class LLMProviderTests(unittest.TestCase):
         tools = [
             {
                 "type": "function",
-                "function": {
-                    "name": "lookup_clause",
-                    "parameters": {"type": "object"},
-                },
+                "name": "lookup_clause",
+                "description": "Look up a clause.",
+                "parameters": {"type": "object"},
             }
         ]
 
@@ -294,6 +302,19 @@ class LLMProviderTests(unittest.TestCase):
 
         self.assertEqual(response.text, "已完成")
         self.assertEqual(len(chat_completions.calls), 2)
+        self.assertEqual(
+            chat_completions.calls[0]["tools"],
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_clause",
+                        "description": "Look up a clause.",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        )
         first_messages = chat_completions.calls[0]["messages"]
         self.assertEqual(
             first_messages,
@@ -406,6 +427,33 @@ class LLMProviderTests(unittest.TestCase):
             },
         )
         self.assertNotIn("type", second_messages[2])
+
+    def test_tool_loop_propagates_unrelated_responses_errors(self):
+        config = LLMConfig(
+            provider="openai_compatible",
+            api_key="test-key",
+            base_url="https://example.test/v1",
+            chat_model="chat-model",
+            embedding_model="embedding-model",
+            use_responses_api=True,
+        )
+        provider = OpenAIProvider(config)
+        responses = FailingResponses(ResponsesServiceError("temporary upstream failure"))
+        chat_completions = FakeChatCompletions()
+        provider.client = SimpleNamespace(
+            responses=responses,
+            chat=SimpleNamespace(completions=chat_completions),
+        )
+
+        with self.assertRaisesRegex(ResponsesServiceError, "temporary upstream failure"):
+            provider.run_tool_loop(
+                input="check payment clause",
+                tools=[{"type": "function", "name": "lookup_clause"}],
+                handlers={"lookup_clause": lambda args: {"found": args["clause"]}},
+            )
+
+        self.assertEqual(len(responses.calls), 1)
+        self.assertEqual(chat_completions.calls, [])
 
 
 if __name__ == "__main__":

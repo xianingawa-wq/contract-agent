@@ -43,15 +43,16 @@ class AuditLoggerTests(unittest.TestCase):
             logger = AuditLogger(log_path)
 
             with logger.trace("debug.operation") as trace_id:
-                logger.emit(
-                    "custom.event",
-                    timestamp="not-a-time",
-                    scope="wrong",
-                    prefix="wrong",
-                    trace_id="wrong",
-                    span_id="wrong",
-                    parent_span_id="wrong",
-                )
+                with logger.span("stage.outer") as span_id:
+                    logger.emit(
+                        "custom.event",
+                        timestamp="not-a-time",
+                        scope="wrong",
+                        prefix="wrong",
+                        trace_id="wrong",
+                        span_id="wrong",
+                        parent_span_id="wrong",
+                    )
 
             custom = next(
                 json.loads(line)
@@ -63,8 +64,28 @@ class AuditLoggerTests(unittest.TestCase):
         self.assertEqual(custom["scope"], "audit")
         self.assertEqual(custom["prefix"], "[Audit]")
         self.assertEqual(custom["trace_id"], trace_id)
-        self.assertNotIn("span_id", custom)
+        self.assertEqual(custom["span_id"], span_id)
         self.assertNotIn("parent_span_id", custom)
+
+    def test_audit_logger_handles_non_string_keys_cycles_and_deep_payloads(self):
+        from contract_agent.logger.audit import AuditLogger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "trace.jsonl"
+            logger = AuditLogger(log_path, _extra={42: "answer"})
+            cyclic: dict[str, object] = {}
+            cyclic["self"] = cyclic
+            deep: object = "leaf"
+            for _ in range(32):
+                deep = {"child": deep}
+
+            logger.emit("custom.event", cyclic=cyclic, deep=deep)
+
+            record = json.loads(log_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(record["42"], "answer")
+        self.assertEqual(record["cyclic"]["self"], "<cycle>")
+        self.assertIn("<max-depth>", json.dumps(record["deep"], ensure_ascii=False))
 
     def test_audit_logger_records_trace_spans_and_failures(self):
         from contract_agent.logger.audit import AuditLogger

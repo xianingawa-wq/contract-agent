@@ -189,6 +189,29 @@ class ConfigPackageTests(unittest.TestCase):
             with self.assertRaisesRegex(ProfileLoadError, "CLI profile.*YAML mapping"):
                 configure_runtime(config_path=config_path, environ={})
 
+    def test_configured_empty_cli_profile_is_noop(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            profile_path = tmp / "cli_profile.yaml"
+            profile_path.write_text("", encoding="utf-8")
+            config_path = tmp / "config.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "models:",
+                        "  chat:",
+                        "    model: yaml-chat",
+                        "profile:",
+                        f"  path: {profile_path.as_posix()}",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            context = configure_runtime(config_path=config_path, environ={})
+
+        self.assertEqual(context.settings.chat_model, "yaml-chat")
+
     def test_configured_cli_profile_corrupt_yaml_raises_clear_error(self):
         with TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

@@ -115,6 +115,8 @@ class AgentRpcServicerTests(unittest.TestCase):
 
     def test_agent_rpc_docker_healthcheck_uses_agent_grpc_port(self):
         dockerfile = Path("contract_agent/agent_rpc/Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("AGENT_GRPC_HOST=0.0.0.0", dockerfile)
+        self.assertIn("HEALTHCHECK", dockerfile)
         healthcheck = dockerfile.split("HEALTHCHECK", 1)[1]
 
         self.assertIn("AGENT_GRPC_PORT", healthcheck)

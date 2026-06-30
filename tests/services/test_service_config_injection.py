@@ -88,7 +88,10 @@ class ServiceConfigInjectionTests(unittest.TestCase):
         self.assertEqual(len({record.get("trace_id") for record in records}), 1)
 
     def test_router_output_falls_back_when_query_is_not_text(self):
-        service = ChatService.__new__(ChatService)
+        service = ChatService(
+            runtime_settings=Settings(chat_api_key="chat-key"),
+            review_service=object(),
+        )
         payload = ChatRequest(messages=[ChatMessage(role="user", content="查询付款违约责任")])
 
         parsed = service._parse_router_output(
@@ -133,7 +136,10 @@ class ServiceConfigInjectionTests(unittest.TestCase):
                 contract_text="甲方与乙方签订采购合同。",
             )
         )
-        first_event = next(stream)
+        try:
+            first_event = next(stream)
+        finally:
+            stream.close()
 
         self.assertEqual(first_event["event"], "start")
         self.assertEqual(first_event["data"]["intent"], "review")

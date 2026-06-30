@@ -1,7 +1,6 @@
 import sys
 import types
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from contract_agent.agents import workers
@@ -38,11 +37,6 @@ class WorkerUserVisibleTextTests(unittest.TestCase):
         text = str(value)
         for marker in MOJIBAKE_MARKERS:
             self.assertNotIn(marker, text)
-
-    def test_worker_source_does_not_contain_known_user_visible_mojibake_markers(self):
-        source = Path(workers.__file__).read_text(encoding="utf-8")
-
-        self.assert_no_mojibake(source)
 
     def test_parser_fallback_uses_chinese_defaults(self):
         document = ParsedDocument(

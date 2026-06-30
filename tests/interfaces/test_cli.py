@@ -306,6 +306,34 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("embedding unavailable", stderr.getvalue())
         self.assertNotIn("Traceback", stderr.getvalue())
 
+    def test_review_command_reports_input_read_error(self):
+        class UnexpectedReviewService:
+            def __init__(self, app_context=None):
+                self.app_context = app_context
+
+            def review_file(self, file_name, content, contract_type, our_side):
+                raise AssertionError("read failure must be reported before service review")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "contract.txt"
+            path.write_text("buyer pays 100 percent upfront.", encoding="utf-8")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with (
+                patch(
+                    "contract_agent.services.review_service.ReviewService",
+                    UnexpectedReviewService,
+                ),
+                patch.object(Path, "read_bytes", side_effect=OSError("permission denied")),
+            ):
+                exit_code = main(["review", str(path)], stdout=stdout, stderr=stderr)
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("输入文件无法读取", stderr.getvalue())
+        self.assertIn("permission denied", stderr.getvalue())
+
     def test_review_command_reports_parser_input_error_without_traceback(self):
         class BadInputReviewService:
             def __init__(self, app_context=None):

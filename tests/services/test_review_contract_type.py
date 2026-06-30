@@ -31,11 +31,17 @@ class ReviewContractTypeTests(unittest.TestCase):
 
     def test_review_service_reports_normalized_contract_type_for_alias(self):
         class FakeRetriever:
+            queries = []
+
             def retrieve_documents_with_rerank(self, **kwargs):
+                self.queries.append(kwargs["query"])
                 return []
 
         class FakeLlmReviewer:
+            contract_types = []
+
             def enrich_risk(self, risk, contract_type, clause_text, retrieved_contexts):
+                self.contract_types.append(contract_type)
                 return None
 
         service = ReviewService(
@@ -57,3 +63,6 @@ class ReviewContractTypeTests(unittest.TestCase):
 
         self.assertEqual(response.summary.contract_type, "采购合同")
         self.assertIn("ACC_001", [risk.rule_id for risk in response.risks])
+        self.assertTrue(FakeRetriever.queries)
+        self.assertTrue(all("采购合同" in query for query in FakeRetriever.queries))
+        self.assertEqual(set(FakeLlmReviewer.contract_types), {"采购合同"})

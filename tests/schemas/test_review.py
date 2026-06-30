@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import datetime, timezone
 
@@ -23,6 +24,7 @@ class ReviewSchemaTests(unittest.TestCase):
     def test_risk_item_rejects_negative_page_and_offsets(self):
         invalid_locations = [
             {"page_no": -1},
+            {"page_no": 0},
             {"start_offset": -5, "end_offset": 0},
             {"start_offset": 0, "end_offset": -1},
         ]
@@ -47,6 +49,10 @@ class PydanticReviewReportRenderingTests(unittest.TestCase):
         )
 
         payload = render_json(report)
+        data = json.loads(payload)
+        self.assertEqual(data["overview"], report.overview)
+        self.assertEqual(data["key_findings"], report.key_findings)
+        self.assertEqual(data["next_actions"], report.next_actions)
 
         self.assertIn('"overview": "服务层审查完成"', payload)
         self.assertIn('"key_findings": [', payload)

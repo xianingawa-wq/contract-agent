@@ -122,10 +122,12 @@ class RuntimeConfigTests(unittest.TestCase):
 
     def test_public_config_import_survives_invalid_integer_environment_value(self):
         env = {
-            **os.environ,
             "EMBEDDING_BATCH_SIZE": "not-an-int",
             "PYTHONPATH": str(Path.cwd()),
         }
+        for key in ("PATH", "SYSTEMROOT", "WINDIR"):
+            if key in os.environ:
+                env[key] = os.environ[key]
 
         result = subprocess.run(
             [
