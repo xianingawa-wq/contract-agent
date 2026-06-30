@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 from typing import Any
 
 from contract_agent.parser.parsed.markdown_table_row_parser import split_pipe_row
@@ -75,7 +76,7 @@ class MarkdownCleaner:
         if removed_lines == 0 and merged_tables == 0:
             return CleanedMarkdown(markdown_content=markdown)
         return CleanedMarkdown(
-            markdown_content="\n".join(merged_lines).strip(),
+            markdown_content="\n".join(merged_lines).strip("\n"),
             removed_lines=removed_lines,
             merged_tables=merged_tables,
         )
@@ -156,7 +157,12 @@ def _duplicate_furniture_indexes(lines: list[str], page_number_indexes: set[int]
             if neighbor is None:
                 continue
             value = _normalized_furniture_line(lines[neighbor])
-            if not value or _is_page_number(lines[neighbor]) or _is_known_footer(lines[neighbor]):
+            if (
+                not value
+                or _is_page_number(lines[neighbor])
+                or _is_known_footer(lines[neighbor])
+                or _looks_like_body_title(lines[neighbor])
+            ):
                 continue
             candidates.setdefault(value, []).append(neighbor)
 
@@ -360,6 +366,7 @@ def _is_table_gap_noise_line(stripped: str) -> bool:
         or _is_pipe_row(stripped)
         or stripped.startswith("#")
         or normalized in _STRUCTURAL_SHORT_TEXT
+        or _looks_like_meaningful_short_label(stripped)
         or len(stripped) > _MAX_TABLE_GAP_NOISE_CHARS
         or re.search(r"\s", stripped)
         or re.search(r"[。；，、：:;,.!?！？]", stripped)
@@ -397,9 +404,16 @@ def _continuation_rows(
     if _is_table_start(continuation, 0):
         if not can_merge_table_start:
             return []
+        compatibility = _continuation_table_compatibility(
+            table_lines,
+            continuation,
+            table_columns,
+        )
+        if compatibility == "incompatible":
+            return []
         if _split_pipe_row(continuation[0]) == _split_pipe_row(table_lines[0]):
             return continuation[2:]
-        if preserve_malformed_header:
+        if compatibility == "data_row":
             return [continuation[0], *continuation[2:]]
         return continuation[2:]
     return continuation
@@ -427,6 +441,58 @@ def _looks_like_malformed_continuation_table(
         return False
     empty_cells = sum(1 for cell in first_row if not cell)
     return empty_cells > 0
+
+
+def _continuation_table_compatibility(
+    table_lines: list[str],
+    continuation: list[str],
+    table_columns: int,
+) -> Literal["same_header", "malformed_header", "data_row", "incompatible"]:
+    if len(continuation) < 2:
+        return "incompatible"
+    continuation_header = _split_pipe_row(continuation[0])
+    if len(continuation_header) != table_columns:
+        return "incompatible"
+    current_header = _split_pipe_row(table_lines[0])
+    if continuation_header == current_header:
+        return "same_header"
+    if not any(not cell for cell in continuation_header):
+        return "incompatible"
+    if all(
+        not cell or cell == current_header[index] for index, cell in enumerate(continuation_header)
+    ):
+        return "malformed_header"
+    return "data_row" if continuation_header[0] == "" else "incompatible"
+
+
+def _looks_like_meaningful_short_label(stripped: str) -> bool:
+    if len(stripped) <= 1:
+        return False
+    return bool(re.search(r"[a-z][A-Z]|\d|[_-]", stripped)) or (
+        stripped[:1].isupper() and any(char.islower() for char in stripped[1:])
+    )
+
+
+def _looks_like_body_title(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if _is_page_separator(stripped) or _is_page_number(stripped):
+        return False
+    if re.match(r"^#{1,6}\s+", stripped):
+        return True
+    if re.match(r"^\d+[\).、]\s*\S+", stripped):
+        return True
+    if re.match(r"^第.+[条章节]\S*", stripped):
+        return True
+    if (
+        re.search(r"[a-z]", stripped)
+        and stripped[:1].isupper()
+        and not re.search(r"[.!?。；;，,：:]", stripped)
+        and len(stripped) <= 80
+    ):
+        return True
+    return False
 
 
 def _has_cross_page_table_layout_evidence(
@@ -489,23 +555,26 @@ def _table_layouts(conversion_metadata: dict[str, Any] | None) -> list[dict[str,
 
 
 def _is_table_start(lines: list[str], index: int) -> bool:
-    return (
-        index + 1 < len(lines)
-        and _is_pipe_row(lines[index])
-        and _is_separator_row(lines[index + 1])
-    )
+    if index + 1 >= len(lines):
+        return False
+    if not _is_pipe_row(lines[index]) or not _is_separator_row(lines[index + 1]):
+        return False
+    return _column_count(lines[index]) == _column_count(lines[index + 1])
 
 
 def _is_pipe_row(line: str) -> bool:
     stripped = line.strip()
-    return stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2
+    return len(_split_pipe_row(stripped)) >= 2
 
 
 def _is_separator_row(line: str) -> bool:
     cells = _split_pipe_row(line)
-    return bool(cells) and all(
-        cell and set(cell.replace(":", "").strip()) <= {"-"} for cell in cells
-    )
+    return bool(cells) and all(_is_separator_cell(cell) for cell in cells)
+
+
+def _is_separator_cell(cell: str) -> bool:
+    stripped = cell.replace(":", "").strip()
+    return len(stripped) >= 3 and set(stripped) <= {"-"}
 
 
 def _column_count(line: str) -> int:

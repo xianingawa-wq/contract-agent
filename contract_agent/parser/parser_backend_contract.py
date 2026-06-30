@@ -13,6 +13,7 @@ class ParserBackendSupport(BaseModel):
     supported: bool
     confidence: float = 0
     reason: str | None = None
+    can_fallback: bool = False
 
 
 class ParserBackend(Protocol):

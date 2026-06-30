@@ -9,8 +9,9 @@ def block_type_and_text(markdown: str) -> tuple[str, str, int | None]:
         level = len(heading.group(1))
         return ("title" if level == 1 else "clause_header", heading.group(2).strip(), level)
     stripped = markdown.strip()
-    if stripped.startswith("- "):
-        return "list_item", stripped[2:].strip(), None
+    list_item = re.match(r"^ {0,3}(?:[-*+]\s+|\d+[\.)]\s+)(.*)$", markdown)
+    if list_item:
+        return "list_item", list_item.group(1).strip(), None
     return "paragraph", normalize_text(stripped), None
 
 

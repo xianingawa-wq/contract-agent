@@ -13,13 +13,14 @@ def split_pipe_row(line: str) -> list[str]:
     index = 0
     while index < len(stripped):
         char = stripped[index]
-        if char == "\\" and index + 1 < len(stripped) and stripped[index + 1] == "|":
-            current.append("|")
-            index += 2
-            continue
         if char == "|":
-            cells.append("".join(current).strip())
-            current = []
+            if _is_escaped(stripped, index):
+                if current and current[-1] == "\\":
+                    current.pop()
+                current.append("|")
+            else:
+                cells.append("".join(current).strip())
+                current = []
             index += 1
             continue
         current.append(char)

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from contract_agent.config.config_parser import ParserConfig
 from contract_agent.logger.base import ComponentLogger
-from contract_agent.parser.logger import get_parser_logger, parser_log_event
+from contract_agent.parser.logger import get_parser_logger, parser_log_event, safe_source_label
 from contract_agent.parser.markdown_document import MarkdownDocument
 from contract_agent.parser.models import DocumentSemanticGraph, ParsedDocument
 from contract_agent.parser.parsed.markdown_chunker import ContractChunker
@@ -56,7 +56,7 @@ class ContractParser:
             parser_log_event(
                 "Service",
                 "开始 Markdown 转换 source=%s kind=%s file_type=%s",
-                parser_source.source_path,
+                safe_source_label(parser_source.source_path),
                 parser_source.kind,
                 parser_source.file_type or "unknown",
             )

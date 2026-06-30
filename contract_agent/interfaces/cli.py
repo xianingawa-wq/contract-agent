@@ -98,7 +98,8 @@ def _review_command(
 
     try:
         max_input_bytes = app_context.parser_config.max_input_bytes
-        if max_input_bytes is not None and path.stat().st_size > max_input_bytes:
+        file_size = path.stat().st_size
+        if max_input_bytes is not None and file_size > max_input_bytes:
             stderr.write(f"文件大小超过限制：{max_input_bytes} bytes\n")
             return 2
         from contract_agent.services.review_service import ReviewService

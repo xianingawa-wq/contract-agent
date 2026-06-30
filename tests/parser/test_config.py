@@ -15,8 +15,8 @@ class ParserConfigTests(unittest.TestCase):
         config = ParserConfig()
 
         self.assertEqual(config.default_converter, "docling")
-        self.assertEqual(config.enabled_converters, ["docling"])
-        self.assertEqual(config.fallback_order, ["docling"])
+        self.assertEqual(config.enabled_converters, ["docling", "builtin"])
+        self.assertEqual(config.fallback_order, ["docling", "builtin"])
         self.assertTrue(config.allow_converter_fallback)
         self.assertFalse(config.strict_converter_availability)
         self.assertEqual(config.allowed_suffixes, [".txt", ".doc", ".docx", ".pdf"])
@@ -82,8 +82,8 @@ class ParserConfigTests(unittest.TestCase):
         settings = load_settings_from_env({})
 
         self.assertEqual(settings.parser_default_converter, "docling")
-        self.assertEqual(settings.parser_enabled_converters, ["docling"])
-        self.assertEqual(settings.parser_fallback_order, ["docling"])
+        self.assertEqual(settings.parser_enabled_converters, ["docling", "builtin"])
+        self.assertEqual(settings.parser_fallback_order, ["docling", "builtin"])
         self.assertTrue(settings.parser_docling_enabled)
 
     def test_app_config_to_parser_config_flattens_nested_parser_section_and_upload_limit(self):
