@@ -2,6 +2,7 @@ import unittest
 
 from contract_agent.parser import ContractParser
 from contract_agent.config.config_parser import ParserConfig
+from contract_agent.parser.logger import safe_log_text
 from contract_agent.parser.parser_source import ParserSource
 
 
@@ -58,6 +59,12 @@ class ParserLoggingTests(unittest.TestCase):
         self.assertIn("source=contract.txt", messages)
         self.assertNotIn("C:/secret", messages)
         self.assertNotIn("customer\ncontract", messages)
+
+    def test_safe_log_text_respects_tiny_limits(self):
+        self.assertEqual(safe_log_text("secret", max_chars=0), "")
+        self.assertEqual(safe_log_text("secret", max_chars=2), "se")
+        self.assertEqual(safe_log_text("secret", max_chars=3), "sec")
+        self.assertEqual(safe_log_text("secret", max_chars=4), "s...")
 
 
 if __name__ == "__main__":

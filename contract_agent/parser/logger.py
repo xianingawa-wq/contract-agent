@@ -39,6 +39,10 @@ def safe_source_label(source_path: str | None) -> str:
 
 def safe_log_text(value: object, *, max_chars: int = 240) -> str:
     compact = re.sub(r"[\r\n\t]+", " ", str(value)).strip()
+    if max_chars <= 0:
+        return ""
     if len(compact) > max_chars:
+        if max_chars <= 3:
+            return compact[:max_chars]
         return compact[: max_chars - 3] + "..."
     return compact
