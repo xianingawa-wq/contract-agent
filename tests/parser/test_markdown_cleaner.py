@@ -161,6 +161,54 @@ class MarkdownCleanerTests(unittest.TestCase):
         self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 1)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 2)
 
+    def test_parse_markdown_keeps_data_row_when_layout_merges_continuation_table(self):
+        markdown = "\n".join(
+            [
+                "# Payment plan",
+                "",
+                "| year | item | amount | total | date |",
+                "| --- | --- | --- | --- | --- |",
+                "| year 1 | rent | + 2200 | 2464 | 2027-02-19 |",
+                "",
+                "|  | service fee | + 264 |  |  |",
+                "| --- | --- | --- | --- | --- |",
+                "| year 1 | rent | + 2200 | 2464 | 2027-03-19 |",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={
+                    "parser_backend": "docling",
+                    "docling_tables": [
+                        {
+                            "index": 0,
+                            "page": 1,
+                            "bbox": {"top": 0.72, "bottom": 0.95},
+                        },
+                        {
+                            "index": 1,
+                            "page": 2,
+                            "bbox": {"top": 0.04, "bottom": 0.18},
+                        },
+                    ],
+                },
+            )
+        )
+
+        self.assertEqual(len(document.tables), 1)
+        self.assertIn(["", "service fee", "+ 264", "", ""], document.tables[0].rows)
+        self.assertIn(
+            ["year 1", "rent", "+ 2200", "2464", "2027-03-19"],
+            document.tables[0].rows,
+        )
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 1)
+
     def test_parse_markdown_keeps_escaped_pipe_inside_table_cell(self):
         markdown = "\n".join(
             [

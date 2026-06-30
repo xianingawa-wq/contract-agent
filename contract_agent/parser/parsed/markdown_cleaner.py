@@ -76,7 +76,7 @@ class MarkdownCleaner:
         if removed_lines == 0 and merged_tables == 0:
             return CleanedMarkdown(markdown_content=markdown)
         return CleanedMarkdown(
-            markdown_content="\n".join(merged_lines).strip(),
+            markdown_content="\n".join(merged_lines).strip("\n"),
             removed_lines=removed_lines,
             merged_tables=merged_tables,
         )
@@ -413,7 +413,7 @@ def _continuation_rows(
             return []
         if _split_pipe_row(continuation[0]) == _split_pipe_row(table_lines[0]):
             return continuation[2:]
-        if preserve_malformed_header and compatibility == "data_row":
+        if compatibility == "data_row":
             return [continuation[0], *continuation[2:]]
         return continuation[2:]
     return continuation

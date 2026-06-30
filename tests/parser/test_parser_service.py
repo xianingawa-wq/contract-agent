@@ -24,7 +24,6 @@ from contract_agent.parser import (
     to_rag_documents,
 )
 from contract_agent.parser.markdown_document import MarkdownDocument
-from contract_agent.parser.parsed.markdown_block_parser import block_type_and_text
 from contract_agent.parser.parsed.markdown_metadata_builder import build_metadata
 
 
@@ -92,6 +91,8 @@ class ContractParserServiceTests(unittest.TestCase):
                 "+ plus item",
                 "1. ordered item",
                 "2) parenthesized item",
+                "  - indented dash item",
+                "   3. indented ordered item",
             ]
         )
 
@@ -105,10 +106,18 @@ class ContractParserServiceTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual([block.block_type for block in document.blocks], ["list_item"] * 5)
+        self.assertEqual([block.block_type for block in document.blocks], ["list_item"] * 7)
         self.assertEqual(
             [block.text for block in document.blocks],
-            ["dash item", "star item", "plus item", "ordered item", "parenthesized item"],
+            [
+                "dash item",
+                "star item",
+                "plus item",
+                "ordered item",
+                "parenthesized item",
+                "indented dash item",
+                "indented ordered item",
+            ],
         )
 
         ambiguous_markdown = "\n".join(
@@ -133,8 +142,19 @@ class ContractParserServiceTests(unittest.TestCase):
             "list_item",
             [block.block_type for block in ambiguous_document.blocks],
         )
-        self.assertEqual(block_type_and_text("    - code item")[0], "paragraph")
-        self.assertEqual(block_type_and_text("---")[0], "paragraph")
+        extra_ambiguous_document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content="    - code item\n---",
+                file_name="contract.md",
+                file_type="md",
+                source_path="inline",
+                backend_name="builtin",
+            )
+        )
+        self.assertNotIn(
+            "list_item",
+            [block.block_type for block in extra_ambiguous_document.blocks],
+        )
 
     def test_parse_bytes_supports_txt_encodings(self):
         parser = _builtin_parser()

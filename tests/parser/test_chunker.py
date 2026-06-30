@@ -210,6 +210,10 @@ class ContractChunkerTests(unittest.TestCase):
         chunk = ContractChunker().chunk(document)[0]
 
         self.assertEqual(chunk.source_text, "Markdown obligation")
+        self.assertEqual(
+            document.raw_text[chunk.start_offset : chunk.end_offset],
+            chunk.source_text,
+        )
 
     def test_unpunctuated_long_sentence_is_hard_split_to_target_chars(self):
         text = "abcdefghij"
