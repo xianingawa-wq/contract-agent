@@ -8,7 +8,12 @@ from contract_agent.parser.convertor.builtin_parser_impl import BuiltinParserImp
 from contract_agent.parser.convertor.docling_parser_impl import DoclingParserImpl
 from contract_agent.parser.convertor.markitdown_parser_impl import MarkitdownParserImpl
 from contract_agent.parser.exception import DocumentLoadError, ParserError, UnsupportedFileType
-from contract_agent.parser.logger import get_parser_logger, parser_log_event
+from contract_agent.parser.logger import (
+    get_parser_logger,
+    parser_log_event,
+    safe_log_text,
+    safe_source_label,
+)
 from contract_agent.parser.markdown_document import MarkdownDocument
 from contract_agent.parser.parser_backend_contract import ParserBackend
 from contract_agent.parser.parser_source import ParserSource
@@ -26,14 +31,14 @@ class ParserBackendRouter:
         return cls([BuiltinParserImpl(), MarkitdownParserImpl(), DoclingParserImpl()])
 
     def convert(self, source: ParserSource, config: ParserConfig) -> MarkdownDocument:
-        self._validate_source(source, config)
+        source = self._validate_source(source, config)
         warnings: list[str] = []
         last_error: Exception | None = None
         self.logger.handle(
             parser_log_event(
                 "Router",
                 "开始路由 source=%s order=%s enabled=%s",
-                source.source_path,
+                safe_source_label(source.source_path),
                 ",".join(config.fallback_order),
                 ",".join(config.enabled_converters),
             )
@@ -89,7 +94,7 @@ class ParserBackendRouter:
                         "Router",
                         "调用 backend=%s source=%s",
                         backend_name,
-                        source.source_path,
+                        safe_source_label(source.source_path),
                     )
                 )
                 result = backend.convert(source, config)
@@ -133,19 +138,12 @@ class ParserBackendRouter:
 
     parse = convert
 
-    def _validate_source(self, source: ParserSource, config: ParserConfig) -> None:
-        suffix = f".{source.file_type}" if source.file_type else ""
+    def _validate_source(self, source: ParserSource, config: ParserConfig) -> ParserSource:
         if source.kind == "text":
             text_size = len((source.text or "").encode("utf-8"))
             if config.max_input_bytes is not None and text_size > config.max_input_bytes:
                 raise DocumentLoadError("文本大小超过 parser.max_input_bytes 限制。")
-            return
-
-        if source.kind != "text":
-            if not suffix:
-                raise DocumentLoadError("缺少文件名或文件后缀，无法判断文件类型。")
-            if suffix.lower() not in config.allowed_suffixes:
-                raise UnsupportedFileType(f"不支持的文件类型：{suffix or '未知'}")
+            return source
 
         if source.kind == "path":
             if not config.allow_path_input:
@@ -166,11 +164,25 @@ class ParserBackendRouter:
             if config.max_input_bytes is not None:
                 if path.stat().st_size > config.max_input_bytes:
                     raise DocumentLoadError("文件大小超过 parser.max_input_bytes 限制。")
+            source = ParserSource.from_path(path)
+            suffix = f".{source.file_type}" if source.file_type else ""
+            if not suffix:
+                raise DocumentLoadError("缺少文件名或文件后缀，无法判断文件类型。")
+            if suffix.lower() not in config.allowed_suffixes:
+                raise UnsupportedFileType(f"不支持的文件类型：{suffix or '未知'}")
+            return source
+
+        suffix = f".{source.file_type}" if source.file_type else ""
+        if not suffix:
+            raise DocumentLoadError("缺少文件名或文件后缀，无法判断文件类型。")
+        if suffix.lower() not in config.allowed_suffixes:
+            raise UnsupportedFileType(f"不支持的文件类型：{suffix or '未知'}")
 
         if source.kind == "bytes":
             content_size = len(source.content or b"")
             if config.max_input_bytes is not None and content_size > config.max_input_bytes:
                 raise DocumentLoadError("文件大小超过 parser.max_input_bytes 限制。")
+        return source
 
     def _is_enabled_by_backend_flag(self, backend_name: str, config: ParserConfig) -> bool:
         if backend_name == "markitdown":
@@ -185,6 +197,6 @@ class ParserBackendRouter:
                 "Router",
                 "跳过 backend=%s reason=%s",
                 backend_name,
-                reason,
+                safe_log_text(reason),
             )
         )

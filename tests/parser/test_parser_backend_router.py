@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from contract_agent.config.config_parser import ParserConfig
 from contract_agent.parser.convertor.builtin_parser_impl import BuiltinParserImpl
-from contract_agent.parser.exception import DocumentLoadError
+from contract_agent.parser.exception import DocumentLoadError, UnsupportedFileType
 from contract_agent.parser.markdown_document import MarkdownDocument
 from contract_agent.parser.parser_backend_contract import ParserBackendSupport
 from contract_agent.parser.parser_backend_router import ParserBackendRouter
@@ -124,6 +124,110 @@ class ParserBackendRouterTests(unittest.TestCase):
             with self.assertRaises(DocumentLoadError):
                 router.convert(ParserSource.from_path(directory), config)
 
+    def test_path_input_passes_validated_resolved_path_to_backend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "contract.txt"
+            path.write_text("body", encoding="utf-8")
+            backend = RecordingPathBackend()
+            router = ParserBackendRouter([backend])
+            config = ParserConfig(
+                default_converter="recording",
+                enabled_converters=["recording"],
+                fallback_order=["recording"],
+                allow_path_input=True,
+                trusted_path_roots=[str(root)],
+            )
+            source = ParserSource(
+                kind="path",
+                file_name="contract.txt",
+                local_path=path,
+                source_path="contract.txt",
+                file_type="txt",
+            )
+
+            router.convert(source, config)
+
+        self.assertEqual(backend.seen_local_path, path.resolve())
+        self.assertTrue(str(backend.seen_source_path).startswith("local:"))
+
+    def test_path_input_validates_suffix_from_resolved_path_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "contract.txt"
+            path.write_text("body", encoding="utf-8")
+            backend = RecordingPathBackend()
+            router = ParserBackendRouter([backend])
+            config = ParserConfig(
+                default_converter="recording",
+                enabled_converters=["recording"],
+                fallback_order=["recording"],
+                allow_path_input=True,
+                trusted_path_roots=[str(root)],
+                allowed_suffixes=[".txt"],
+            )
+            source = ParserSource(
+                kind="path",
+                file_name="",
+                local_path=path,
+                source_path=str(path),
+                file_type="",
+            )
+
+            router.convert(source, config)
+
+        self.assertEqual(backend.seen_local_path, path.resolve())
+        self.assertTrue(str(backend.seen_source_path).startswith("local:"))
+
+    def test_path_input_validates_resolved_path_suffix_after_redaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "contract.exe"
+            path.write_text("body", encoding="utf-8")
+            router = ParserBackendRouter([RecordingPathBackend()])
+            config = ParserConfig(
+                default_converter="recording",
+                enabled_converters=["recording"],
+                fallback_order=["recording"],
+                allow_path_input=True,
+                trusted_path_roots=[str(root)],
+                allowed_suffixes=[".txt"],
+            )
+            source = ParserSource(
+                kind="path",
+                file_name="contract.txt",
+                local_path=path,
+                source_path="contract.txt",
+                file_type="txt",
+            )
+
+            with self.assertRaisesRegex(UnsupportedFileType, "不支持的文件类型"):
+                router.convert(source, config)
+
+    def test_path_input_rejects_symlink_escape_from_trusted_root(self):
+        with tempfile.TemporaryDirectory() as trusted_tmp:
+            with tempfile.TemporaryDirectory() as outside_tmp:
+                trusted_root = Path(trusted_tmp)
+                outside_path = Path(outside_tmp) / "contract.txt"
+                outside_path.write_text("body", encoding="utf-8")
+                link_path = trusted_root / "linked_contract.txt"
+                try:
+                    link_path.symlink_to(outside_path)
+                except (NotImplementedError, OSError):
+                    self.skipTest("symlinks are not available on this platform")
+
+                router = ParserBackendRouter([RecordingPathBackend()])
+                config = ParserConfig(
+                    default_converter="recording",
+                    enabled_converters=["recording"],
+                    fallback_order=["recording"],
+                    allow_path_input=True,
+                    trusted_path_roots=[str(trusted_root)],
+                )
+
+                with self.assertRaisesRegex(DocumentLoadError, "trusted_path_roots"):
+                    router.convert(ParserSource.from_path(link_path), config)
+
 
 class BrokenParserImpl:
     name = "broken"
@@ -133,6 +237,28 @@ class BrokenParserImpl:
 
     def convert(self, source: ParserSource, config: ParserConfig) -> MarkdownDocument:
         raise DocumentLoadError("broken backend failed")
+
+
+class RecordingPathBackend:
+    name = "recording"
+
+    def __init__(self):
+        self.seen_local_path = None
+        self.seen_source_path = None
+
+    def supports(self, source: ParserSource, config: ParserConfig) -> ParserBackendSupport:
+        return ParserBackendSupport(supported=True, confidence=1.0, reason="recording")
+
+    def convert(self, source: ParserSource, config: ParserConfig) -> MarkdownDocument:
+        self.seen_local_path = source.local_path
+        self.seen_source_path = source.source_path
+        return MarkdownDocument(
+            markdown_content="body",
+            file_name=source.file_name,
+            file_type=source.file_type,
+            source_path=source.source_path,
+            backend_name=self.name,
+        )
 
 
 if __name__ == "__main__":

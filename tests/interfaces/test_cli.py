@@ -168,7 +168,7 @@ class CliTests(unittest.TestCase):
     def test_review_command_rejects_oversize_file_before_service_reads_it(self):
         class UnexpectedReviewService:
             def __init__(self, app_context=None):
-                self.app_context = app_context
+                raise AssertionError("oversize file must be rejected before service construction")
 
             def review_file(self, file_name, content, contract_type, our_side):
                 raise AssertionError("oversize file must be rejected before review service")
