@@ -78,7 +78,7 @@ class ParserBackendRouter:
                 message = (
                     f"parser backend {backend_name} unavailable: {support.reason or 'unsupported'}"
                 )
-                if is_default_backend:
+                if is_default_backend and not support.can_fallback:
                     raise DocumentLoadError(message)
                 if config.strict_converter_availability and backend_name != "builtin":
                     raise DocumentLoadError(message)

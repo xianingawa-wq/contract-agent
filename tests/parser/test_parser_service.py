@@ -479,6 +479,7 @@ class ContractParserServiceTests(unittest.TestCase):
                 enabled_converters=["markitdown"],
                 fallback_order=["markitdown"],
                 markitdown_enabled=True,
+                allowed_suffixes=[".doc"],
                 allow_path_input=True,
                 trusted_path_roots=[tmp],
             )
