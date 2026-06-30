@@ -311,7 +311,7 @@ class ContractParserServiceTests(unittest.TestCase):
             ),
             raw_text="\n".join(span.text for span in spans),
             spans=spans,
-            blocks=blocks,
+            blocks=list(reversed(blocks)),
             clause_chunks=chunks,
         )
 
