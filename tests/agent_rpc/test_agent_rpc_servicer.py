@@ -348,6 +348,106 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertEqual(contract_type, "purchase")
         self.assertEqual(our_side, "buyer")
 
+    def test_review_multi_agent_single_mode_falls_back_for_legacy_review_service(self):
+        class LegacyReviewService(FakeReviewService):
+            def __init__(self):
+                self.review_calls = []
+
+            def review(self, request):
+                self.review_calls.append(request)
+                return make_review_response()
+
+        from contract_agent.orchestration.protocol import AgentMode
+
+        service = LegacyReviewService()
+        servicer = AgentRpcServicer(app_context=_builtin_context())
+        servicer.review_service = service  # type: ignore[assignment]
+
+        with patch(
+            "contract_agent.services.review_gateway.GatewayRouter._detect_mode",
+            return_value=AgentMode.SINGLE,
+        ):
+            response = servicer.ReviewMultiAgent(
+                agent_pb2.ReviewRequest(
+                    file=agent_pb2.FilePayload(
+                        file_name="contract.txt",
+                        content=b"Section 1 Payment",
+                    ),
+                    contract_type="purchase",
+                    our_side="buyer",
+                ),
+                None,
+            )
+
+        self.assertEqual(response.code, 200)
+        self.assertEqual(len(service.review_calls), 1)
+        request = service.review_calls[0]
+        self.assertEqual(request.contract_text, "Section 1 Payment")
+        self.assertEqual(request.contract_type, "purchase")
+        self.assertEqual(request.our_side, "buyer")
+
+    def test_review_multi_agent_single_mode_ignores_non_callable_review_document(self):
+        class LegacyReviewService(FakeReviewService):
+            review_document = None
+
+            def __init__(self):
+                self.review_calls = []
+
+            def review(self, request):
+                self.review_calls.append(request)
+                return make_review_response()
+
+        from contract_agent.orchestration.protocol import AgentMode
+
+        service = LegacyReviewService()
+        servicer = AgentRpcServicer(app_context=_builtin_context())
+        servicer.review_service = service  # type: ignore[assignment]
+
+        with patch(
+            "contract_agent.services.review_gateway.GatewayRouter._detect_mode",
+            return_value=AgentMode.SINGLE,
+        ):
+            response = servicer.ReviewMultiAgent(
+                agent_pb2.ReviewRequest(
+                    file=agent_pb2.FilePayload(
+                        file_name="contract.txt",
+                        content=b"Section 1 Payment",
+                    ),
+                    contract_type="purchase",
+                    our_side="buyer",
+                ),
+                None,
+            )
+
+        self.assertEqual(response.code, 200)
+        self.assertEqual(len(service.review_calls), 1)
+
+    def test_review_multi_agent_parse_failure_writes_rpc_error_audit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            logger = AuditLogger(Path(tmp) / "rpc.jsonl")
+            servicer = AgentRpcServicer(
+                runtime_settings=Settings(chat_api_key="chat-key"),
+                audit_logger=logger,
+            )
+
+            response = servicer.ReviewMultiAgent(
+                agent_pb2.ReviewRequest(
+                    file=agent_pb2.FilePayload(file_name="contract.exe", content=b"bad")
+                ),
+                None,
+            )
+            records = [
+                json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(response.code, 400)
+        rpc_errors = [record for record in records if record.get("event") == "grpc.error"]
+        self.assertEqual(len(rpc_errors), 1, "Expected exactly one grpc.error audit record")
+        rpc_error = rpc_errors[0]
+        self.assertEqual(rpc_error["method"], "ReviewMultiAgent")
+        self.assertEqual(rpc_error["code"], 400)
+        self.assertEqual(rpc_error["error_type"], "UnsupportedFileType")
+
     def test_review_multi_agent_stream_file_input_passes_parsed_text_to_supervisor(self):
         captured_inputs = []
 
@@ -379,7 +479,47 @@ class AgentRpcServicerTests(unittest.TestCase):
         self.assertEqual(captured_inputs[0]["contract_text"], "第一条 付款")
         self.assertEqual(captured_inputs[0]["document_metadata"]["file_name"], "contract.txt")
 
-    def test_review_multi_agent_stream_parse_failure_yields_pipeline_failed(self):
+    def test_review_multi_agent_stream_single_mode_falls_back_for_legacy_review_service(self):
+        class LegacyReviewService(FakeReviewService):
+            def __init__(self):
+                self.review_calls = []
+
+            def review(self, request):
+                self.review_calls.append(request)
+                return make_review_response()
+
+        from contract_agent.orchestration.protocol import AgentMode
+
+        service = LegacyReviewService()
+        servicer = AgentRpcServicer(app_context=_builtin_context())
+        servicer.review_service = service  # type: ignore[assignment]
+
+        with patch(
+            "contract_agent.services.review_gateway.GatewayRouter._detect_mode",
+            return_value=AgentMode.SINGLE,
+        ):
+            events = list(
+                servicer.ReviewMultiAgentStream(
+                    agent_pb2.ReviewRequest(
+                        file=agent_pb2.FilePayload(
+                            file_name="contract.txt",
+                            content=b"Section 1 Payment",
+                        ),
+                        contract_type="purchase",
+                        our_side="buyer",
+                    ),
+                    None,
+                )
+            )
+
+        self.assertEqual(events[0].event, "pipeline_completed")
+        self.assertEqual(len(service.review_calls), 1)
+        request = service.review_calls[0]
+        self.assertEqual(request.contract_text, "Section 1 Payment")
+        self.assertEqual(request.contract_type, "purchase")
+        self.assertEqual(request.our_side, "buyer")
+
+    def test_review_multi_agent_stream_parse_failure_yields_pipeline_failed_and_audit(self):
         servicer = AgentRpcServicer(runtime_settings=Settings(chat_api_key="chat-key"))
 
         events = list(
@@ -392,7 +532,37 @@ class AgentRpcServicerTests(unittest.TestCase):
         )
 
         self.assertEqual(events[0].event, "pipeline_failed")
+        payload = json.loads(events[0].data_json)
+        self.assertEqual(payload["code"], 400)
+        self.assertEqual(payload["error_type"], "UnsupportedFileType")
         self.assertIn("不支持", json.loads(events[0].data_json)["error"])
+
+    def test_review_multi_agent_stream_parse_failure_writes_rpc_error_audit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            logger = AuditLogger(Path(tmp) / "rpc.jsonl")
+            servicer = AgentRpcServicer(
+                runtime_settings=Settings(chat_api_key="chat-key"),
+                audit_logger=logger,
+            )
+
+            list(
+                servicer.ReviewMultiAgentStream(
+                    agent_pb2.ReviewRequest(
+                        file=agent_pb2.FilePayload(file_name="contract.exe", content=b"bad")
+                    ),
+                    None,
+                )
+            )
+            records = [
+                json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()
+            ]
+
+        rpc_errors = [record for record in records if record.get("event") == "grpc.error"]
+        self.assertEqual(len(rpc_errors), 1, "Expected exactly one grpc.error audit record")
+        rpc_error = rpc_errors[0]
+        self.assertEqual(rpc_error["method"], "ReviewMultiAgentStream")
+        self.assertEqual(rpc_error["code"], 400)
+        self.assertEqual(rpc_error["error_type"], "UnsupportedFileType")
 
     def test_app_context_parser_config_is_passed_to_review_service_and_parser(self):
         context = _context_from_config(

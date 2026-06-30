@@ -185,6 +185,47 @@ class AuditLoggerTests(unittest.TestCase):
             {event.get("span_name") for event in events if event["event"] == "span.completed"},
         )
 
+    def test_review_service_preserves_parse_audit_span(self):
+        from contract_agent.logger.audit import AuditLogger
+
+        class FakeRetriever:
+            def retrieve_documents_with_rerank(self, **kwargs):
+                return []
+
+        class FakeReviewer:
+            def enrich_risk(self, risk, contract_type, clause_text, retrieved_contexts):
+                return risk
+
+        class FakeRuleEngine:
+            def check(self, contract_type, document):
+                return []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "audit.jsonl"
+            service = ReviewService(audit_logger=AuditLogger(log_path))
+            service.rule_engine = FakeRuleEngine()
+            service._require_knowledge_retriever = lambda: FakeRetriever()
+            service._require_llm_reviewer = lambda: FakeReviewer()
+
+            service.review(
+                ReviewRequest(
+                    contract_text="甲方与乙方签订采购合同。",
+                    contract_type="purchase",
+                    our_side="buyer",
+                )
+            )
+
+            events = [
+                json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+            ]
+
+        parse_events = [event for event in events if event.get("span_name") == "review.parse"]
+        self.assertEqual(
+            [event["event"] for event in parse_events],
+            ["span.started", "span.completed"],
+        )
+        self.assertEqual(parse_events[0]["parser"], "text")
+
 
 if __name__ == "__main__":
     unittest.main()

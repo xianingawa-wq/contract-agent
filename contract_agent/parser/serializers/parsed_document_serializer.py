@@ -7,7 +7,7 @@ def to_plain_text(document: ParsedDocument) -> str:
     if not document.blocks:
         return document.raw_text
     parts = [block.text.strip() for block in document.blocks if block.text.strip()]
-    return "\n".join(parts)
+    return "\n".join(parts) if parts else document.raw_text
 
 
 def to_markdown(document: ParsedDocument) -> str:
@@ -34,7 +34,7 @@ def to_markdown(document: ParsedDocument) -> str:
             lines.append(block.markdown or text)
         else:
             lines.append(text)
-    return "\n\n".join(lines)
+    return "\n\n".join(lines) if lines else document.raw_text
 
 
 def to_llm_context(document: ParsedDocument, *, max_chars: int | None = None) -> str:

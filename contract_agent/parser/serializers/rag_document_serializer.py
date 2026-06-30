@@ -42,16 +42,4 @@ def to_rag_documents(document: ParsedDocument) -> list[dict[str, Any]]:
             if block.text.strip()
         ]
 
-    return [
-        {
-            "page_content": chunk.source_text,
-            "metadata": {
-                "doc_id": document.metadata.doc_id,
-                "block_id": None,
-                "clause_no": chunk.clause_no,
-                "page_no": chunk.page_no,
-                "source_path": document.metadata.source_path,
-            },
-        }
-        for chunk in document.clause_chunks
-    ]
+    return []

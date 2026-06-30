@@ -1,8 +1,6 @@
 name: OpenCodeReview
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
   issue_comment:
     types: [created]
 
@@ -20,14 +18,11 @@ jobs:
     name: OCR review
     runs-on: ubuntu-latest
     if: |
-      github.event_name == 'pull_request_target' ||
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
       (
-        github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request &&
-        (
-          startsWith(github.event.comment.body, '/open-code-review') ||
-          startsWith(github.event.comment.body, '/ocr review')
-        )
+        startsWith(github.event.comment.body, '/open-code-review') ||
+        startsWith(github.event.comment.body, '/ocr review')
       )
     env:
       OCR_LLM_URL: ${{ secrets.OCR_LLM_URL }}
@@ -57,17 +52,11 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            let pullRequest;
-            if (context.eventName === 'pull_request_target') {
-              pullRequest = context.payload.pull_request;
-            } else {
-              const { data } = await github.rest.pulls.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number
-              });
-              pullRequest = data;
-            }
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
 
             core.setOutput('number', String(pullRequest.number));
             core.setOutput('base_ref', pullRequest.base.ref);
