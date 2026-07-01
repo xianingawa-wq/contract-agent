@@ -172,6 +172,7 @@ class RuntimeConfigTests(unittest.TestCase):
                 "PARSER_ENABLED_DETECTORS": "metadata,clause_header",
                 "PARSER_CHUNK_TARGET_CHARS": "256",
                 "PARSER_DOCLING_OCR_LANG": "chinese,en",
+                "PARSER_DOCLING_SUPPORTED_SUFFIXES": ".pdf,.docx",
                 "PARSER_DOCLING_COMPACT_TABLES": "false",
                 "PARSER_DOCLING_ENABLE_REMOTE_SERVICES": "true",
             }
@@ -180,6 +181,7 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(settings_from_env.parser_enabled_detectors, ["metadata", "clause_header"])
         self.assertEqual(settings_from_env.parser_chunk_target_chars, 256)
         self.assertEqual(settings_from_env.parser_docling_ocr_lang, ["chinese", "en"])
+        self.assertEqual(settings_from_env.parser_docling_supported_suffixes, [".pdf", ".docx"])
         self.assertFalse(settings_from_env.parser_docling_compact_tables)
         self.assertTrue(settings_from_env.parser_docling_enable_remote_services)
 
@@ -294,6 +296,11 @@ class RuntimeConfigTests(unittest.TestCase):
                 ("docling", "enable_ocr"),
                 "parser_docling_enable_ocr",
                 "docling_enable_ocr",
+            ),
+            "PARSER_DOCLING_SUPPORTED_SUFFIXES": (
+                ("docling", "supported_suffixes"),
+                "parser_docling_supported_suffixes",
+                "docling_supported_suffixes",
             ),
             "PARSER_DOCLING_OCR_LANG": (
                 ("docling", "ocr_lang"),

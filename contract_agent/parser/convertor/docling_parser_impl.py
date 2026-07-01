@@ -13,6 +13,18 @@ from contract_agent.parser.parser_backend_contract import ParserBackendSupport
 from contract_agent.parser.parser_source import ParserSource
 
 
+_DOCLING_SUFFIX_INPUT_FORMAT_NAMES = {
+    ".pdf": "PDF",
+    ".docx": "DOCX",
+    ".md": "MD",
+    ".markdown": "MD",
+    ".html": "HTML",
+    ".htm": "HTML",
+    ".csv": "CSV",
+    ".xlsx": "XLSX",
+}
+
+
 class DoclingParserImpl:
     name = "docling"
 
@@ -27,17 +39,49 @@ class DoclingParserImpl:
                 supported=False,
                 reason="docling remote services are disabled by parser safety policy",
             )
-        normalized_file_type = (source.file_type or "").strip().lower().lstrip(".")
-        suffix = f".{normalized_file_type}" if normalized_file_type else ""
-        if source.kind == "text" or suffix != ".pdf":
+        suffix = _source_suffix(source)
+        if source.kind == "text":
             return ParserBackendSupport(
                 supported=False,
-                reason=f"docling backend supports PDF input only: {suffix or source.kind}",
+                reason="docling backend does not accept inline text input",
+                can_fallback=True,
+            )
+        if not suffix:
+            return ParserBackendSupport(
+                supported=False,
+                reason="docling backend requires a file suffix",
+                can_fallback=True,
+            )
+        if suffix not in config.allowed_suffixes:
+            return ParserBackendSupport(
+                supported=False,
+                reason=f"docling suffix is blocked by parser.allowed_suffixes: {suffix}",
+                can_fallback=True,
+            )
+        if suffix not in config.docling_supported_suffixes:
+            return ParserBackendSupport(
+                supported=False,
+                reason=f"docling suffix is not configured as supported: {suffix}",
+                can_fallback=True,
+            )
+        if suffix not in _DOCLING_SUFFIX_INPUT_FORMAT_NAMES:
+            return ParserBackendSupport(
+                supported=False,
+                reason=f"docling suffix has no InputFormat mapping: {suffix}",
                 can_fallback=True,
             )
         if importlib.util.find_spec("docling") is None:
-            return ParserBackendSupport(supported=False, reason="docling package is not installed")
-        return ParserBackendSupport(supported=True, confidence=0.85, reason="docling available")
+            return ParserBackendSupport(
+                supported=False,
+                reason="docling package is not installed",
+                can_fallback=suffix != ".pdf",
+            )
+        return ParserBackendSupport(
+            supported=True,
+            confidence=0.85,
+            reason=f"docling available for {suffix}",
+            can_fallback=suffix != ".pdf",
+        )
 
     def convert(self, source: ParserSource, config: ParserConfig) -> MarkdownDocument:
         self.logger.handle(
@@ -51,42 +95,68 @@ class DoclingParserImpl:
         try:
             module = importlib.import_module("docling.document_converter")
             base_models = importlib.import_module("docling.datamodel.base_models")
-            pipeline_options_module = importlib.import_module("docling.datamodel.pipeline_options")
         except Exception as exc:
             raise DocumentLoadError(f"Docling 依赖不可用：{exc}") from exc
 
         converter_cls = getattr(module, "DocumentConverter", None)
-        pdf_format_option_cls = getattr(module, "PdfFormatOption", None)
         input_format_cls = getattr(base_models, "InputFormat", None)
-        pdf_pipeline_options_cls = getattr(pipeline_options_module, "PdfPipelineOptions", None)
-        rapid_ocr_options_cls = getattr(pipeline_options_module, "RapidOcrOptions", None)
         if converter_cls is None:
             raise DocumentLoadError("Docling 未找到 DocumentConverter 入口。")
-        if (
-            pdf_format_option_cls is None
-            or input_format_cls is None
-            or pdf_pipeline_options_cls is None
-            or rapid_ocr_options_cls is None
-        ):
-            raise DocumentLoadError("Docling 未找到 PDF/RapidOCR 配置入口。")
+        if input_format_cls is None:
+            raise DocumentLoadError("Docling 未找到 InputFormat 入口。")
 
-        pipeline_options = pdf_pipeline_options_cls(
-            do_ocr=config.docling_enable_ocr,
-            ocr_options=rapid_ocr_options_cls(
-                lang=config.docling_ocr_lang,
-                force_full_page_ocr=config.docling_force_full_page_ocr,
-                bitmap_area_threshold=config.docling_bitmap_area_threshold,
-                text_score=config.docling_text_score,
-            ),
-            do_table_structure=config.docling_do_table_structure,
-            ocr_batch_size=1,
-            layout_batch_size=1,
-            table_batch_size=1,
-        )
-        format_options = {
-            input_format_cls.PDF: pdf_format_option_cls(pipeline_options=pipeline_options)
-        }
-        converter = converter_cls(format_options=format_options)
+        suffix = _source_suffix(source)
+        if source.kind == "text":
+            raise DocumentLoadError("Docling does not accept inline text input")
+        if not suffix:
+            raise DocumentLoadError("Docling requires a file suffix")
+        if suffix not in config.allowed_suffixes:
+            raise DocumentLoadError(
+                f"Docling suffix is blocked by parser.allowed_suffixes: {suffix}"
+            )
+        if suffix not in config.docling_supported_suffixes:
+            raise DocumentLoadError(f"Docling suffix is not configured as supported: {suffix}")
+
+        input_format_map = _docling_input_format_map(input_format_cls)
+        docling_input_format = input_format_map.get(suffix)
+        if docling_input_format is None:
+            raise DocumentLoadError(f"Docling unsupported suffix: {suffix or 'unknown'}")
+
+        allowed_formats = _configured_docling_allowed_formats(config, input_format_map)
+        format_options: dict[object, object] = {}
+        if input_format_cls.PDF in allowed_formats:
+            try:
+                pipeline_options_module = importlib.import_module(
+                    "docling.datamodel.pipeline_options"
+                )
+            except Exception as exc:
+                raise DocumentLoadError(f"Docling 依赖不可用：{exc}") from exc
+            pdf_format_option_cls = getattr(module, "PdfFormatOption", None)
+            pdf_pipeline_options_cls = getattr(pipeline_options_module, "PdfPipelineOptions", None)
+            rapid_ocr_options_cls = getattr(pipeline_options_module, "RapidOcrOptions", None)
+            if (
+                pdf_format_option_cls is None
+                or pdf_pipeline_options_cls is None
+                or rapid_ocr_options_cls is None
+            ):
+                raise DocumentLoadError("Docling 未找到 PDF/RapidOCR 配置入口。")
+            pipeline_options = pdf_pipeline_options_cls(
+                do_ocr=config.docling_enable_ocr,
+                ocr_options=rapid_ocr_options_cls(
+                    lang=config.docling_ocr_lang,
+                    force_full_page_ocr=config.docling_force_full_page_ocr,
+                    bitmap_area_threshold=config.docling_bitmap_area_threshold,
+                    text_score=config.docling_text_score,
+                ),
+                do_table_structure=config.docling_do_table_structure,
+                ocr_batch_size=1,
+                layout_batch_size=1,
+                table_batch_size=1,
+            )
+            format_options[input_format_cls.PDF] = pdf_format_option_cls(
+                pipeline_options=pipeline_options
+            )
+        converter = converter_cls(allowed_formats=allowed_formats, format_options=format_options)
 
         with local_parser_source(source) as input_path:
             result = converter.convert(input_path)
@@ -127,6 +197,8 @@ class DoclingParserImpl:
             conversion_metadata={
                 "parser_backend": self.name,
                 "source_kind": source.kind,
+                "docling_input_format": _docling_input_format_name(docling_input_format),
+                "docling_supported_suffixes": list(config.docling_supported_suffixes),
                 "docling_status": status,
                 "docling_errors": errors,
                 "docling_table_count": len(getattr(document_obj, "tables", None) or []),
@@ -142,6 +214,47 @@ class DoclingParserImpl:
         )
 
     parse = convert
+
+
+def _source_suffix(source: ParserSource) -> str:
+    normalized_file_type = (source.file_type or "").strip().lower().lstrip(".")
+    return f".{normalized_file_type}" if normalized_file_type else ""
+
+
+def _docling_input_format_map(input_format_cls: object) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for suffix, format_name in _DOCLING_SUFFIX_INPUT_FORMAT_NAMES.items():
+        input_format = getattr(input_format_cls, format_name, None)
+        if input_format is not None:
+            result[suffix] = input_format
+    return result
+
+
+def _configured_docling_allowed_formats(
+    config: ParserConfig,
+    input_format_map: dict[str, object],
+) -> list[object]:
+    seen: set[object] = set()
+    result: list[object] = []
+    for suffix in config.docling_supported_suffixes:
+        if suffix not in config.allowed_suffixes:
+            continue
+        input_format = input_format_map.get(suffix)
+        if input_format is None or input_format in seen:
+            continue
+        seen.add(input_format)
+        result.append(input_format)
+    return result
+
+
+def _docling_input_format_name(input_format: object) -> str:
+    name = getattr(input_format, "name", None)
+    if name:
+        return str(name)
+    value = getattr(input_format, "value", None)
+    if value:
+        return str(value).upper()
+    return str(input_format).upper()
 
 
 def _docling_status_value(status: object) -> str:

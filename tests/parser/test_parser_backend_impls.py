@@ -16,20 +16,42 @@ from contract_agent.parser.parser_source import ParserSource
 
 
 class ParserBackendImplTests(unittest.TestCase):
-    def test_docling_supports_only_pdf_sources(self):
+    def test_docling_supports_configured_structured_suffixes(self):
         backend = DoclingParserImpl()
         config = ParserConfig(docling_enabled=True)
 
         with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
-            pdf_support = backend.supports(ParserSource.from_bytes("contract.pdf", b"fake"), config)
+            supports = {
+                suffix: backend.supports(
+                    ParserSource.from_bytes(f"contract{suffix}", b"fake"), config
+                )
+                for suffix in (
+                    ".pdf",
+                    ".docx",
+                    ".md",
+                    ".markdown",
+                    ".html",
+                    ".htm",
+                    ".csv",
+                    ".xlsx",
+                    ".txt",
+                    ".doc",
+                )
+            }
             text_support = backend.supports(ParserSource.from_text("body"), config)
-            docx_support = backend.supports(
-                ParserSource.from_bytes("contract.docx", b"fake"), config
-            )
 
-        self.assertTrue(pdf_support.supported)
+        self.assertTrue(supports[".pdf"].supported)
+        self.assertFalse(supports[".pdf"].can_fallback)
+        for suffix in (".docx", ".md", ".markdown", ".html", ".htm", ".csv", ".xlsx"):
+            with self.subTest(suffix=suffix):
+                self.assertTrue(supports[suffix].supported)
+                self.assertTrue(supports[suffix].can_fallback)
+        for suffix in (".txt", ".doc"):
+            with self.subTest(suffix=suffix):
+                self.assertFalse(supports[suffix].supported)
+                self.assertTrue(supports[suffix].can_fallback)
         self.assertFalse(text_support.supported)
-        self.assertFalse(docx_support.supported)
+        self.assertTrue(text_support.can_fallback)
 
     def test_docling_support_normalizes_dotted_file_type(self):
         backend = DoclingParserImpl()
@@ -42,16 +64,33 @@ class ParserBackendImplTests(unittest.TestCase):
 
         self.assertTrue(support.supported)
 
-    def test_docling_non_pdf_sources_can_fallback_when_dependency_missing(self):
+    def test_docling_support_respects_allowed_suffix_intersection(self):
+        backend = DoclingParserImpl()
+        config = ParserConfig(
+            docling_enabled=True,
+            allowed_suffixes=[".pdf"],
+            docling_supported_suffixes=[".pdf", ".docx"],
+        )
+
+        with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
+            support = backend.supports(ParserSource.from_bytes("contract.docx", b"fake"), config)
+
+        self.assertFalse(support.supported)
+        self.assertTrue(support.can_fallback)
+
+    def test_docling_sources_can_fallback_when_dependency_missing_except_pdf(self):
         backend = DoclingParserImpl()
         config = ParserConfig(docling_enabled=True)
 
         with patch("importlib.util.find_spec", return_value=None):
+            pdf_support = backend.supports(ParserSource.from_bytes("contract.pdf", b"fake"), config)
             text_support = backend.supports(ParserSource.from_text("body"), config)
             docx_support = backend.supports(
                 ParserSource.from_bytes("contract.docx", b"fake"), config
             )
 
+        self.assertFalse(pdf_support.supported)
+        self.assertFalse(pdf_support.can_fallback)
         self.assertFalse(text_support.supported)
         self.assertTrue(text_support.can_fallback)
         self.assertFalse(docx_support.supported)
@@ -186,6 +225,7 @@ class ParserBackendImplTests(unittest.TestCase):
         )
         self.assertTrue(converter_kwargs)
         format_options = converter_kwargs[0]["format_options"]
+        self.assertIn("allowed_formats", converter_kwargs[0])
         pdf_option = next(iter(format_options.values()))
         pipeline_options = pdf_option.pipeline_options
         self.assertTrue(pipeline_options.do_ocr)
@@ -204,6 +244,183 @@ class ParserBackendImplTests(unittest.TestCase):
                 if call.startswith("export:")
             )
         )
+
+    def test_docling_convertor_uses_allowed_formats_for_non_pdf_without_pdf_pipeline(self):
+        converter_kwargs: list[dict] = []
+        markdown = "# DOCX\n\nBody\n\n"
+
+        class FakeDoclingDocument:
+            pages = {}
+            tables = []
+
+            def export_to_markdown(self, **kwargs: object) -> str:
+                return markdown
+
+        class FakeBackendResult:
+            document = FakeDoclingDocument()
+
+        class FakeDocumentConverter:
+            def __init__(self, **kwargs: object) -> None:
+                converter_kwargs.append(kwargs)
+
+            def convert(self, source: str) -> FakeBackendResult:
+                self.source = source
+                return FakeBackendResult()
+
+        result = _run_docling_fake(
+            FakeDocumentConverter,
+            ParserConfig(docling_enabled=True),
+            file_name="project.docx",
+        )
+
+        self.assertEqual(result.markdown_content, markdown)
+        self.assertEqual(result.conversion_metadata["docling_input_format"], "DOCX")
+        self.assertEqual(
+            result.conversion_metadata["docling_supported_suffixes"],
+            [".pdf", ".docx", ".md", ".markdown", ".html", ".htm", ".csv", ".xlsx"],
+        )
+        self.assertTrue(converter_kwargs)
+        kwargs = converter_kwargs[0]
+        self.assertIn("allowed_formats", kwargs)
+        self.assertIn("format_options", kwargs)
+        self.assertEqual(
+            [fmt.name for fmt in kwargs["allowed_formats"]],
+            ["PDF", "DOCX", "MD", "HTML", "CSV", "XLSX"],
+        )
+        self.assertEqual([fmt.name for fmt in kwargs["format_options"]], ["PDF"])
+
+    def test_docling_convertor_allows_non_pdf_when_pdf_options_are_unavailable(self):
+        converter_kwargs: list[dict] = []
+        markdown = "# DOCX\n\nBody\n\n"
+
+        class FakeDoclingDocument:
+            pages = {}
+            tables = []
+
+            def export_to_markdown(self, **kwargs: object) -> str:
+                return markdown
+
+        class FakeBackendResult:
+            document = FakeDoclingDocument()
+
+        class FakeDocumentConverter:
+            def __init__(self, **kwargs: object) -> None:
+                converter_kwargs.append(kwargs)
+
+            def convert(self, source: str) -> FakeBackendResult:
+                self.source = source
+                return FakeBackendResult()
+
+        result = _run_docling_fake(
+            FakeDocumentConverter,
+            ParserConfig(
+                docling_enabled=True,
+                allowed_suffixes=[".docx"],
+                docling_supported_suffixes=[".docx"],
+            ),
+            file_name="project.docx",
+            include_pdf_options=False,
+            fail_pipeline_options_import=True,
+        )
+
+        self.assertEqual(result.markdown_content, markdown)
+        self.assertEqual(result.conversion_metadata["docling_input_format"], "DOCX")
+        self.assertTrue(converter_kwargs)
+        self.assertEqual([fmt.name for fmt in converter_kwargs[0]["allowed_formats"]], ["DOCX"])
+        self.assertEqual(converter_kwargs[0]["format_options"], {})
+
+    def test_docling_convertor_maps_text_structured_suffixes_to_input_format_metadata(self):
+        class FakeDoclingDocument:
+            pages = {}
+            tables = []
+
+            def export_to_markdown(self, **kwargs: object) -> str:
+                return "# Structured\n\nBody"
+
+        class FakeBackendResult:
+            document = FakeDoclingDocument()
+
+        class FakeDocumentConverter:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+            def convert(self, source: str) -> FakeBackendResult:
+                return FakeBackendResult()
+
+        cases = {
+            "project.md": "MD",
+            "project.markdown": "MD",
+            "project.html": "HTML",
+            "project.htm": "HTML",
+            "project.csv": "CSV",
+            "project.xlsx": "XLSX",
+        }
+        for file_name, expected in cases.items():
+            with self.subTest(file_name=file_name):
+                result = _run_docling_fake(
+                    FakeDocumentConverter,
+                    ParserConfig(docling_enabled=True),
+                    file_name=file_name,
+                )
+
+                self.assertEqual(result.conversion_metadata["docling_input_format"], expected)
+
+    def test_docling_convertor_rejects_sources_blocked_by_parser_policy(self):
+        class FakeDoclingDocument:
+            pages = {}
+            tables = []
+
+            def export_to_markdown(self, **kwargs: object) -> str:
+                return "# Structured\n\nBody"
+
+        class FakeBackendResult:
+            document = FakeDoclingDocument()
+
+        class FakeDocumentConverter:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+            def convert(self, source: str) -> FakeBackendResult:
+                return FakeBackendResult()
+
+        cases = [
+            (
+                ParserSource.from_text("body", file_name="inline.md"),
+                ParserConfig(docling_enabled=True),
+                "inline text input",
+            ),
+            (
+                ParserSource.from_bytes("contract", b"fake"),
+                ParserConfig(docling_enabled=True),
+                "requires a file suffix",
+            ),
+            (
+                ParserSource.from_bytes("contract.docx", b"fake"),
+                ParserConfig(
+                    docling_enabled=True,
+                    allowed_suffixes=[".pdf"],
+                    docling_supported_suffixes=[".pdf", ".docx"],
+                ),
+                "parser.allowed_suffixes",
+            ),
+            (
+                ParserSource.from_bytes("contract.docx", b"fake"),
+                ParserConfig(
+                    docling_enabled=True,
+                    allowed_suffixes=[".pdf", ".docx"],
+                    docling_supported_suffixes=[".pdf"],
+                ),
+                "not configured as supported",
+            ),
+        ]
+        for source, config, message in cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(DocumentLoadError, message):
+                    _run_docling_fake(
+                        FakeDocumentConverter,
+                        config,
+                        source=source,
+                    )
 
     def test_docling_convertor_rejects_tiny_partial_success_output(self):
         class FakeDoclingDocument:
@@ -378,14 +595,32 @@ class ParserBackendImplTests(unittest.TestCase):
 def _run_docling_fake(
     document_converter_cls: type,
     parser_config: ParserConfig | None = None,
+    *,
+    file_name: str = "project.pdf",
+    source: ParserSource | None = None,
+    include_pdf_options: bool = True,
+    fail_pipeline_options_import: bool = False,
 ) -> object:
     package = types.ModuleType("docling")
     module = types.ModuleType("docling.document_converter")
     base_models = types.ModuleType("docling.datamodel.base_models")
     pipeline_options = types.ModuleType("docling.datamodel.pipeline_options")
 
+    class FakeInputFormatValue:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.value = name.lower()
+
+        def __repr__(self) -> str:
+            return f"InputFormat.{self.name}"
+
     class FakeInputFormat:
-        PDF = "pdf"
+        PDF = FakeInputFormatValue("PDF")
+        DOCX = FakeInputFormatValue("DOCX")
+        MD = FakeInputFormatValue("MD")
+        HTML = FakeInputFormatValue("HTML")
+        CSV = FakeInputFormatValue("CSV")
+        XLSX = FakeInputFormatValue("XLSX")
 
     class RapidOcrOptions:
         def __init__(
@@ -424,13 +659,41 @@ def _run_docling_fake(
             self.pipeline_options = pipeline_options
 
     module.DocumentConverter = document_converter_cls
-    module.PdfFormatOption = FakePdfFormatOption
+    if include_pdf_options:
+        module.PdfFormatOption = FakePdfFormatOption
     base_models.InputFormat = FakeInputFormat
-    pipeline_options.PdfPipelineOptions = FakePdfPipelineOptions
-    pipeline_options.RapidOcrOptions = RapidOcrOptions
+    if include_pdf_options:
+        pipeline_options.PdfPipelineOptions = FakePdfPipelineOptions
+        pipeline_options.RapidOcrOptions = RapidOcrOptions
+
+    original_import_module = importlib.import_module
+
+    def fake_import_module(name: str) -> object:
+        if fail_pipeline_options_import and name == "docling.datamodel.pipeline_options":
+            raise ImportError(name)
+        return original_import_module(name)
+
+    if source is not None:
+        with patch.dict(
+            sys.modules,
+            {
+                "docling": package,
+                "docling.document_converter": module,
+                "docling.datamodel.base_models": base_models,
+                "docling.datamodel.pipeline_options": pipeline_options,
+            },
+        ):
+            with (
+                patch("importlib.import_module", side_effect=fake_import_module),
+                patch("importlib.util.find_spec", return_value=_module_spec("docling")),
+            ):
+                return DoclingParserImpl().convert(
+                    source,
+                    parser_config or ParserConfig(docling_enabled=True),
+                )
 
     with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / "project.pdf"
+        path = Path(tmp) / file_name
         path.write_bytes(b"fake")
         with patch.dict(
             sys.modules,
@@ -441,7 +704,10 @@ def _run_docling_fake(
                 "docling.datamodel.pipeline_options": pipeline_options,
             },
         ):
-            with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
+            with (
+                patch("importlib.import_module", side_effect=fake_import_module),
+                patch("importlib.util.find_spec", return_value=_module_spec("docling")),
+            ):
                 return DoclingParserImpl().convert(
                     ParserSource.from_path(path),
                     parser_config or ParserConfig(docling_enabled=True),

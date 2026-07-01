@@ -123,6 +123,82 @@ class ParserBackendRouterTests(unittest.TestCase):
         with self.assertRaisesRegex(DocumentLoadError, "broken backend failed"):
             router.convert(ParserSource.from_text("第一条 付款", file_name="inline.txt"), config)
 
+    def test_default_backend_runtime_failure_fallbacks_when_support_allows_it(self):
+        fallback_backend = RecordingSuccessBackend(name="builtin")
+        router = ParserBackendRouter(
+            [BrokenFallbackParserImpl(can_fallback=True), fallback_backend]
+        )
+        config = ParserConfig(
+            default_converter="docling",
+            enabled_converters=["docling", "builtin"],
+            fallback_order=["docling", "builtin"],
+        )
+
+        result = router.convert(ParserSource.from_bytes("contract.docx", b"fake"), config)
+
+        self.assertEqual(result.backend_name, "builtin")
+        self.assertEqual(result.markdown_content, "fallback body")
+        self.assertEqual(fallback_backend.calls, 1)
+        self.assertTrue(result.warnings)
+        self.assertIn("broken backend failed", result.warnings[0])
+        self.assertEqual(result.conversion_metadata["fallback_warnings"], result.warnings)
+
+    def test_default_backend_runtime_failure_does_not_fallback_for_pdf_support(self):
+        fallback_backend = RecordingSuccessBackend(name="builtin")
+        router = ParserBackendRouter(
+            [BrokenFallbackParserImpl(can_fallback=False), fallback_backend]
+        )
+        config = ParserConfig(
+            default_converter="docling",
+            enabled_converters=["docling", "builtin"],
+            fallback_order=["docling", "builtin"],
+        )
+
+        with self.assertRaisesRegex(DocumentLoadError, "broken backend failed"):
+            router.convert(ParserSource.from_bytes("contract.pdf", b"fake"), config)
+
+        self.assertEqual(fallback_backend.calls, 0)
+
+    def test_default_backend_runtime_failure_does_not_fallback_when_disabled(self):
+        fallback_backend = RecordingSuccessBackend(name="builtin")
+        router = ParserBackendRouter(
+            [BrokenFallbackParserImpl(can_fallback=True), fallback_backend]
+        )
+        config = ParserConfig(
+            default_converter="docling",
+            enabled_converters=["docling", "builtin"],
+            fallback_order=["docling", "builtin"],
+            allow_converter_fallback=False,
+        )
+
+        with self.assertRaisesRegex(DocumentLoadError, "broken backend failed"):
+            router.convert(ParserSource.from_bytes("contract.docx", b"fake"), config)
+
+        self.assertEqual(fallback_backend.calls, 0)
+
+    def test_non_default_backend_runtime_failure_can_fallback_by_config(self):
+        fallback_backend = RecordingSuccessBackend(name="builtin")
+        router = ParserBackendRouter(
+            [
+                BrokenFallbackParserImpl(name="docling", can_fallback=True),
+                BrokenFallbackParserImpl(name="markitdown", can_fallback=False),
+                fallback_backend,
+            ]
+        )
+        config = ParserConfig(
+            default_converter="docling",
+            enabled_converters=["docling", "markitdown", "builtin"],
+            fallback_order=["docling", "markitdown", "builtin"],
+            markitdown_enabled=True,
+        )
+
+        result = router.convert(ParserSource.from_bytes("contract.docx", b"fake"), config)
+
+        self.assertEqual(result.backend_name, "builtin")
+        self.assertEqual(fallback_backend.calls, 1)
+        self.assertIn("parser backend docling failed", result.warnings[0])
+        self.assertIn("parser backend markitdown failed", result.warnings[1])
+
     def test_path_input_rejects_missing_and_directory_before_backend_routing(self):
         with tempfile.TemporaryDirectory() as tmp:
             router = ParserBackendRouter([BuiltinParserImpl()])
@@ -256,6 +332,42 @@ class BrokenParserImpl:
 
     def convert(self, source: ParserSource, config: ParserConfig) -> MarkdownDocument:
         raise DocumentLoadError("broken backend failed")
+
+
+class BrokenFallbackParserImpl:
+    def __init__(self, *, can_fallback: bool, name: str = "docling") -> None:
+        self.name = name
+        self.can_fallback = can_fallback
+
+    def supports(self, source: ParserSource, config: ParserConfig) -> ParserBackendSupport:
+        return ParserBackendSupport(
+            supported=True,
+            confidence=1.0,
+            reason="test docling backend",
+            can_fallback=self.can_fallback,
+        )
+
+    def convert(self, source: ParserSource, config: ParserConfig) -> MarkdownDocument:
+        raise DocumentLoadError("broken backend failed")
+
+
+class RecordingSuccessBackend:
+    def __init__(self, *, name: str) -> None:
+        self.name = name
+        self.calls = 0
+
+    def supports(self, source: ParserSource, config: ParserConfig) -> ParserBackendSupport:
+        return ParserBackendSupport(supported=True, confidence=1.0, reason="success")
+
+    def convert(self, source: ParserSource, config: ParserConfig) -> MarkdownDocument:
+        self.calls += 1
+        return MarkdownDocument(
+            markdown_content="fallback body",
+            file_name=source.file_name,
+            file_type=source.file_type,
+            source_path=source.source_path,
+            backend_name=self.name,
+        )
 
 
 class RecordingPathBackend:

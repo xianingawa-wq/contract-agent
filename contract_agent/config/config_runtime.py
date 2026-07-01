@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from contract_agent.config.config_parser import (
     DEFAULT_ALLOWED_SUFFIXES,
+    DEFAULT_DOCLING_SUPPORTED_SUFFIXES,
     DEFAULT_ENABLED_CONVERTERS,
     DEFAULT_ENABLED_DETECTORS,
 )
@@ -170,6 +171,9 @@ class Settings(BaseModel):
     parser_docling_do_table_structure: bool = True
     parser_docling_compact_tables: bool = True
     parser_docling_enable_remote_services: bool = False
+    parser_docling_supported_suffixes: list[str] = Field(
+        default_factory=lambda: DEFAULT_DOCLING_SUPPORTED_SUFFIXES.copy()
+    )
 
 
 def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings:
@@ -327,6 +331,10 @@ def load_settings_from_env(environ: Mapping[str, str] | None = None) -> Settings
         ),
         parser_docling_enable_remote_services=_bool_value(
             _env(env, "PARSER_DOCLING_ENABLE_REMOTE_SERVICES"), "false"
+        ),
+        parser_docling_supported_suffixes=_csv_list_value(
+            _env(env, "PARSER_DOCLING_SUPPORTED_SUFFIXES"),
+            DEFAULT_DOCLING_SUPPORTED_SUFFIXES,
         ),
     )
 
