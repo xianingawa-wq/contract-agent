@@ -13,12 +13,21 @@ from contract_agent.parser.models import (
     DocumentTable,
     ParsedDocument,
 )
-from contract_agent.parser.parsed.markdown_block_parser import block_type_and_text, normalize_text
 from contract_agent.parser.parsed.markdown_cleaner import clean_markdown
 from contract_agent.parser.parsed.markdown_chunker import ContractChunker
+from contract_agent.parser.parsed.markdown_logical_block_collector import (
+    MarkdownLogicalBlock,
+    collect_logical_blocks,
+)
 from contract_agent.parser.parsed.markdown_metadata_builder import build_metadata
+from contract_agent.parser.parsed.markdown_page_resolver import (
+    MarkdownPageEvidence,
+    page_numbers_for_cleaned_lines,
+    resolve_page_evidence,
+    table_page_no,
+)
+from contract_agent.parser.parsed.markdown_table_row_parser import split_pipe_row
 from contract_agent.parser.parsed.markdown_table_parser import (
-    collect_table_lines,
     is_table_start,
     parse_table_rows,
     table_text,
@@ -38,14 +47,26 @@ class MarkdownParsedService:
         self.logger = logger or get_parser_logger()
 
     def parse(self, markdown_document: MarkdownDocument) -> ParsedDocument:
+        original_lines = markdown_document.markdown_content.splitlines()
+        page_evidence = resolve_page_evidence(
+            original_lines,
+            conversion_metadata=markdown_document.conversion_metadata,
+        )
         cleaned_markdown = clean_markdown(
             markdown_document.markdown_content,
             conversion_metadata=markdown_document.conversion_metadata,
+        )
+        cleaned_line_page_numbers = page_numbers_for_cleaned_lines(
+            original_lines,
+            cleaned_markdown.markdown_content.splitlines(),
+            page_evidence,
         )
         conversion_metadata = {
             **markdown_document.conversion_metadata,
             "markdown_cleaner_removed_lines": cleaned_markdown.removed_lines,
             "markdown_cleaner_merged_tables": cleaned_markdown.merged_tables,
+            "markdown_cleaner_table_source_indexes": cleaned_markdown.table_source_indexes,
+            "markdown_page_evidence": page_evidence.to_metadata(),
         }
         markdown_document = markdown_document.model_copy(
             update={
@@ -53,7 +74,11 @@ class MarkdownParsedService:
                 "conversion_metadata": conversion_metadata,
             }
         )
-        raw_text, spans, blocks, tables = _parse_markdown_blocks(markdown_document)
+        raw_text, spans, blocks, tables = _parse_markdown_blocks(
+            markdown_document,
+            line_page_numbers=cleaned_line_page_numbers,
+            page_evidence=page_evidence,
+        )
         metadata = build_metadata(
             file_name=markdown_document.file_name,
             source_path=markdown_document.source_path,
@@ -107,6 +132,9 @@ def document_from_markdown(
 
 def _parse_markdown_blocks(
     markdown_document: MarkdownDocument,
+    *,
+    line_page_numbers: list[int | None] | None = None,
+    page_evidence: MarkdownPageEvidence | None = None,
 ) -> tuple[str, list[DocumentSpan], list[DocumentBlock], list[DocumentTable]]:
     lines = markdown_document.markdown_content.splitlines()
     spans: list[DocumentSpan] = []
@@ -115,18 +143,30 @@ def _parse_markdown_blocks(
     raw_parts: list[str] = []
     cursor = 0
     block_index = 0
-    index = 0
-    page_no = 1
+    bounded_lines, bounded_line_page_numbers = _lines_with_page_boundaries(
+        lines,
+        line_page_numbers,
+    )
+    logical_blocks = _split_logical_blocks_by_page(
+        collect_logical_blocks(bounded_lines),
+        bounded_lines,
+        bounded_line_page_numbers,
+    )
 
-    while index < len(lines):
-        line = lines[index]
-        if not line.strip():
-            index += 1
-            continue
-
-        if is_table_start(lines, index):
-            table_lines, next_index = collect_table_lines(lines, index)
-            block_markdown = "\n".join(table_lines)
+    for logical_block in logical_blocks:
+        if logical_block.block_type == "table":
+            page_no = _table_block_page_no(
+                bounded_line_page_numbers,
+                logical_block.line_start,
+                logical_block.line_end,
+            )
+            if page_no is None:
+                source_index = _table_source_index(
+                    markdown_document.conversion_metadata, len(tables)
+                )
+                if source_index is not None:
+                    page_no = table_page_no(page_evidence, source_index)
+            block_markdown = logical_block.markdown
             rows = parse_table_rows(block_markdown)
             text = table_text(rows)
             span, cursor = _append_span(
@@ -164,12 +204,13 @@ def _parse_markdown_blocks(
                 )
             )
             block_index += 1
-            index = next_index
             continue
 
-        block_type, text, level = block_type_and_text(line)
+        page_no = _line_page_no(bounded_line_page_numbers, logical_block.line_start)
+        block_type = logical_block.block_type
+        text = logical_block.text
+        level = logical_block.level
         if not text:
-            index += 1
             continue
         span, cursor = _append_span(
             spans,
@@ -184,7 +225,7 @@ def _parse_markdown_blocks(
                 block_id=span.span_id,
                 block_type=block_type,
                 text=text,
-                markdown=line.strip(),
+                markdown=logical_block.markdown.strip(),
                 level=level,
                 location=BlockLocation(
                     page_no=span.page_no,
@@ -197,9 +238,164 @@ def _parse_markdown_blocks(
             )
         )
         block_index += 1
-        index += 1
 
     return "\n".join(raw_parts), spans, blocks, tables
+
+
+def _line_page_no(line_page_numbers: list[int | None] | None, index: int) -> int | None:
+    if line_page_numbers is None or index >= len(line_page_numbers):
+        return None
+    return line_page_numbers[index]
+
+
+def _table_source_index(conversion_metadata: dict[str, object], table_index: int) -> int | None:
+    source_indexes = conversion_metadata.get("markdown_cleaner_table_source_indexes")
+    if not isinstance(source_indexes, list):
+        return table_index
+    if table_index >= len(source_indexes):
+        return table_index
+    source_index = source_indexes[table_index]
+    if isinstance(source_index, bool) or source_index is None:
+        return None
+    if isinstance(source_index, int) and source_index >= 0:
+        return source_index
+    return None
+
+
+def _lines_with_page_boundaries(
+    lines: list[str],
+    line_page_numbers: list[int | None] | None,
+) -> tuple[list[str], list[int | None] | None]:
+    if not line_page_numbers:
+        return lines, line_page_numbers
+    bounded_lines: list[str] = []
+    bounded_line_page_numbers: list[int | None] = []
+    previous_page: int | None = None
+    for index, line in enumerate(lines):
+        page_no = _line_page_no(line_page_numbers, index)
+        if (
+            bounded_lines
+            and page_no != previous_page
+            and page_no is not None
+            and previous_page is not None
+            and bounded_lines[-1].strip()
+            and not _is_table_page_boundary(lines, index)
+        ):
+            bounded_lines.append("")
+            bounded_line_page_numbers.append(None)
+        bounded_lines.append(line)
+        bounded_line_page_numbers.append(page_no)
+        previous_page = page_no
+    return bounded_lines, bounded_line_page_numbers
+
+
+def _table_block_page_no(
+    line_page_numbers: list[int | None] | None,
+    line_start: int,
+    line_end: int,
+) -> int | None:
+    if line_page_numbers is None:
+        return None
+    table_pages = {
+        page_no for page_no in line_page_numbers[line_start:line_end] if page_no is not None
+    }
+    if len(table_pages) != 1:
+        return None
+    return next(iter(table_pages))
+
+
+def _split_logical_blocks_by_page(
+    logical_blocks: list[MarkdownLogicalBlock],
+    lines: list[str],
+    line_page_numbers: list[int | None] | None,
+) -> list[MarkdownLogicalBlock]:
+    if line_page_numbers is None:
+        return logical_blocks
+    split_blocks: list[MarkdownLogicalBlock] = []
+    for logical_block in logical_blocks:
+        if logical_block.block_type == "table":
+            split_blocks.append(logical_block)
+            continue
+        split_blocks.extend(
+            _split_logical_block_by_page(
+                logical_block,
+                lines,
+                line_page_numbers,
+            )
+        )
+    return split_blocks
+
+
+def _split_logical_block_by_page(
+    logical_block: MarkdownLogicalBlock,
+    lines: list[str],
+    line_page_numbers: list[int | None],
+) -> list[MarkdownLogicalBlock]:
+    line_start = logical_block.line_start
+    line_end = logical_block.line_end
+    concrete_pages = {
+        page_no for page_no in line_page_numbers[line_start:line_end] if page_no is not None
+    }
+    if len(concrete_pages) <= 1:
+        return [logical_block]
+
+    ranges: list[tuple[int, int]] = []
+    segment_start = line_start
+    current_page: int | None = None
+    for index in range(line_start, line_end):
+        page_no = _line_page_no(line_page_numbers, index)
+        if page_no is None:
+            continue
+        if current_page is None:
+            current_page = page_no
+            continue
+        if page_no != current_page:
+            ranges.append((segment_start, index))
+            segment_start = index
+            current_page = page_no
+    ranges.append((segment_start, line_end))
+
+    split_blocks: list[MarkdownLogicalBlock] = []
+    for start, end in ranges:
+        for block in collect_logical_blocks(lines[start:end]):
+            split_blocks.append(
+                MarkdownLogicalBlock(
+                    block_type=block.block_type,
+                    text=block.text,
+                    markdown=block.markdown,
+                    line_start=block.line_start + start,
+                    line_end=block.line_end + start,
+                    level=block.level,
+                )
+            )
+    return split_blocks
+
+
+def _is_table_page_boundary(lines: list[str], index: int) -> bool:
+    if index <= 0:
+        return False
+    previous_cells = _pipe_row_cells(lines[index - 1])
+    current_cells = _pipe_row_cells(lines[index])
+    if not previous_cells or not current_cells or len(previous_cells) != len(current_cells):
+        return False
+
+    column_count = len(current_cells)
+    run_start = index - 1
+    while run_start > 0 and len(_pipe_row_cells(lines[run_start - 1])) == column_count:
+        run_start -= 1
+
+    for cursor in range(run_start, index + 1):
+        if is_table_start(lines, cursor):
+            return True
+    return False
+
+
+def _pipe_row_cells(line: str) -> list[str]:
+    stripped = line.strip()
+    if "|" not in stripped:
+        return []
+    cells = split_pipe_row(stripped)
+    return cells if len(cells) >= 2 else []
 
 
 def _append_span(
@@ -211,7 +407,7 @@ def _append_span(
     block_index: int,
     cursor: int,
 ) -> tuple[DocumentSpan, int]:
-    normalized = normalize_text(text)
+    normalized = text.strip()
     start_offset = cursor
     end_offset = start_offset + len(normalized)
     span = DocumentSpan(

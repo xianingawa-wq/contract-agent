@@ -120,6 +120,77 @@ class ParserSerializerTests(unittest.TestCase):
             ),
         )
 
+    def test_serializers_preserve_unknown_and_concrete_page_numbers(self):
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc-pages",
+                file_name="contract.txt",
+                file_type="txt",
+                source_path="inline",
+                title="Contract",
+                page_count=2,
+            ),
+            raw_text="Unknown page\nKnown page",
+            blocks=[
+                DocumentBlock(
+                    block_id="p0-b0",
+                    block_type="paragraph",
+                    text="Unknown page",
+                    location=BlockLocation(
+                        page_no=None,
+                        block_index=0,
+                        start_offset=0,
+                        end_offset=12,
+                    ),
+                ),
+                DocumentBlock(
+                    block_id="p2-b1",
+                    block_type="paragraph",
+                    text="Known page",
+                    location=BlockLocation(
+                        page_no=2,
+                        block_index=1,
+                        start_offset=13,
+                        end_offset=23,
+                    ),
+                ),
+            ],
+            clause_chunks=[
+                ClauseChunk(
+                    chunk_id="chunk-p0-b0",
+                    chunk_level="paragraph",
+                    section_title="Unknown page",
+                    page_no=None,
+                    start_offset=0,
+                    end_offset=12,
+                    source_text="Unknown page",
+                ),
+                ClauseChunk(
+                    chunk_id="chunk-p2-b1",
+                    chunk_level="paragraph",
+                    section_title="Known page",
+                    page_no=2,
+                    start_offset=13,
+                    end_offset=23,
+                    source_text="Known page",
+                ),
+            ],
+        )
+
+        evidence = to_evidence_json(document)
+        rag_documents = to_rag_documents(document)
+        llm_context = to_llm_context(document)
+
+        self.assertIsNone(evidence["blocks"][0]["location"]["page_no"])
+        self.assertIsNone(evidence["chunks"][0]["page_no"])
+        self.assertEqual(evidence["blocks"][1]["location"]["page_no"], 2)
+        self.assertEqual(evidence["chunks"][1]["page_no"], 2)
+        self.assertIsNone(rag_documents[0]["metadata"]["page_no"])
+        self.assertEqual(rag_documents[1]["metadata"]["page_no"], 2)
+        self.assertIn("[block_id=p0-b0 page=? confidence=1.00] Unknown page", llm_context)
+        self.assertIn("[block_id=p2-b1 page=2 confidence=1.00] Known page", llm_context)
+        json.dumps(evidence, allow_nan=False)
+
     def test_to_markdown_does_not_double_prefix_block_markdown(self):
         document = self.make_ascii_document()
         document.blocks[0].markdown = "# Purchase Contract"

@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 from typing import Any
 
 from contract_agent.parser.parsed.markdown_table_row_parser import split_pipe_row
 
 
+_CHINESE_PAGE_NUMBER_CHARS = "零一二两三四五六七八九十百千"
+_PAGE_NUMBER_TOKEN = rf"[\d{_CHINESE_PAGE_NUMBER_CHARS}]+"
 _PAGE_NUMBER_PATTERNS = [
-    re.compile(r"^第\s*[\d一二三四五六七八九十百千]+\s*页(?:\s*[，,]?\s*共\s*\d+\s*页)?$"),
-    re.compile(r"^共\s*\d+\s*页\s*第\s*\d+\s*页$"),
+    re.compile(
+        rf"^第\s*{_PAGE_NUMBER_TOKEN}\s*页"
+        rf"(?:\s*[，,、]?\s*共\s*{_PAGE_NUMBER_TOKEN}\s*页)?$"
+    ),
+    re.compile(rf"^共\s*{_PAGE_NUMBER_TOKEN}\s*页\s*[，,、]?\s*第\s*{_PAGE_NUMBER_TOKEN}\s*页$"),
+    re.compile(r"^page\s+\d+$", re.IGNORECASE),
     re.compile(r"^page\s+\d+\s+of\s+\d+$", re.IGNORECASE),
-    re.compile(r"^\d+\s*/\s*\d+$"),
 ]
+_PAGE_FRACTION_PATTERN = re.compile(r"^\d+\s*/\s*\d+$")
 _NUMERIC_PAGE_FOOTER_PATTERN = re.compile(r"^[-–—]?\s*(\d{1,4})\s*[-–—]?$")
 _PAGE_SEPARATOR_PATTERN = re.compile(r"^[-_=]{3,}$")
 _KNOWN_FOOTER_VALUES = {
@@ -48,6 +54,7 @@ class CleanedMarkdown:
     markdown_content: str
     removed_lines: int = 0
     merged_tables: int = 0
+    table_source_indexes: list[int | None] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -68,7 +75,12 @@ class MarkdownCleaner:
     ) -> CleanedMarkdown:
         lines = markdown.splitlines()
         filtered_lines, removed_lines = self.remove_page_furniture(lines)
-        merged_lines, merged_tables, removed_table_noise_lines = _merge_split_tables(
+        (
+            merged_lines,
+            merged_tables,
+            removed_table_noise_lines,
+            table_source_indexes,
+        ) = _merge_split_tables(
             filtered_lines,
             table_layouts=_table_layouts(conversion_metadata),
         )
@@ -79,11 +91,12 @@ class MarkdownCleaner:
             markdown_content="\n".join(merged_lines).strip("\n"),
             removed_lines=removed_lines,
             merged_tables=merged_tables,
+            table_source_indexes=table_source_indexes,
         )
 
     def remove_page_furniture(self, lines: list[str]) -> tuple[list[str], int]:
         page_number_indexes = {
-            index for index, line in enumerate(lines) if self.is_page_number(line)
+            index for index, _ in enumerate(lines) if _is_page_number_at(lines, index)
         }
         page_number_indexes.update(_numeric_page_footer_indexes(lines))
         duplicate_furniture_indexes = _duplicate_furniture_indexes(lines, page_number_indexes)
@@ -204,6 +217,25 @@ def _is_page_number(line: str) -> bool:
     return any(pattern.match(stripped) for pattern in _PAGE_NUMBER_PATTERNS)
 
 
+def _is_page_number_at(lines: list[str], index: int) -> bool:
+    stripped = lines[index].strip()
+    if _is_page_number(stripped):
+        return True
+    return bool(
+        _PAGE_FRACTION_PATTERN.match(stripped) and _has_fraction_page_boundary_context(lines, index)
+    )
+
+
+def _has_fraction_page_boundary_context(lines: list[str], index: int) -> bool:
+    previous_line = _nearest_non_empty_line(lines, index, step=-1)
+    next_line = _nearest_non_empty_line(lines, index, step=1)
+    return (
+        previous_line is not None
+        and _is_page_separator(previous_line)
+        or (next_line is not None and _is_page_separator(next_line))
+    )
+
+
 def _numeric_page_footer_indexes(lines: list[str]) -> set[int]:
     candidates: list[tuple[int, int]] = []
     for index, line in enumerate(lines):
@@ -280,10 +312,11 @@ def _merge_split_tables(
     lines: list[str],
     *,
     table_layouts: list[dict[str, Any]],
-) -> tuple[list[str], int, int]:
+) -> tuple[list[str], int, int, list[int | None]]:
     merged: list[str] = []
     merged_tables = 0
     removed_noise_lines = 0
+    table_source_indexes: list[int | None] = []
     index = 0
     table_index = 0
     while index < len(lines):
@@ -295,6 +328,7 @@ def _merge_split_tables(
         table_lines, next_index = _collect_pipe_lines(lines, index)
         table_columns = _column_count(table_lines[0])
         current_table_index = table_index
+        result_table_source_index: int | None = current_table_index
         table_index += 1
         index = next_index
 
@@ -329,6 +363,8 @@ def _merge_split_tables(
             )
             if not append_lines:
                 break
+            if next_table_index is not None:
+                result_table_source_index = None
             table_lines.extend(append_lines)
             merged_tables += 1
             removed_noise_lines += gap.removed_noise_lines
@@ -337,9 +373,10 @@ def _merge_split_tables(
             index = continuation_end
 
         merged.extend(table_lines)
+        table_source_indexes.append(result_table_source_index)
         continue
 
-    return merged, merged_tables, removed_noise_lines
+    return merged, merged_tables, removed_noise_lines, table_source_indexes
 
 
 def _table_continuation_gap(lines: list[str], index: int) -> _TableGap:

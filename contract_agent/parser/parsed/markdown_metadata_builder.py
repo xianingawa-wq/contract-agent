@@ -19,7 +19,7 @@ def build_metadata(
         file_type=file_type,
         source_path=source_path,
         title=_extract_title(raw_text, file_name),
-        page_count=max(1, max((span.page_no or 0) for span in spans)) if spans else 1,
+        page_count=max((span.page_no or 0) for span in spans) if spans else 0,
     )
 
 

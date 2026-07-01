@@ -19,6 +19,7 @@ from contract_agent.parser import (
     DocumentParseError,
     DocumentMetadata,
     DocumentSpan,
+    DocumentTable,
     ParsedDocument,
     UnsupportedFileType,
     to_rag_documents,
@@ -28,7 +29,7 @@ from contract_agent.parser.parsed.markdown_metadata_builder import build_metadat
 
 
 class ContractParserServiceTests(unittest.TestCase):
-    def test_metadata_doc_id_uses_raw_text_and_page_count_is_at_least_one(self):
+    def test_metadata_doc_id_uses_raw_text_and_unknown_page_count_is_zero(self):
         first = build_metadata(
             file_name="same.txt",
             source_path="same.txt",
@@ -61,16 +62,16 @@ class ContractParserServiceTests(unittest.TestCase):
         )
 
         self.assertNotEqual(first.doc_id, second.doc_id)
-        self.assertEqual(first.page_count, 1)
+        self.assertEqual(first.page_count, 0)
 
     def test_parse_text_generates_metadata_spans_and_chunks_without_detectors(self):
         document = _builtin_parser().parse_text("第一条 付款\n甲方应支付价款。", "inline.txt")
 
         self.assertEqual(document.metadata.file_name, "inline.txt")
         self.assertEqual(document.metadata.file_type, "txt")
-        self.assertEqual(document.raw_text, "第一条 付款\n甲方应支付价款。")
+        self.assertEqual(document.raw_text, "第一条 付款 甲方应支付价款。")
         self.assertEqual(document.schema_version, "2.0")
-        self.assertGreaterEqual(len(document.spans), 2)
+        self.assertEqual(len(document.spans), 1)
         self.assertEqual(len(document.blocks), len(document.spans))
         self.assertFalse(hasattr(document, "detector_results"))
         self.assertIn("parser_backend", document.conversion_metadata)
@@ -167,7 +168,7 @@ class ContractParserServiceTests(unittest.TestCase):
         self.assertEqual(utf8.raw_text, "第一条 付款")
         self.assertEqual(utf8_sig.raw_text, "第一条 付款")
         self.assertEqual(gb18030.raw_text, "第一条 付款")
-        self.assertEqual(utf16.raw_text, "采购合同\n甲方：A公司")
+        self.assertEqual(utf16.raw_text, "采购合同 甲方：A公司")
 
     def test_utf8_bom_does_not_pollute_first_txt_chunk(self):
         document = _builtin_parser().parse_bytes(
@@ -176,7 +177,7 @@ class ContractParserServiceTests(unittest.TestCase):
         )
 
         self.assertNotIn("\ufeff", document.raw_text)
-        self.assertEqual(document.clause_chunks[0].source_text, "第一条 标的")
+        self.assertEqual(document.clause_chunks[0].source_text, "第一条 标的 甲方：A 乙方：B")
 
     def test_corrupt_docx_and_pdf_raise_user_input_parser_errors(self):
         parser = _builtin_parser()
@@ -566,6 +567,73 @@ class ContractParserServiceTests(unittest.TestCase):
                 ("chunk:chunk-b", "block:block-b"),
             },
         )
+
+    def test_semantic_graph_preserves_block_table_and_chunk_page_numbers(self):
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc-page-graph",
+                file_name="graph.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text="Unknown\nKnown",
+            blocks=[
+                DocumentBlock(
+                    block_id="block-unknown",
+                    block_type="paragraph",
+                    text="Unknown",
+                    location=BlockLocation(
+                        page_no=None,
+                        block_index=0,
+                        start_offset=0,
+                        end_offset=7,
+                        span_ids=["span-unknown"],
+                    ),
+                ),
+                DocumentBlock(
+                    block_id="block-known",
+                    block_type="table",
+                    text="Known",
+                    location=BlockLocation(
+                        page_no=2,
+                        block_index=1,
+                        start_offset=8,
+                        end_offset=13,
+                        span_ids=["span-known"],
+                    ),
+                ),
+            ],
+            tables=[DocumentTable(table_id="table-known", page_no=2, span_ids=["span-known"])],
+            clause_chunks=[
+                ClauseChunk(
+                    chunk_id="chunk-unknown",
+                    chunk_level="paragraph",
+                    section_title="Unknown",
+                    page_no=None,
+                    start_offset=0,
+                    end_offset=7,
+                    source_text="Unknown",
+                ),
+                ClauseChunk(
+                    chunk_id="chunk-known",
+                    chunk_level="table",
+                    section_title="Known",
+                    page_no=2,
+                    start_offset=8,
+                    end_offset=13,
+                    source_text="Known",
+                ),
+            ],
+        )
+
+        graph = ContractParser()._build_semantic_graph(document)
+        page_by_node = {node["id"]: node["metadata"].get("page_no") for node in graph.nodes}
+
+        self.assertIsNone(page_by_node["block:block-unknown"])
+        self.assertEqual(page_by_node["block:block-known"], 2)
+        self.assertEqual(page_by_node["table:table-known"], 2)
+        self.assertIsNone(page_by_node["chunk:chunk-unknown"])
+        self.assertEqual(page_by_node["chunk:chunk-known"], 2)
 
     def test_semantic_graph_definition_node_ids_are_unique_for_repeated_terms(self):
         from contract_agent.parser import DocumentDefinition
