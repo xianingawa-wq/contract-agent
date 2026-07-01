@@ -18,6 +18,8 @@ describe('AppFrame', () => {
         statusText="模型 qwen-max"
         loading={false}
         suggestions={[]}
+        commandSuggestions={[]}
+        selectedCommandIndex={0}
       />,
       {columns: 100}
     );
@@ -43,6 +45,8 @@ describe('AppFrame', () => {
             isDirectory: false
           }
         ]}
+        commandSuggestions={[]}
+        selectedCommandIndex={0}
       />,
       {columns: 100}
     );
@@ -67,6 +71,8 @@ describe('AppFrame', () => {
         statusText="本地会话"
         loading={false}
         suggestions={[]}
+        commandSuggestions={[]}
+        selectedCommandIndex={0}
       />,
       {columns: 100}
     );
@@ -91,5 +97,30 @@ describe('AppFrame', () => {
 
     expect(output).toContain('contract-agent console --initconfig');
     expect(output).toContain('contract-agent initconfig');
+  });
+
+  test('renders command suggestions with descriptions and selected marker', () => {
+    const output = renderToString(
+      <AppFrame
+        messages={[]}
+        input="/"
+        tokenState={createEmptyTokenState()}
+        statusText="本地会话"
+        loading={false}
+        suggestions={[]}
+        commandSuggestions={[
+          {name: '/help', description: '查看帮助'},
+          {name: '/review', description: '审查合同文件'}
+        ]}
+        selectedCommandIndex={1}
+      />,
+      {columns: 100}
+    );
+
+    expect(output).toContain('可用命令');
+    expect(output).toContain('/help');
+    expect(output).toContain('查看帮助');
+    expect(output).toContain('› /review');
+    expect(output).toContain('审查合同文件');
   });
 });

@@ -3,9 +3,13 @@ import {Box, Text, useApp, useInput} from 'ink';
 
 import {
   BUILT_IN_COMMANDS,
+  commandSuggestionsForInput,
+  completeCommandInput,
   helpText,
   isBuiltInCommand,
+  moveCommandSelection,
   parseConsoleInput,
+  type CommandSuggestion,
   unknownCommandText
 } from './commands.js';
 import {callBridge, type ChatData} from './bridge.js';
@@ -36,6 +40,8 @@ export type AppFrameProps = {
   statusText: string;
   loading: boolean;
   suggestions: ReviewFileSuggestion[];
+  commandSuggestions: CommandSuggestion[];
+  selectedCommandIndex: number;
 };
 
 export function AppFrame({
@@ -44,9 +50,11 @@ export function AppFrame({
   tokenState,
   statusText,
   loading,
-  suggestions
+  suggestions,
+  commandSuggestions,
+  selectedCommandIndex
 }: AppFrameProps): React.ReactElement {
-  const commandLine = BUILT_IN_COMMANDS.join(' ');
+  const commandLine = BUILT_IN_COMMANDS.map(command => command.name).join(' ');
   return (
     <Box flexDirection="column" paddingX={1}>
       <Box justifyContent="space-between">
@@ -68,6 +76,19 @@ export function AppFrame({
           ))
         )}
       </Box>
+      {commandSuggestions.length > 0 && (
+        <Box marginTop={1} flexDirection="column">
+          <Text color="yellow">可用命令</Text>
+          {commandSuggestions.map((command, index) => {
+            const selected = index === selectedCommandIndex;
+            return (
+              <Text key={command.name} color={selected ? 'cyan' : 'gray'}>
+                {selected ? '›' : ' '} {command.name}  {command.description}
+              </Text>
+            );
+          })}
+        </Box>
+      )}
       {suggestions.length > 0 && (
         <Box marginTop={1} flexDirection="column">
           <Text color="yellow">可审查文件（Tab 补全第一项）：</Text>
@@ -105,8 +126,16 @@ export function App(): React.ReactElement {
   const [input, setInput] = useState('');
   const [tokenState, setTokenState] = useState(createEmptyTokenState);
   const [loading, setLoading] = useState(false);
+  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const statusText = useMemo(() => '本地会话', []);
   const suggestions = useMemo(() => listReviewFileSuggestions(input), [input]);
+  const commandSuggestions = useMemo(() => commandSuggestionsForInput(input), [input]);
+
+  useEffect(() => {
+    setSelectedCommandIndex(current =>
+      commandSuggestions.length === 0 ? 0 : Math.min(current, commandSuggestions.length - 1)
+    );
+  }, [commandSuggestions.length]);
 
   useEffect(() => {
     const timeout = setTimeout(async () => {
@@ -120,10 +149,20 @@ export function App(): React.ReactElement {
 
   useInput((inputChar, key) => {
     if (key.tab) {
-      const completed = completeReviewInput(input, suggestions);
+      const completed =
+        completeCommandInput(input, commandSuggestions, selectedCommandIndex) ??
+        completeReviewInput(input, suggestions);
       if (completed) {
         setInput(completed);
       }
+      return;
+    }
+    if (key.upArrow && commandSuggestions.length > 0) {
+      setSelectedCommandIndex(current => moveCommandSelection(current, commandSuggestions, -1));
+      return;
+    }
+    if (key.downArrow && commandSuggestions.length > 0) {
+      setSelectedCommandIndex(current => moveCommandSelection(current, commandSuggestions, 1));
       return;
     }
     if (key.return) {
@@ -153,6 +192,8 @@ export function App(): React.ReactElement {
       statusText={statusText}
       loading={loading}
       suggestions={suggestions}
+      commandSuggestions={commandSuggestions}
+      selectedCommandIndex={selectedCommandIndex}
     />
   );
 }
