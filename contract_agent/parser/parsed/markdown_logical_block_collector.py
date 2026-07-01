@@ -20,6 +20,7 @@ class MarkdownLogicalBlock:
 _FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 _BLOCKQUOTE_RE = re.compile(r"^ {0,3}>\s?(.*)$")
 _LIST_ITEM_RE = re.compile(r"^ {0,3}(?:[-*+]\s+|\d+[\.)]\s+)(.*)$")
+_INDENTED_CONTINUATION_RE = re.compile(r"^(?: {4,}|\t)")
 
 
 def collect_logical_blocks(lines: list[str]) -> list[MarkdownLogicalBlock]:
@@ -142,11 +143,16 @@ def _collect_list_item(lines: list[str], start: int) -> tuple[MarkdownLogicalBlo
     while index < len(lines):
         line = lines[index]
         if not line.strip():
-            break
-        if _starts_new_block(lines, index):
+            next_index = index + 1
+            if next_index >= len(lines) or not _is_indented_continuation(lines[next_index]):
+                break
+            markdown_lines.append(line)
+            index += 1
+            continue
+        if _starts_new_block(lines, index) and not _is_indented_continuation(line):
             break
         markdown_lines.append(line)
-        text_parts.append(line.strip())
+        text_parts.append(_list_continuation_text(line))
         index += 1
     return (
         MarkdownLogicalBlock(
@@ -201,3 +207,13 @@ def _is_fence(line: str) -> bool:
 
 def _is_blockquote(line: str) -> bool:
     return bool(_BLOCKQUOTE_RE.match(line))
+
+
+def _is_indented_continuation(line: str) -> bool:
+    return bool(line.strip() and _INDENTED_CONTINUATION_RE.match(line))
+
+
+def _list_continuation_text(line: str) -> str:
+    stripped = line.strip()
+    match = _LIST_ITEM_RE.match(stripped)
+    return match.group(1).strip() if match else stripped

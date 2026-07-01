@@ -64,15 +64,22 @@ def resolve_page_evidence(
     lines: list[str],
     conversion_metadata: dict[str, Any] | None = None,
 ) -> MarkdownPageEvidence:
+    table_page_numbers = _metadata_table_page_numbers(conversion_metadata)
+
     explicit_markers = _explicit_page_markers(lines)
     if explicit_markers and _valid_explicit_markers(explicit_markers):
-        return _resolve_from_explicit_markers(lines, explicit_markers)
+        return _with_table_page_numbers(
+            _resolve_from_explicit_markers(lines, explicit_markers),
+            table_page_numbers,
+        )
 
     numeric_markers = _numeric_footer_markers(lines)
     if numeric_markers:
-        return _resolve_from_numeric_footers(lines, numeric_markers)
+        return _with_table_page_numbers(
+            _resolve_from_numeric_footers(lines, numeric_markers),
+            table_page_numbers,
+        )
 
-    table_page_numbers = _metadata_table_page_numbers(conversion_metadata)
     return MarkdownPageEvidence(
         line_page_numbers=[None for _ in lines],
         marker_count=len(table_page_numbers),
@@ -142,6 +149,24 @@ def _resolve_from_numeric_footers(
         marker_count=len(markers),
         max_page_no=max(page_no for _, page_no in markers),
         sources=["numeric_footer"],
+    )
+
+
+def _with_table_page_numbers(
+    evidence: MarkdownPageEvidence,
+    table_page_numbers: dict[int, int],
+) -> MarkdownPageEvidence:
+    if not table_page_numbers:
+        return evidence
+    sources = list(evidence.sources)
+    if "conversion_metadata" not in sources:
+        sources.append("conversion_metadata")
+    return MarkdownPageEvidence(
+        line_page_numbers=evidence.line_page_numbers,
+        marker_count=evidence.marker_count + len(table_page_numbers),
+        max_page_no=max(evidence.max_page_no, max(table_page_numbers.values())),
+        sources=sources,
+        table_page_numbers=table_page_numbers,
     )
 
 
@@ -284,6 +309,9 @@ def _numeric_footer_markers(lines: list[str]) -> list[tuple[int, int]]:
         index, page_no = candidate
         if (
             page_no == previous_page + 1
+            and _looks_like_numeric_footer_page_break_gap(lines, previous_index, index)
+            and _has_numeric_footer_body_before(lines, previous_index)
+            and _has_numeric_footer_body_before(lines, index)
             and _has_numeric_footer_boundary_context(lines, previous_index)
             and _has_numeric_footer_boundary_context(lines, index)
         ):
@@ -295,6 +323,27 @@ def _numeric_footer_markers(lines: list[str]) -> list[tuple[int, int]]:
     if len(run) >= 2:
         runs.append(run)
     return [marker for run in runs for marker in run]
+
+
+def _looks_like_numeric_footer_page_break_gap(
+    lines: list[str],
+    previous_index: int,
+    index: int,
+) -> bool:
+    between = [line.strip() for line in lines[previous_index + 1 : index] if line.strip()]
+    if not between:
+        return False
+    return any(not _is_page_separator(line) for line in between)
+
+
+def _has_numeric_footer_body_before(lines: list[str], index: int) -> bool:
+    previous_line = _nearest_non_empty_line(lines, index, step=-1)
+    return bool(
+        previous_line
+        and not _is_page_separator(previous_line)
+        and _explicit_page_no(previous_line) is None
+        and _NUMERIC_FOOTER_RE.match(previous_line) is None
+    )
 
 
 def _has_numeric_footer_boundary_context(lines: list[str], index: int) -> bool:
@@ -362,9 +411,16 @@ def _metadata_table_page_numbers(conversion_metadata: dict[str, Any] | None) -> 
             if isinstance(item, dict):
                 table_index = _int_value(item.get("index"))
                 page_no = _int_value(item.get("page"))
+                if "index" in item and table_index is None:
+                    continue
                 if table_index is None:
                     table_index = fallback_index
-                if table_index >= 0 and page_no is not None and page_no > 0:
+                if (
+                    table_index >= 0
+                    and page_no is not None
+                    and page_no > 0
+                    and table_index not in table_pages
+                ):
                     table_pages[table_index] = page_no
     return table_pages
 
@@ -376,7 +432,12 @@ def _page_at(evidence: MarkdownPageEvidence, index: int) -> int | None:
 
 
 def _int_value(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
     try:
-        return int(value)  # type: ignore[arg-type]
+        result = int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
+    if isinstance(value, float) and result != value:
+        return None
+    return result

@@ -57,6 +57,7 @@ class MarkdownParsedService:
             **markdown_document.conversion_metadata,
             "markdown_cleaner_removed_lines": cleaned_markdown.removed_lines,
             "markdown_cleaner_merged_tables": cleaned_markdown.merged_tables,
+            "markdown_cleaner_table_source_indexes": cleaned_markdown.table_source_indexes,
             "markdown_page_evidence": page_evidence.to_metadata(),
         }
         markdown_document = markdown_document.model_copy(
@@ -143,10 +144,12 @@ def _parse_markdown_blocks(
     for logical_block in logical_blocks:
         if logical_block.block_type == "table":
             page_no = _line_page_no(bounded_line_page_numbers, logical_block.line_start)
-            if page_no is None and not markdown_document.conversion_metadata.get(
-                "markdown_cleaner_merged_tables",
-            ):
-                page_no = table_page_no(page_evidence, len(tables))
+            if page_no is None:
+                source_index = _table_source_index(
+                    markdown_document.conversion_metadata, len(tables)
+                )
+                if source_index is not None:
+                    page_no = table_page_no(page_evidence, source_index)
             block_markdown = logical_block.markdown
             rows = parse_table_rows(block_markdown)
             text = table_text(rows)
@@ -227,6 +230,20 @@ def _line_page_no(line_page_numbers: list[int | None] | None, index: int) -> int
     if line_page_numbers is None or index >= len(line_page_numbers):
         return None
     return line_page_numbers[index]
+
+
+def _table_source_index(conversion_metadata: dict[str, object], table_index: int) -> int | None:
+    source_indexes = conversion_metadata.get("markdown_cleaner_table_source_indexes")
+    if not isinstance(source_indexes, list):
+        return table_index
+    if table_index >= len(source_indexes):
+        return table_index
+    source_index = source_indexes[table_index]
+    if isinstance(source_index, bool) or source_index is None:
+        return None
+    if isinstance(source_index, int) and source_index >= 0:
+        return source_index
+    return None
 
 
 def _lines_with_page_boundaries(

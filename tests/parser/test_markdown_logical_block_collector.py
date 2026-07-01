@@ -56,6 +56,34 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
             "Payment obligation continues without indentation.",
         )
 
+    def test_nested_and_multi_paragraph_list_continuation_stays_with_list_item(self):
+        blocks = collect_logical_blocks(
+            [
+                "1. Payment obligation",
+                "    - Buyer shall pay rent.",
+                "    - Buyer shall pay deposit.",
+                "",
+                "    Continued payment paragraph.",
+                "",
+                "2. Delivery obligation",
+            ]
+        )
+
+        self.assertEqual([block.block_type for block in blocks], ["list_item", "list_item"])
+        self.assertEqual(
+            blocks[0].text,
+            "Payment obligation Buyer shall pay rent. Buyer shall pay deposit. "
+            "Continued payment paragraph.",
+        )
+        self.assertEqual(
+            blocks[0].markdown,
+            "1. Payment obligation\n"
+            "    - Buyer shall pay rent.\n"
+            "    - Buyer shall pay deposit.\n"
+            "\n"
+            "    Continued payment paragraph.",
+        )
+
     def test_blockquote_lines_form_one_block_with_markdown_preserved(self):
         blocks = collect_logical_blocks(
             [

@@ -214,7 +214,11 @@ class ParserPageEvidenceTests(unittest.TestCase):
         )
 
         self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 1)
-        self.assertEqual([table.page_no for table in document.tables], [None, None])
+        self.assertEqual(
+            document.conversion_metadata["markdown_cleaner_table_source_indexes"],
+            [None, 2],
+        )
+        self.assertEqual([table.page_no for table in document.tables], [None, 3])
 
     def test_build_metadata_page_count_uses_only_concrete_page_numbers(self):
         no_pages = build_metadata(

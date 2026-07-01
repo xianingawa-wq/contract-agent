@@ -149,6 +149,21 @@ class MarkdownPageResolverTests(unittest.TestCase):
         self.assertEqual(evidence.marker_count, 2)
         self.assertEqual(evidence.max_page_no, 2)
 
+    def test_markdown_section_numbers_between_separators_are_not_page_evidence(self):
+        evidence = resolve_page_evidence(
+            [
+                "1",
+                "---",
+                "Section 1 Definitions",
+                "2",
+                "---",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None, None, None, None, None])
+        self.assertEqual(evidence.marker_count, 0)
+        self.assertEqual(evidence.max_page_no, 0)
+
     def test_standalone_body_numbers_without_boundary_context_are_not_page_evidence(self):
         evidence = resolve_page_evidence(
             [
@@ -193,6 +208,86 @@ class MarkdownPageResolverTests(unittest.TestCase):
         self.assertEqual(evidence.marker_count, 1)
         self.assertEqual(evidence.max_page_no, 7)
         self.assertEqual(evidence.sources, ["conversion_metadata"])
+
+    def test_metadata_table_pages_are_merged_with_explicit_page_markers(self):
+        evidence = resolve_page_evidence(
+            [
+                "Page 1 of 2",
+                "Section 1 Payment",
+                "Page 2 of 2",
+                "Section 2 Fees",
+            ],
+            conversion_metadata={
+                "docling_tables": [
+                    {"index": 0, "page": 7},
+                ]
+            },
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [1, 1, 2, 2])
+        self.assertEqual(evidence.table_page_numbers, {0: 7})
+        self.assertEqual(evidence.marker_count, 3)
+        self.assertEqual(evidence.max_page_no, 7)
+        self.assertEqual(evidence.sources, ["page_marker", "conversion_metadata"])
+
+    def test_metadata_table_pages_are_merged_with_numeric_page_markers(self):
+        evidence = resolve_page_evidence(
+            [
+                "Page one body",
+                "1",
+                "---",
+                "Page two body",
+                "2",
+                "---",
+            ],
+            conversion_metadata={
+                "docling_tables": [
+                    {"index": 2, "page": 5},
+                ]
+            },
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [1, 1, 1, 2, 2, 2])
+        self.assertEqual(evidence.table_page_numbers, {2: 5})
+        self.assertEqual(evidence.marker_count, 3)
+        self.assertEqual(evidence.max_page_no, 5)
+        self.assertEqual(evidence.sources, ["numeric_footer", "conversion_metadata"])
+
+    def test_metadata_table_pages_ignore_malformed_entries(self):
+        evidence = resolve_page_evidence(
+            ["Section 1 Payment"],
+            conversion_metadata={
+                "docling_tables": [
+                    {"index": -1, "page": 3},
+                    {"index": 1, "page": 0},
+                    {"index": 2, "page": -4},
+                    {"index": "bad", "page": "bad"},
+                    {"index": 3},
+                    {"page": 4.5},
+                ]
+            },
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None])
+        self.assertEqual(evidence.table_page_numbers, {})
+        self.assertEqual(evidence.marker_count, 0)
+        self.assertEqual(evidence.max_page_no, 0)
+
+    def test_metadata_table_pages_use_fallback_index_and_keep_first_duplicate(self):
+        evidence = resolve_page_evidence(
+            ["Section 1 Payment"],
+            conversion_metadata={
+                "docling_tables": [
+                    {"page": 6},
+                    {"index": 2, "page": 9},
+                    {"index": 2, "page": 10},
+                ]
+            },
+        )
+
+        self.assertEqual(evidence.table_page_numbers, {0: 6, 2: 9})
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 9)
 
     def test_invalid_explicit_marker_does_not_block_metadata_table_pages(self):
         evidence = resolve_page_evidence(

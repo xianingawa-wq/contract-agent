@@ -68,10 +68,13 @@ class RuleEnginePageEvidenceTests(unittest.TestCase):
         )
 
         risks = RuleEngine().check("通用合同", document)
-        page_by_evidence = {risk.evidence: risk.page_no for risk in risks}
+        payment_pages = [risk.page_no for risk in risks if risk.evidence == "付款"]
+        pay_pages = [risk.page_no for risk in risks if risk.evidence == "支付"]
 
-        self.assertIsNone(page_by_evidence["付款"])
-        self.assertEqual(page_by_evidence["支付"], 2)
+        self.assertTrue(payment_pages)
+        self.assertTrue(pay_pages)
+        self.assertTrue(all(page_no is None for page_no in payment_pages))
+        self.assertTrue(all(page_no == 2 for page_no in pay_pages))
 
     def test_related_chunks_do_not_match_unknown_page_numbers_as_same_page(self):
         target = ClauseChunk(

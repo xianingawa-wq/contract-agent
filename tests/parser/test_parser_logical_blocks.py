@@ -100,6 +100,7 @@ class ParserLogicalBlockTests(unittest.TestCase):
             ["title", "paragraph", "table", "paragraph"],
         )
         self.assertEqual(document.tables[0].rows, [["Item", "Amount"], ["Rent", "1000"]])
+        self.assertTrue(document.clause_chunks)
         self.assertTrue(
             all(
                 document.raw_text[chunk.start_offset : chunk.end_offset] == chunk.source_text

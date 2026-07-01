@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 from typing import Any
 
@@ -53,6 +53,7 @@ class CleanedMarkdown:
     markdown_content: str
     removed_lines: int = 0
     merged_tables: int = 0
+    table_source_indexes: list[int | None] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -73,7 +74,12 @@ class MarkdownCleaner:
     ) -> CleanedMarkdown:
         lines = markdown.splitlines()
         filtered_lines, removed_lines = self.remove_page_furniture(lines)
-        merged_lines, merged_tables, removed_table_noise_lines = _merge_split_tables(
+        (
+            merged_lines,
+            merged_tables,
+            removed_table_noise_lines,
+            table_source_indexes,
+        ) = _merge_split_tables(
             filtered_lines,
             table_layouts=_table_layouts(conversion_metadata),
         )
@@ -84,6 +90,7 @@ class MarkdownCleaner:
             markdown_content="\n".join(merged_lines).strip("\n"),
             removed_lines=removed_lines,
             merged_tables=merged_tables,
+            table_source_indexes=table_source_indexes,
         )
 
     def remove_page_furniture(self, lines: list[str]) -> tuple[list[str], int]:
@@ -285,10 +292,11 @@ def _merge_split_tables(
     lines: list[str],
     *,
     table_layouts: list[dict[str, Any]],
-) -> tuple[list[str], int, int]:
+) -> tuple[list[str], int, int, list[int | None]]:
     merged: list[str] = []
     merged_tables = 0
     removed_noise_lines = 0
+    table_source_indexes: list[int | None] = []
     index = 0
     table_index = 0
     while index < len(lines):
@@ -300,6 +308,7 @@ def _merge_split_tables(
         table_lines, next_index = _collect_pipe_lines(lines, index)
         table_columns = _column_count(table_lines[0])
         current_table_index = table_index
+        result_table_source_index: int | None = current_table_index
         table_index += 1
         index = next_index
 
@@ -334,6 +343,8 @@ def _merge_split_tables(
             )
             if not append_lines:
                 break
+            if next_table_index is not None:
+                result_table_source_index = None
             table_lines.extend(append_lines)
             merged_tables += 1
             removed_noise_lines += gap.removed_noise_lines
@@ -342,9 +353,10 @@ def _merge_split_tables(
             index = continuation_end
 
         merged.extend(table_lines)
+        table_source_indexes.append(result_table_source_index)
         continue
 
-    return merged, merged_tables, removed_noise_lines
+    return merged, merged_tables, removed_noise_lines, table_source_indexes
 
 
 def _table_continuation_gap(lines: list[str], index: int) -> _TableGap:
