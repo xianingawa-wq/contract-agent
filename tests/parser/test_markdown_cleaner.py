@@ -57,6 +57,32 @@ class MarkdownCleanerTests(unittest.TestCase):
         )
         self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 4)
 
+    def test_parse_markdown_removes_total_first_chinese_page_marker_with_supported_digits(self):
+        markdown = "\n".join(
+            [
+                "# 房屋租赁合同",
+                "共三页 第两页",
+                "第一条 正文",
+                "正文内容。",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertNotIn("共三页", document.raw_text)
+        self.assertNotIn("第两页", document.markdown_content)
+        self.assertIn("正文内容", document.raw_text)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 1)
+
     def test_parse_markdown_merges_table_split_by_page_furniture(self):
         markdown = "\n".join(
             [

@@ -83,11 +83,11 @@ def collect_logical_blocks(lines: list[str]) -> list[MarkdownLogicalBlock]:
 def _collect_fenced_code(lines: list[str], start: int) -> tuple[MarkdownLogicalBlock, int]:
     fence_match = _FENCE_RE.match(lines[start])
     fence = fence_match.group(1) if fence_match else lines[start].strip()[:3]
-    closing_fence_re = re.compile(rf"^{re.escape(fence[0])}{{{len(fence)},}}\s*$")
+    closing_fence_re = re.compile(rf"^ {{0,3}}{re.escape(fence[0])}{{{len(fence)},}}\s*$")
     index = start + 1
     body: list[str] = []
     while index < len(lines):
-        if closing_fence_re.match(lines[index].strip()):
+        if closing_fence_re.match(lines[index]):
             index += 1
             break
         body.append(lines[index])

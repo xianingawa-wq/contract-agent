@@ -87,6 +87,57 @@ class ParserPageEvidenceTests(unittest.TestCase):
         self.assertEqual(document.metadata.page_count, 2)
         self.assertEqual([block.location.page_no for block in document.blocks], [1, 2])
 
+    def test_parse_markdown_preserves_page_marker_like_body_text(self):
+        markdown = "\n".join(
+            [
+                "Section 1 Notice",
+                "The phrase Page 1 of 2 is part of this clause and must remain.",
+                "Buyer shall pay.",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.md",
+                file_type="md",
+                source_path="contract.md",
+                backend_name="builtin",
+            )
+        )
+
+        self.assertIn("Page 1 of 2 is part of this clause", document.raw_text)
+        self.assertTrue(any("Page 1 of 2" in block.text for block in document.blocks))
+        self.assertTrue(
+            any("Page 1 of 2" in item["page_content"] for item in to_rag_documents(document))
+        )
+
+    def test_page_marker_boundaries_keep_cross_page_paragraphs_separate(self):
+        markdown = "\n".join(
+            [
+                "Page 1 of 2",
+                "Body A",
+                "Page 2 of 2",
+                "Body B",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertEqual(
+            [(block.text, block.location.page_no) for block in document.blocks],
+            [("Body A", 1), ("Body B", 2)],
+        )
+
     def test_parse_markdown_uses_docling_table_metadata_for_table_page(self):
         markdown = "\n".join(
             [

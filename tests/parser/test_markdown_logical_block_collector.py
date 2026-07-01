@@ -117,6 +117,21 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
         self.assertEqual([block.block_type for block in blocks], ["fenced_code", "paragraph"])
         self.assertEqual(blocks[0].text, "line one\n```\nstill code")
 
+    def test_indented_code_fence_inside_fenced_code_is_not_closing_fence(self):
+        blocks = collect_logical_blocks(
+            [
+                "```",
+                "line one",
+                "    ```",
+                "still code",
+                "```",
+                "Tail paragraph",
+            ]
+        )
+
+        self.assertEqual([block.block_type for block in blocks], ["fenced_code", "paragraph"])
+        self.assertEqual(blocks[0].text, "line one\n    ```\nstill code")
+
     def test_heading_table_and_paragraph_boundaries_stay_separate(self):
         blocks = collect_logical_blocks(
             [

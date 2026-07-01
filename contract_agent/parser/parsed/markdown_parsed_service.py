@@ -134,11 +134,15 @@ def _parse_markdown_blocks(
     raw_parts: list[str] = []
     cursor = 0
     block_index = 0
-    logical_blocks = collect_logical_blocks(lines)
+    bounded_lines, bounded_line_page_numbers = _lines_with_page_boundaries(
+        lines,
+        line_page_numbers,
+    )
+    logical_blocks = collect_logical_blocks(bounded_lines)
 
     for logical_block in logical_blocks:
         if logical_block.block_type == "table":
-            page_no = _line_page_no(line_page_numbers, logical_block.line_start)
+            page_no = _line_page_no(bounded_line_page_numbers, logical_block.line_start)
             if page_no is None and not markdown_document.conversion_metadata.get(
                 "markdown_cleaner_merged_tables",
             ):
@@ -183,7 +187,7 @@ def _parse_markdown_blocks(
             block_index += 1
             continue
 
-        page_no = _line_page_no(line_page_numbers, logical_block.line_start)
+        page_no = _line_page_no(bounded_line_page_numbers, logical_block.line_start)
         block_type = logical_block.block_type
         text = logical_block.text
         level = logical_block.level
@@ -223,6 +227,32 @@ def _line_page_no(line_page_numbers: list[int | None] | None, index: int) -> int
     if line_page_numbers is None or index >= len(line_page_numbers):
         return None
     return line_page_numbers[index]
+
+
+def _lines_with_page_boundaries(
+    lines: list[str],
+    line_page_numbers: list[int | None] | None,
+) -> tuple[list[str], list[int | None] | None]:
+    if not line_page_numbers:
+        return lines, line_page_numbers
+    bounded_lines: list[str] = []
+    bounded_line_page_numbers: list[int | None] = []
+    previous_page: int | None = None
+    for index, line in enumerate(lines):
+        page_no = _line_page_no(line_page_numbers, index)
+        if (
+            bounded_lines
+            and page_no != previous_page
+            and page_no is not None
+            and previous_page is not None
+            and bounded_lines[-1].strip()
+        ):
+            bounded_lines.append("")
+            bounded_line_page_numbers.append(None)
+        bounded_lines.append(line)
+        bounded_line_page_numbers.append(page_no)
+        previous_page = page_no
+    return bounded_lines, bounded_line_page_numbers
 
 
 def _append_span(

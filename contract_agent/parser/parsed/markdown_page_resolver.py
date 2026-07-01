@@ -197,7 +197,7 @@ def _valid_explicit_markers(markers: list[_ExplicitPageMarker]) -> bool:
         return False
     total_pages = next(iter(totals), None)
     for marker in markers:
-        if marker.page_no < previous_page:
+        if previous_page and marker.page_no != previous_page + 1:
             return False
         if total_pages is not None and marker.page_no > total_pages:
             return False
@@ -209,8 +209,7 @@ def _uses_footer_style_markers(lines: list[str], markers: list[_ExplicitPageMark
     segment_start = 0
     for marker in markers:
         if _has_body_content(lines, segment_start, marker.index) and (
-            marker.index == markers[0].index
-            or _marker_followed_by_footer_boundary(lines, marker.index)
+            _marker_followed_by_footer_boundary(lines, marker.index)
         ):
             return True
         segment_start = marker.index + 1
@@ -299,12 +298,11 @@ def _numeric_footer_markers(lines: list[str]) -> list[tuple[int, int]]:
 
 
 def _has_numeric_footer_boundary_context(lines: list[str], index: int) -> bool:
-    previous_line = _nearest_non_empty_line(lines, index, step=-1)
     next_line = _nearest_non_empty_line(lines, index, step=1)
-    return any(
-        _is_page_separator(line) or _explicit_page_no(line) is not None
-        for line in (previous_line, next_line)
-        if line is not None
+    return (
+        next_line is None
+        or _is_page_separator(next_line)
+        or _explicit_page_no(next_line) is not None
     )
 
 

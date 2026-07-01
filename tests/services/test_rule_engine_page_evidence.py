@@ -36,6 +36,43 @@ class RuleEnginePageEvidenceTests(unittest.TestCase):
         self.assertIsNone(engine._build_risk(rule, "Unknown", unknown_chunk).page_no)
         self.assertEqual(engine._build_risk(rule, "Known", known_chunk).page_no, 2)
 
+    def test_public_check_preserves_unknown_and_known_page_numbers_on_risks(self):
+        document = ParsedDocument(
+            metadata=DocumentMetadata(
+                doc_id="doc",
+                file_name="contract.txt",
+                file_type="txt",
+                source_path="inline",
+            ),
+            raw_text="付款\n支付",
+            clause_chunks=[
+                ClauseChunk(
+                    chunk_id="unknown-payment",
+                    chunk_level="paragraph",
+                    section_title="Unknown payment",
+                    page_no=None,
+                    start_offset=0,
+                    end_offset=2,
+                    source_text="付款",
+                ),
+                ClauseChunk(
+                    chunk_id="known-payment",
+                    chunk_level="paragraph",
+                    section_title="Known payment",
+                    page_no=2,
+                    start_offset=3,
+                    end_offset=5,
+                    source_text="支付",
+                ),
+            ],
+        )
+
+        risks = RuleEngine().check("通用合同", document)
+        page_by_evidence = {risk.evidence: risk.page_no for risk in risks}
+
+        self.assertIsNone(page_by_evidence["付款"])
+        self.assertEqual(page_by_evidence["支付"], 2)
+
     def test_related_chunks_do_not_match_unknown_page_numbers_as_same_page(self):
         target = ClauseChunk(
             chunk_id="target",

@@ -43,16 +43,16 @@ class MarkdownPageResolverTests(unittest.TestCase):
     def test_chinese_page_markers_accept_supported_digits(self):
         evidence = resolve_page_evidence(
             [
-                "第两页",
-                "Body on page two",
                 "第一百零一页",
                 "Body on page one hundred one",
+                "第一百零两页",
+                "Body on page one hundred two",
             ]
         )
 
-        self.assertEqual(evidence.line_page_numbers, [2, 2, 101, 101])
+        self.assertEqual(evidence.line_page_numbers, [101, 101, 102, 102])
         self.assertEqual(evidence.marker_count, 2)
-        self.assertEqual(evidence.max_page_no, 101)
+        self.assertEqual(evidence.max_page_no, 102)
 
     def test_inconsistent_page_marker_totals_are_not_used_as_page_evidence(self):
         evidence = resolve_page_evidence(
@@ -80,6 +80,29 @@ class MarkdownPageResolverTests(unittest.TestCase):
         self.assertEqual(evidence.marker_count, 0)
         self.assertEqual(evidence.max_page_no, 0)
 
+    def test_duplicate_or_skipped_explicit_page_markers_are_not_used_as_page_evidence(self):
+        duplicate = resolve_page_evidence(
+            [
+                "Page 1 of 3",
+                "Body one",
+                "Page 1 of 3",
+                "Duplicate body",
+            ]
+        )
+        skipped = resolve_page_evidence(
+            [
+                "Page 1 of 3",
+                "Body one",
+                "Page 3 of 3",
+                "Skipped body",
+            ]
+        )
+
+        self.assertEqual(duplicate.line_page_numbers, [None, None, None, None])
+        self.assertEqual(duplicate.marker_count, 0)
+        self.assertEqual(skipped.line_page_numbers, [None, None, None, None])
+        self.assertEqual(skipped.marker_count, 0)
+
     def test_explicit_page_markers_can_label_footer_segments(self):
         evidence = resolve_page_evidence(
             [
@@ -92,6 +115,21 @@ class MarkdownPageResolverTests(unittest.TestCase):
         )
 
         self.assertEqual(evidence.line_page_numbers, [1, 1, 1, 2, 2])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 2)
+
+    def test_body_line_before_explicit_marker_does_not_force_footer_style_without_boundary(self):
+        evidence = resolve_page_evidence(
+            [
+                "Introductory body text",
+                "Page 1 of 2",
+                "Page one body",
+                "Page 2 of 2",
+                "Page two body",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None, 1, 1, 2, 2])
         self.assertEqual(evidence.marker_count, 2)
         self.assertEqual(evidence.max_page_no, 2)
 
@@ -123,6 +161,21 @@ class MarkdownPageResolverTests(unittest.TestCase):
         )
 
         self.assertEqual(evidence.line_page_numbers, [None, None, None, None, None])
+        self.assertEqual(evidence.marker_count, 0)
+
+    def test_standalone_body_numbers_near_markdown_separators_are_not_page_evidence(self):
+        evidence = resolve_page_evidence(
+            [
+                "---",
+                "1",
+                "Definitions",
+                "---",
+                "2",
+                "Payment obligations",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None, None, None, None, None, None])
         self.assertEqual(evidence.marker_count, 0)
 
     def test_metadata_table_pages_are_used_when_text_has_no_page_markers(self):
