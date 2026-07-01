@@ -125,6 +125,38 @@ class MarkdownPageResolverTests(unittest.TestCase):
         self.assertEqual(evidence.line_page_numbers, [None, None, None, None, None])
         self.assertEqual(evidence.marker_count, 0)
 
+    def test_metadata_table_pages_are_used_when_text_has_no_page_markers(self):
+        evidence = resolve_page_evidence(
+            ["Section 1 Payment", "Buyer shall pay."],
+            conversion_metadata={
+                "docling_tables": [
+                    {"index": 3, "page": 7},
+                ]
+            },
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None, None])
+        self.assertEqual(evidence.table_page_numbers, {3: 7})
+        self.assertEqual(evidence.marker_count, 1)
+        self.assertEqual(evidence.max_page_no, 7)
+        self.assertEqual(evidence.sources, ["conversion_metadata"])
+
+    def test_invalid_explicit_marker_does_not_block_metadata_table_pages(self):
+        evidence = resolve_page_evidence(
+            ["Page 2 of 1", "Body should not receive impossible page evidence."],
+            conversion_metadata={
+                "docling_tables": [
+                    {"index": 0, "page": 5},
+                ]
+            },
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None, None])
+        self.assertEqual(evidence.table_page_numbers, {0: 5})
+        self.assertEqual(evidence.marker_count, 1)
+        self.assertEqual(evidence.max_page_no, 5)
+        self.assertEqual(evidence.sources, ["conversion_metadata"])
+
 
 if __name__ == "__main__":
     unittest.main()

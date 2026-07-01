@@ -20,9 +20,9 @@ class ParserPageEvidenceTests(unittest.TestCase):
         self.assertTrue(all(span.page_no is None for span in document.spans))
         self.assertTrue(all(block.location.page_no is None for block in document.blocks))
         self.assertTrue(all(chunk.page_no is None for chunk in document.clause_chunks))
-        self.assertTrue(
-            all(item["metadata"]["page_no"] is None for item in to_rag_documents(document))
-        )
+        rag_documents = to_rag_documents(document)
+        self.assertTrue(rag_documents)
+        self.assertTrue(all(item["metadata"]["page_no"] is None for item in rag_documents))
 
     def test_parse_markdown_uses_page_markers_as_evidence_without_body_pollution(self):
         markdown = "\n".join(

@@ -109,10 +109,18 @@ def _collect_blockquote(lines: list[str], start: int) -> tuple[MarkdownLogicalBl
     index = start
     markdown_lines: list[str] = []
     text_lines: list[str] = []
-    while index < len(lines) and _is_blockquote(lines[index]):
-        markdown_lines.append(lines[index])
-        match = _BLOCKQUOTE_RE.match(lines[index])
-        text_lines.append(match.group(1).strip() if match else lines[index].strip())
+    while index < len(lines):
+        line = lines[index]
+        if _is_blockquote(line):
+            markdown_lines.append(line)
+            match = _BLOCKQUOTE_RE.match(line)
+            text_lines.append(match.group(1).strip() if match else line.strip())
+            index += 1
+            continue
+        if not line.strip() or _starts_new_block(lines, index):
+            break
+        markdown_lines.append(line)
+        text_lines.append(line.strip())
         index += 1
     return (
         MarkdownLogicalBlock(

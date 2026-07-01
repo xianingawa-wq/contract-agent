@@ -65,7 +65,7 @@ def resolve_page_evidence(
     conversion_metadata: dict[str, Any] | None = None,
 ) -> MarkdownPageEvidence:
     explicit_markers = _explicit_page_markers(lines)
-    if explicit_markers:
+    if explicit_markers and _valid_explicit_markers(explicit_markers):
         return _resolve_from_explicit_markers(lines, explicit_markers)
 
     numeric_markers = _numeric_footer_markers(lines)

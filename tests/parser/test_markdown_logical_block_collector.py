@@ -71,6 +71,23 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
         )
         self.assertEqual(blocks[0].text, "Important notice keep the original quote marker.")
 
+    def test_blockquote_lazy_continuation_stays_with_quote(self):
+        blocks = collect_logical_blocks(
+            [
+                "> Important notice",
+                "continued without quote marker.",
+                "",
+                "Tail paragraph",
+            ]
+        )
+
+        self.assertEqual([block.block_type for block in blocks], ["blockquote", "paragraph"])
+        self.assertEqual(blocks[0].text, "Important notice continued without quote marker.")
+        self.assertEqual(
+            blocks[0].markdown,
+            "> Important notice\ncontinued without quote marker.",
+        )
+
     def test_fenced_code_lines_form_one_block(self):
         blocks = collect_logical_blocks(
             [
@@ -118,6 +135,25 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
         )
         self.assertEqual(blocks[2].line_start, 2)
         self.assertEqual(blocks[2].line_end, 5)
+
+    def test_empty_and_whitespace_only_input_returns_no_blocks(self):
+        self.assertEqual(collect_logical_blocks([]), [])
+        self.assertEqual(collect_logical_blocks(["", "   ", "\t"]), [])
+
+    def test_unclosed_fenced_code_consumes_until_end_of_input(self):
+        blocks = collect_logical_blocks(
+            [
+                "```text",
+                "line one",
+                "line two",
+            ]
+        )
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].block_type, "fenced_code")
+        self.assertEqual(blocks[0].text, "line one\nline two")
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 3)
 
 
 if __name__ == "__main__":
