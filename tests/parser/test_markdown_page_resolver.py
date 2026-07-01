@@ -68,6 +68,20 @@ class MarkdownPageResolverTests(unittest.TestCase):
         self.assertEqual(evidence.marker_count, 2)
         self.assertEqual(evidence.max_page_no, 11)
 
+    def test_total_first_chinese_page_markers_accept_punctuation(self):
+        evidence = resolve_page_evidence(
+            [
+                "共三页，第两页",
+                "Body on page two",
+                "共三页，第三页",
+                "Body on page three",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [2, 2, 3, 3])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 3)
+
     def test_inconsistent_page_marker_totals_are_not_used_as_page_evidence(self):
         evidence = resolve_page_evidence(
             [
@@ -163,6 +177,22 @@ class MarkdownPageResolverTests(unittest.TestCase):
         self.assertEqual(evidence.marker_count, 2)
         self.assertEqual(evidence.max_page_no, 2)
 
+    def test_numeric_footer_sequence_accepts_dash_wrapped_markers(self):
+        evidence = resolve_page_evidence(
+            [
+                "Page one body",
+                "— 1 —",
+                "---",
+                "Page two body",
+                "– 2 –",
+                "---",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [1, 1, 1, 2, 2, 2])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 2)
+
     def test_markdown_section_numbers_between_separators_are_not_page_evidence(self):
         evidence = resolve_page_evidence(
             [
@@ -206,6 +236,34 @@ class MarkdownPageResolverTests(unittest.TestCase):
 
         self.assertEqual(evidence.line_page_numbers, [None, None, None, None, None, None])
         self.assertEqual(evidence.marker_count, 0)
+
+    def test_body_fraction_lines_without_boundary_context_are_not_page_evidence(self):
+        evidence = resolve_page_evidence(
+            [
+                "Liquidated damages ratio",
+                "1/2",
+                "Payment ratio",
+                "2/2",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None, None, None, None])
+        self.assertEqual(evidence.marker_count, 0)
+
+    def test_fraction_page_markers_require_boundary_context(self):
+        evidence = resolve_page_evidence(
+            [
+                "1/2",
+                "Page one body",
+                "---",
+                "2/2",
+                "Page two body",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [1, 1, 1, 2, 2])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 2)
 
     def test_metadata_table_pages_are_used_when_text_has_no_page_markers(self):
         evidence = resolve_page_evidence(

@@ -44,7 +44,7 @@ _CHINESE_TOTAL_FIRST_RE = re.compile(
     rf"^共\s*([{_CHINESE_PAGE_NUMBER_CHARS}]+)\s*页\s*[，,、]?\s*"
     rf"第\s*([{_CHINESE_PAGE_NUMBER_CHARS}]+)\s*页$"
 )
-_NUMERIC_FOOTER_RE = re.compile(r"^[\-\s]*(\d{1,4})[\-\s]*$")
+_NUMERIC_FOOTER_RE = re.compile(r"^[-–—\s]*(\d{1,4})[-–—\s]*$")
 _CHINESE_DIGITS = {
     "零": 0,
     "一": 1,
@@ -173,7 +173,7 @@ def _with_table_page_numbers(
 def _explicit_page_markers(lines: list[str]) -> list[_ExplicitPageMarker]:
     markers: list[_ExplicitPageMarker] = []
     for index, line in enumerate(lines):
-        marker = _explicit_page_marker(index, line)
+        marker = _explicit_page_marker(index, line, lines=lines)
         if marker is not None:
             markers.append(marker)
     return markers
@@ -184,10 +184,19 @@ def _explicit_page_no(line: str) -> int | None:
     return marker.page_no if marker is not None else None
 
 
-def _explicit_page_marker(index: int, line: str) -> _ExplicitPageMarker | None:
+def _explicit_page_marker(
+    index: int,
+    line: str,
+    *,
+    lines: list[str] | None = None,
+) -> _ExplicitPageMarker | None:
     stripped = line.strip()
-    match = _ENGLISH_PAGE_RE.match(stripped) or _PAGE_FRACTION_RE.match(stripped)
+    match = _ENGLISH_PAGE_RE.match(stripped)
     if match is not None:
+        return _marker_from_values(index, match.group(1), match.group(2))
+
+    match = _PAGE_FRACTION_RE.match(stripped)
+    if match is not None and lines is not None and _has_page_boundary_context(lines, index):
         return _marker_from_values(index, match.group(1), match.group(2))
 
     match = _CHINESE_PAGE_RE.match(stripped)
@@ -276,6 +285,16 @@ def _page_numbers_from_explicit_footers(
 def _marker_followed_by_footer_boundary(lines: list[str], index: int) -> bool:
     next_line = _nearest_non_empty_line(lines, index, step=1)
     return next_line is None or _is_page_separator(next_line)
+
+
+def _has_page_boundary_context(lines: list[str], index: int) -> bool:
+    previous_line = _nearest_non_empty_line(lines, index, step=-1)
+    next_line = _nearest_non_empty_line(lines, index, step=1)
+    return (
+        previous_line is None
+        or _is_page_separator(previous_line)
+        or (next_line is not None and _is_page_separator(next_line))
+    )
 
 
 def _has_body_content(lines: list[str], start: int, end: int) -> bool:

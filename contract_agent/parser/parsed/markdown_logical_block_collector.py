@@ -151,6 +151,8 @@ def _collect_list_item(lines: list[str], start: int) -> tuple[MarkdownLogicalBlo
             markdown_lines.append(line)
             index += 1
             continue
+        if _starts_embedded_structural_block(lines, index):
+            break
         if _starts_new_block(lines, index) and not _is_list_continuation_line(
             line, continuation_column
         ):
@@ -203,6 +205,10 @@ def _starts_new_block(lines: list[str], index: int) -> bool:
         or _is_blockquote(line)
         or block_type in {"title", "clause_header", "list_item"}
     )
+
+
+def _starts_embedded_structural_block(lines: list[str], index: int) -> bool:
+    return _is_fence(lines[index]) or is_table_start(lines, index)
 
 
 def _is_fence(line: str) -> bool:

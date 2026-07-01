@@ -13,13 +13,13 @@ _PAGE_NUMBER_TOKEN = rf"[\d{_CHINESE_PAGE_NUMBER_CHARS}]+"
 _PAGE_NUMBER_PATTERNS = [
     re.compile(
         rf"^第\s*{_PAGE_NUMBER_TOKEN}\s*页"
-        rf"(?:\s*[，,]?\s*共\s*{_PAGE_NUMBER_TOKEN}\s*页)?$"
+        rf"(?:\s*[，,、]?\s*共\s*{_PAGE_NUMBER_TOKEN}\s*页)?$"
     ),
-    re.compile(rf"^共\s*{_PAGE_NUMBER_TOKEN}\s*页\s*第\s*{_PAGE_NUMBER_TOKEN}\s*页$"),
+    re.compile(rf"^共\s*{_PAGE_NUMBER_TOKEN}\s*页\s*[，,、]?\s*第\s*{_PAGE_NUMBER_TOKEN}\s*页$"),
     re.compile(r"^page\s+\d+$", re.IGNORECASE),
     re.compile(r"^page\s+\d+\s+of\s+\d+$", re.IGNORECASE),
-    re.compile(r"^\d+\s*/\s*\d+$"),
 ]
+_PAGE_FRACTION_PATTERN = re.compile(r"^\d+\s*/\s*\d+$")
 _NUMERIC_PAGE_FOOTER_PATTERN = re.compile(r"^[-–—]?\s*(\d{1,4})\s*[-–—]?$")
 _PAGE_SEPARATOR_PATTERN = re.compile(r"^[-_=]{3,}$")
 _KNOWN_FOOTER_VALUES = {
@@ -96,7 +96,7 @@ class MarkdownCleaner:
 
     def remove_page_furniture(self, lines: list[str]) -> tuple[list[str], int]:
         page_number_indexes = {
-            index for index, line in enumerate(lines) if self.is_page_number(line)
+            index for index, _ in enumerate(lines) if _is_page_number_at(lines, index)
         }
         page_number_indexes.update(_numeric_page_footer_indexes(lines))
         duplicate_furniture_indexes = _duplicate_furniture_indexes(lines, page_number_indexes)
@@ -215,6 +215,25 @@ def _is_page_number(line: str) -> bool:
     if not stripped:
         return False
     return any(pattern.match(stripped) for pattern in _PAGE_NUMBER_PATTERNS)
+
+
+def _is_page_number_at(lines: list[str], index: int) -> bool:
+    stripped = lines[index].strip()
+    if _is_page_number(stripped):
+        return True
+    return bool(
+        _PAGE_FRACTION_PATTERN.match(stripped) and _has_fraction_page_boundary_context(lines, index)
+    )
+
+
+def _has_fraction_page_boundary_context(lines: list[str], index: int) -> bool:
+    previous_line = _nearest_non_empty_line(lines, index, step=-1)
+    next_line = _nearest_non_empty_line(lines, index, step=1)
+    return (
+        previous_line is None
+        or _is_page_separator(previous_line)
+        or (next_line is not None and _is_page_separator(next_line))
+    )
 
 
 def _numeric_page_footer_indexes(lines: list[str]) -> set[int]:

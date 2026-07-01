@@ -83,6 +83,32 @@ class MarkdownCleanerTests(unittest.TestCase):
         self.assertIn("正文内容", document.raw_text)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 1)
 
+    def test_parse_markdown_removes_total_first_chinese_page_marker_with_punctuation(self):
+        markdown = "\n".join(
+            [
+                "# 房屋租赁合同",
+                "共三页，第两页",
+                "第一条 正文",
+                "正文内容。",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertNotIn("共三页", document.raw_text)
+        self.assertNotIn("第两页", document.markdown_content)
+        self.assertIn("正文内容", document.raw_text)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 1)
+
     def test_parse_markdown_merges_table_split_by_page_furniture(self):
         markdown = "\n".join(
             [
@@ -708,6 +734,78 @@ class MarkdownCleanerTests(unittest.TestCase):
         self.assertIn("第一页正文", document.raw_text)
         self.assertIn("第三页正文", document.raw_text)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 4)
+
+    def test_parse_markdown_removes_dash_wrapped_numeric_page_footers_with_page_evidence(self):
+        markdown = "\n".join(
+            [
+                "# 房屋租赁合同",
+                "",
+                "第一条 正文",
+                "第一页正文。",
+                "",
+                "— 1 —",
+                "---",
+                "",
+                "第二条 正文",
+                "第二页正文。",
+                "",
+                "– 2 –",
+                "---",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertNotIn("— 1 —", document.markdown_content)
+        self.assertNotIn("– 2 –", document.markdown_content)
+        body_blocks = [block for block in document.blocks if block.block_type != "title"]
+        self.assertEqual([block.location.page_no for block in body_blocks], [1, 2])
+        self.assertEqual(
+            document.conversion_metadata["markdown_page_evidence"]["sources"],
+            ["numeric_footer"],
+        )
+
+    def test_parse_markdown_keeps_body_fraction_lines_without_page_boundary_context(self):
+        markdown = "\n".join(
+            [
+                "# Damage ratio",
+                "",
+                "Liquidated damages ratio",
+                "1/2",
+                "",
+                "Payment ratio",
+                "2/2",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        non_empty_lines = [
+            line.strip() for line in document.markdown_content.splitlines() if line.strip()
+        ]
+        self.assertIn("1/2", non_empty_lines)
+        self.assertIn("2/2", non_empty_lines)
+        self.assertIn("1/2", document.raw_text)
+        self.assertIn("2/2", document.raw_text)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 0)
 
     def test_parse_markdown_keeps_body_numbers_that_are_not_page_sequence(self):
         markdown = "\n".join(

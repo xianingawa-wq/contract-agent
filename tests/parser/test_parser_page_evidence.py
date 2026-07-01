@@ -272,6 +272,67 @@ class ParserPageEvidenceTests(unittest.TestCase):
         )
         self.assertEqual(document.blocks[0].block_type, "table")
 
+    def test_cross_page_pipe_prose_keeps_page_boundary(self):
+        markdown = "\n".join(
+            [
+                "Page 1 of 2",
+                "Party A | shall pay rent",
+                "Page 2 of 2",
+                "Party B | shall deliver invoice",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertEqual(
+            [(block.text, block.location.page_no) for block in document.blocks],
+            [
+                ("Party A | shall pay rent", 1),
+                ("Party B | shall deliver invoice", 2),
+            ],
+        )
+
+    def test_cross_page_list_continuation_splits_by_page_evidence(self):
+        markdown = "\n".join(
+            [
+                "Page 1 of 2",
+                "1. Payment obligation",
+                "Page 2 of 2",
+                "   continues on page two.",
+                "",
+                "2. Delivery obligation",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertEqual(
+            [(block.block_type, block.text, block.location.page_no) for block in document.blocks],
+            [
+                ("list_item", "Payment obligation", 1),
+                ("paragraph", "continues on page two.", 2),
+                ("list_item", "Delivery obligation", 2),
+            ],
+        )
+
     def test_merged_table_does_not_use_stale_docling_table_index_fallback(self):
         markdown = "\n".join(
             [

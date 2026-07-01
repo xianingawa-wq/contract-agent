@@ -105,6 +105,44 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
         self.assertEqual(blocks[0].line_start, 0)
         self.assertEqual(blocks[0].line_end, 2)
 
+    def test_indented_table_under_list_item_starts_structural_block(self):
+        blocks = collect_logical_blocks(
+            [
+                "1. Payment schedule",
+                "   | Item | Amount |",
+                "   | --- | --- |",
+                "   | Rent | 1000 |",
+            ]
+        )
+
+        self.assertEqual([block.block_type for block in blocks], ["list_item", "table"])
+        self.assertEqual(blocks[0].text, "Payment schedule")
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 1)
+        self.assertEqual(
+            blocks[1].markdown,
+            "   | Item | Amount |\n   | --- | --- |\n   | Rent | 1000 |",
+        )
+        self.assertEqual(blocks[1].line_start, 1)
+        self.assertEqual(blocks[1].line_end, 4)
+
+    def test_indented_fence_under_list_item_starts_structural_block(self):
+        blocks = collect_logical_blocks(
+            [
+                "1. Payment script",
+                "   ```text",
+                "   not list text",
+                "   ```",
+            ]
+        )
+
+        self.assertEqual([block.block_type for block in blocks], ["list_item", "fenced_code"])
+        self.assertEqual(blocks[0].text, "Payment script")
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 1)
+        self.assertEqual(blocks[1].text, "   not list text")
+        self.assertEqual(blocks[1].markdown, "   ```text\n   not list text\n   ```")
+
     def test_blockquote_lines_form_one_block_with_markdown_preserved(self):
         blocks = collect_logical_blocks(
             [
@@ -152,6 +190,7 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
         self.assertEqual(len(blocks), 1)
         self.assertEqual(blocks[0].block_type, "fenced_code")
         self.assertEqual(blocks[0].text, "line one\n1. not a list item")
+        self.assertEqual(blocks[0].markdown, "```text\nline one\n1. not a list item\n```")
         self.assertEqual(blocks[0].line_start, 0)
         self.assertEqual(blocks[0].line_end, 4)
 
@@ -168,6 +207,7 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
         self.assertEqual(len(blocks), 1)
         self.assertEqual(blocks[0].block_type, "fenced_code")
         self.assertEqual(blocks[0].text, "line one\n1. not a list item")
+        self.assertEqual(blocks[0].markdown, "~~~text\nline one\n1. not a list item\n~~~")
         self.assertEqual(blocks[0].line_start, 0)
         self.assertEqual(blocks[0].line_end, 4)
 
@@ -185,6 +225,7 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
 
         self.assertEqual([block.block_type for block in blocks], ["fenced_code", "paragraph"])
         self.assertEqual(blocks[0].text, "line one\n```\nstill code")
+        self.assertEqual(blocks[0].markdown, "````\nline one\n```\nstill code\n````")
 
     def test_indented_code_fence_inside_fenced_code_is_not_closing_fence(self):
         blocks = collect_logical_blocks(
