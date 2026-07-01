@@ -115,6 +115,17 @@ class DoclingParserImpl:
             raise DocumentLoadError("Docling 未找到 PDF/RapidOCR 配置入口。")
 
         suffix = _source_suffix(source)
+        if source.kind == "text":
+            raise DocumentLoadError("Docling does not accept inline text input")
+        if not suffix:
+            raise DocumentLoadError("Docling requires a file suffix")
+        if suffix not in config.allowed_suffixes:
+            raise DocumentLoadError(
+                f"Docling suffix is blocked by parser.allowed_suffixes: {suffix}"
+            )
+        if suffix not in config.docling_supported_suffixes:
+            raise DocumentLoadError(f"Docling suffix is not configured as supported: {suffix}")
+
         input_format_map = _docling_input_format_map(input_format_cls)
         docling_input_format = input_format_map.get(suffix)
         if docling_input_format is None:

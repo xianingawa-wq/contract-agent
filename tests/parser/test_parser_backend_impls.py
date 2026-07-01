@@ -325,6 +325,63 @@ class ParserBackendImplTests(unittest.TestCase):
 
                 self.assertEqual(result.conversion_metadata["docling_input_format"], expected)
 
+    def test_docling_convertor_rejects_sources_blocked_by_parser_policy(self):
+        class FakeDoclingDocument:
+            pages = {}
+            tables = []
+
+            def export_to_markdown(self, **kwargs: object) -> str:
+                return "# Structured\n\nBody"
+
+        class FakeBackendResult:
+            document = FakeDoclingDocument()
+
+        class FakeDocumentConverter:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+            def convert(self, source: str) -> FakeBackendResult:
+                return FakeBackendResult()
+
+        cases = [
+            (
+                ParserSource.from_text("body", file_name="inline.md"),
+                ParserConfig(docling_enabled=True),
+                "inline text input",
+            ),
+            (
+                ParserSource.from_bytes("contract", b"fake"),
+                ParserConfig(docling_enabled=True),
+                "requires a file suffix",
+            ),
+            (
+                ParserSource.from_bytes("contract.docx", b"fake"),
+                ParserConfig(
+                    docling_enabled=True,
+                    allowed_suffixes=[".pdf"],
+                    docling_supported_suffixes=[".pdf", ".docx"],
+                ),
+                "parser.allowed_suffixes",
+            ),
+            (
+                ParserSource.from_bytes("contract.docx", b"fake"),
+                ParserConfig(
+                    docling_enabled=True,
+                    allowed_suffixes=[".pdf", ".docx"],
+                    docling_supported_suffixes=[".pdf"],
+                ),
+                "not configured as supported",
+            ),
+        ]
+        for source, config, message in cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(DocumentLoadError, message):
+                    _run_docling_fake(
+                        FakeDocumentConverter,
+                        config,
+                        source=source,
+                    )
+
     def test_docling_convertor_rejects_tiny_partial_success_output(self):
         class FakeDoclingDocument:
             pages = {}
@@ -500,6 +557,7 @@ def _run_docling_fake(
     parser_config: ParserConfig | None = None,
     *,
     file_name: str = "project.pdf",
+    source: ParserSource | None = None,
 ) -> object:
     package = types.ModuleType("docling")
     module = types.ModuleType("docling.document_converter")
@@ -578,7 +636,7 @@ def _run_docling_fake(
         ):
             with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
                 return DoclingParserImpl().convert(
-                    ParserSource.from_path(path),
+                    source or ParserSource.from_path(path),
                     parser_config or ParserConfig(docling_enabled=True),
                 )
 

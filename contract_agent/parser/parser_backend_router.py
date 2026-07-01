@@ -119,7 +119,7 @@ class ParserBackendRouter:
             except Exception as exc:  # pragma: no cover - defensive backend boundary
                 last_error = DocumentLoadError(f"parser backend {backend_name} failed: {exc}")
 
-            if not support.can_fallback:
+            if is_default_backend and not support.can_fallback:
                 if isinstance(last_error, ParserError):
                     raise last_error
                 raise DocumentLoadError(str(last_error))
