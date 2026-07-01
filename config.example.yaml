@@ -87,7 +87,6 @@ parser:
   strict_converter_availability: false
   allowed_suffixes:
     - .txt
-    - .doc
     - .docx
     - .pdf
     - .md

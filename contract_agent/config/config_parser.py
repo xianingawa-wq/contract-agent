@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field, model_validator
 DEFAULT_ENABLED_CONVERTERS = ["docling", "builtin"]
 DEFAULT_ALLOWED_SUFFIXES = [
     ".txt",
-    ".doc",
     ".docx",
     ".pdf",
     ".md",

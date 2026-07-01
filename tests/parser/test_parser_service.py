@@ -775,45 +775,6 @@ class ContractParserServiceTests(unittest.TestCase):
         self.assertTrue(any("Alpha" in chunk.source_text for chunk in document.clause_chunks))
         self.assertTrue(any("Alpha" in item["page_content"] for item in to_rag_documents(document)))
 
-    def test_parse_path_routes_legacy_doc_file_through_markitdown_backend(self):
-        markdown = "# Legacy Contract\n\n| Key | Value |\n| --- | --- |\n| Project | Beta |\n"
-
-        class FakeResult:
-            text_content = markdown
-
-        class FakeMarkItDown:
-            def convert(self, source: str) -> FakeResult:
-                self.source = source
-                return FakeResult()
-
-        module = types.ModuleType("markitdown")
-        module.MarkItDown = FakeMarkItDown
-        with tempfile.TemporaryDirectory() as tmp:
-            config = ParserConfig(
-                default_converter="markitdown",
-                enabled_converters=["markitdown"],
-                fallback_order=["markitdown"],
-                markitdown_enabled=True,
-                allowed_suffixes=[".doc"],
-                allow_path_input=True,
-                trusted_path_roots=[tmp],
-            )
-            path = Path(tmp) / "legacy.doc"
-            path.write_bytes(b"fake legacy doc")
-            with (
-                patch.dict(sys.modules, {"markitdown": module}),
-                patch("importlib.util.find_spec", return_value=_module_spec("markitdown")),
-            ):
-                parser = ContractParser(parser_config=config)
-                markdown_document = parser.convert_to_markdown(path)
-                document = parser.parse_markdown(markdown_document)
-
-        self.assertEqual(markdown_document.backend_name, "markitdown")
-        self.assertEqual(markdown_document.markdown_content, markdown)
-        self.assertEqual(document.markdown_content, markdown)
-        self.assertEqual(document.tables[0].rows, [["Key", "Value"], ["Project", "Beta"]])
-        self.assertTrue(any("Beta" in item["page_content"] for item in to_rag_documents(document)))
-
     def test_parse_text_obeys_max_input_bytes(self):
         parser = ContractParser(parser_config=ParserConfig(max_input_bytes=8))
 

@@ -23,7 +23,6 @@ class ParserConfigTests(unittest.TestCase):
             config.allowed_suffixes,
             [
                 ".txt",
-                ".doc",
                 ".docx",
                 ".pdf",
                 ".md",

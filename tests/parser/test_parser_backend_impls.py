@@ -35,7 +35,6 @@ class ParserBackendImplTests(unittest.TestCase):
                     ".csv",
                     ".xlsx",
                     ".txt",
-                    ".doc",
                 )
             }
             text_support = backend.supports(ParserSource.from_text("body"), config)
@@ -46,7 +45,7 @@ class ParserBackendImplTests(unittest.TestCase):
             with self.subTest(suffix=suffix):
                 self.assertTrue(supports[suffix].supported)
                 self.assertTrue(supports[suffix].can_fallback)
-        for suffix in (".txt", ".doc"):
+        for suffix in (".txt",):
             with self.subTest(suffix=suffix):
                 self.assertFalse(supports[suffix].supported)
                 self.assertTrue(supports[suffix].can_fallback)
