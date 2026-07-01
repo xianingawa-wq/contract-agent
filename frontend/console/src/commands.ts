@@ -9,6 +9,7 @@ export const BUILT_IN_COMMANDS = [
   '/config',
   '/review',
   '/tokens',
+  '/initconfig',
   '/clear',
   '/exit'
 ] as const;
@@ -75,6 +76,7 @@ export function helpText(): string {
     '/config 查看脱敏模型配置',
     '/review <path> 审查合同文件',
     '/tokens 查看 token 估算',
+    '/initconfig 查看重新初始化配置命令',
     '/clear 清空当前会话',
     '/exit 退出控制台'
   ].join('\n');

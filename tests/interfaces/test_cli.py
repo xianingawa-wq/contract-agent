@@ -314,6 +314,57 @@ rerank:
         args = run_frontend.call_args.args[0]
         self.assertEqual(args.profile, "profile.yaml")
         self.assertEqual(args.config, "config.example.yaml")
+        self.assertFalse(args.initconfig)
+
+    def test_console_command_can_reinitialize_profile_before_launch(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entry = Path(tmp) / "cli.js"
+            entry.write_text("console.log('ok')", encoding="utf-8")
+
+            with (
+                patch("contract_agent.interfaces.cli.CONSOLE_FRONTEND_ENTRY", entry),
+                patch("contract_agent.interfaces.cli.run_config_initialization") as init_config,
+                patch("contract_agent.interfaces.cli._run_console_frontend") as run_frontend,
+            ):
+                init_config.return_value = 0
+                run_frontend.return_value = 0
+                exit_code = main(
+                    ["console", "--profile", "profile.yaml", "--initconfig"],
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+
+        self.assertEqual(exit_code, 0)
+        init_config.assert_called_once()
+        run_frontend.assert_called_once()
+        self.assertEqual(run_frontend.call_args.args[0].profile, "profile.yaml")
+
+    def test_console_command_stops_when_reinitialize_profile_fails(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entry = Path(tmp) / "cli.js"
+            entry.write_text("console.log('ok')", encoding="utf-8")
+
+            with (
+                patch("contract_agent.interfaces.cli.CONSOLE_FRONTEND_ENTRY", entry),
+                patch("contract_agent.interfaces.cli.run_config_initialization") as init_config,
+                patch("contract_agent.interfaces.cli._run_console_frontend") as run_frontend,
+            ):
+                init_config.return_value = 2
+                exit_code = main(
+                    ["console", "--profile", "profile.yaml", "--initconfig"],
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+
+        self.assertEqual(exit_code, 2)
+        init_config.assert_called_once()
+        run_frontend.assert_not_called()
 
     def test_console_command_uses_source_frontend_when_dist_is_missing(self):
         stdout = io.StringIO()

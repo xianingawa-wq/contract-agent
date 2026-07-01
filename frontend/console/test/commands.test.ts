@@ -36,6 +36,7 @@ describe('parseConsoleInput', () => {
 
   test('identifies unknown slash commands without calling the Python bridge', () => {
     expect(isBuiltInCommand('review')).toBe(true);
+    expect(isBuiltInCommand('initconfig')).toBe(true);
     expect(isBuiltInCommand('does-not-exist')).toBe(false);
     expect(unknownCommandText('does-not-exist')).toContain('/help');
   });

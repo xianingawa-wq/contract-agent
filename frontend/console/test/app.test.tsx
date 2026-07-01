@@ -2,7 +2,7 @@ import React from 'react';
 import {renderToString} from 'ink';
 import {describe, expect, test} from 'vitest';
 
-import {AppFrame, formatCommandError} from '../src/App.js';
+import {AppFrame, formatCommandError, initConfigGuidance} from '../src/App.js';
 import {createEmptyTokenState} from '../src/tokenState.js';
 
 describe('AppFrame', () => {
@@ -23,7 +23,7 @@ describe('AppFrame', () => {
     );
 
     expect(output).toContain('Contract Agent Console');
-    expect(output).toContain('/help /status /config /review /tokens /clear /exit');
+    expect(output).toContain('/help /status /config /review /tokens /initconfig /clear /exit');
     expect(output).toContain('控制台已启动');
     expect(output).toContain('Token 估算');
   });
@@ -84,5 +84,12 @@ describe('AppFrame', () => {
 
     expect(output).toContain('PARSER_DOCLING_ENABLE_OCR');
     expect(output).not.toContain('请选择可审查的合同文件路径');
+  });
+
+  test('formats initconfig guidance for the React console', () => {
+    const output = initConfigGuidance();
+
+    expect(output).toContain('contract-agent console --initconfig');
+    expect(output).toContain('contract-agent initconfig');
   });
 });

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from contract_agent.interfaces.console import run_console_demo
+from contract_agent.interfaces.console import run_config_initialization, run_console_demo
 from contract_agent.interfaces.console_paths import DEFAULT_PROFILE_PATH
 from contract_agent.config import AppContext, configure_runtime, create_model_profile_service
 from contract_agent.config import settings_snapshot
@@ -39,12 +39,14 @@ def main(
 
     if args.command in {None, "demo"}:
         return _demo_command(args, stdin, stdout, stderr)
+    if args.command == "initconfig":
+        return _initconfig_command(args, stdin, stdout)
     if args.command == "review":
         return _review_command(args, stdout, stderr, app_context)
     if args.command == "config":
         return _config_command(stdout)
     if args.command == "console":
-        return _console_command(args, stderr)
+        return _console_command(args, stdin, stdout, stderr)
 
     parser.print_help(stdout)
     return 0
@@ -69,6 +71,20 @@ def _build_parser() -> argparse.ArgumentParser:
 
     console = subcommands.add_parser("console", help="open the React terminal console")
     console.add_argument(
+        "--profile",
+        default=str(DEFAULT_PROFILE_PATH),
+        help="path to local CLI initialization profile",
+    )
+    console.add_argument(
+        "--initconfig",
+        action="store_true",
+        help="rerun model configuration wizard before opening the React terminal console",
+    )
+
+    initconfig = subcommands.add_parser(
+        "initconfig", help="rerun and save the local model configuration wizard"
+    )
+    initconfig.add_argument(
         "--profile",
         default=str(DEFAULT_PROFILE_PATH),
         help="path to local CLI initialization profile",
@@ -100,7 +116,22 @@ def _demo_command(args: argparse.Namespace, stdin: TextIO, stdout: TextIO, stder
     )
 
 
-def _console_command(args: argparse.Namespace, stderr: TextIO) -> int:
+def _initconfig_command(args: argparse.Namespace, stdin: TextIO, stdout: TextIO) -> int:
+    profile = Path(getattr(args, "profile", str(DEFAULT_PROFILE_PATH)))
+    return run_config_initialization(stdin=stdin, stdout=stdout, profile_path=profile)
+
+
+def _console_command(
+    args: argparse.Namespace, stdin: TextIO, stdout: TextIO, stderr: TextIO
+) -> int:
+    if getattr(args, "initconfig", False):
+        init_exit_code = run_config_initialization(
+            stdin=stdin,
+            stdout=stdout,
+            profile_path=Path(getattr(args, "profile", str(DEFAULT_PROFILE_PATH))),
+        )
+        if init_exit_code != 0:
+            return init_exit_code
     if CONSOLE_FRONTEND_ENTRY.exists():
         args.frontend_mode = "dist"
     elif (CONSOLE_FRONTEND_SOURCE_DIR / "package.json").exists():

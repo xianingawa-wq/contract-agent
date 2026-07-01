@@ -10,6 +10,7 @@ from contract_agent.config import create_model_profile_service
 from contract_agent.config import (
     DEFAULT_PROVIDER_OPTIONS,
     ModelEndpointConfig,
+    ModelProfileService,
     ModelProviderOption,
     ModelRole,
     ModelRuntimeConfig,
@@ -40,8 +41,7 @@ def run_console_demo(
         model_config = profile_service.load()
         stdout.write("Profile: ready\n")
     else:
-        model_config = _run_initialization_wizard(stdin, stdout, profile_service.load())
-        profile_service.save(model_config)
+        model_config = _configure_and_save_profile(stdin, stdout, profile_service)
 
     profile_service.apply_to_settings(model_config)
     database_status = _check_database(skip_connect=skip_db_connect)
@@ -57,12 +57,34 @@ def run_console_demo(
     return 0
 
 
+def run_config_initialization(
+    *,
+    stdin: TextIO,
+    stdout: TextIO,
+    profile_path: Path | None = None,
+) -> int:
+    profile = profile_path or DEFAULT_PROFILE_PATH
+    profile_service = create_model_profile_service(profile)
+    model_config = _configure_and_save_profile(stdin, stdout, profile_service)
+    profile_service.apply_to_settings(model_config)
+    stdout.write(f"Profile saved: {profile}\n")
+    return 0
+
+
 def _write_welcome(stdout: TextIO) -> None:
     stdout.write("\n")
     stdout.write("========================================\n")
     stdout.write("          CONTRACT AGENT\n")
     stdout.write("========================================\n")
     stdout.write("Welcome to the local agent console.\n\n")
+
+
+def _configure_and_save_profile(
+    stdin: TextIO, stdout: TextIO, profile_service: ModelProfileService
+) -> ModelRuntimeConfig:
+    model_config = _run_initialization_wizard(stdin, stdout, profile_service.load())
+    profile_service.save(model_config)
+    return model_config
 
 
 def _run_initialization_wizard(

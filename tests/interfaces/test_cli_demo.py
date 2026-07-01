@@ -135,6 +135,78 @@ rerank:
         self.assertIn("chat.api_key_configured=True", output)
         self.assertNotIn("saved-chat-key", output)
 
+    def test_initconfig_command_reinitializes_existing_profile_without_entering_chat(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_path = Path(tmp) / "profile.yaml"
+            profile_path.write_text(
+                """
+chat:
+  provider: openai_compatible
+  base_url: https://old-chat.example.test/v1
+  api_key: old-chat-key
+  model: old-chat
+embedding:
+  provider: openai_compatible
+  base_url: https://old-embedding.example.test/v1
+  api_key: old-embedding-key
+  model: old-embedding
+rerank:
+  provider: openai_compatible
+  base_url: https://old-rerank.example.test/v1
+  api_key: old-rerank-key
+  model: old-rerank
+""",
+                encoding="utf-8",
+            )
+            stdin = io.StringIO(
+                "\n".join(
+                    [
+                        "3",
+                        "https://new-chat.example.test/v1",
+                        "new-chat-key",
+                        "new-chat",
+                        "3",
+                        "https://new-embedding.example.test/v1",
+                        "new-embedding-key",
+                        "new-embedding",
+                        "3",
+                        "https://new-rerank.example.test/v1",
+                        "new-rerank-key",
+                        "new-rerank",
+                    ]
+                )
+                + "\n"
+            )
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            exit_code = main(
+                ["initconfig", "--profile", str(profile_path)],
+                stdin=stdin,
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+            output = stdout.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stderr.getvalue(), "")
+            self.assertIn("Initialization wizard", output)
+            self.assertIn("Profile saved", output)
+            self.assertNotIn("Agent console", output)
+
+            profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+            self.assertEqual(profile["chat"]["base_url"], "https://new-chat.example.test/v1")
+            self.assertEqual(profile["chat"]["api_key"], "new-chat-key")
+            self.assertEqual(profile["chat"]["model"], "new-chat")
+            self.assertEqual(
+                profile["embedding"]["base_url"], "https://new-embedding.example.test/v1"
+            )
+            self.assertEqual(profile["embedding"]["api_key"], "new-embedding-key")
+            self.assertEqual(profile["embedding"]["model"], "new-embedding")
+            self.assertEqual(profile["rerank"]["base_url"], "https://new-rerank.example.test/v1")
+            self.assertEqual(profile["rerank"]["api_key"], "new-rerank-key")
+            self.assertEqual(profile["rerank"]["model"], "new-rerank")
+
 
 if __name__ == "__main__":
     unittest.main()

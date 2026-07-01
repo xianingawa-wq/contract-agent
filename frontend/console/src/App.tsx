@@ -214,6 +214,10 @@ async function runCommand(name: string, args: string[], context: SubmitContext):
     appendMessage(context.setMessages, 'command', '当前 token 统计已显示在下方面板。');
     return;
   }
+  if (name === 'initconfig') {
+    appendMessage(context.setMessages, 'command', initConfigGuidance());
+    return;
+  }
   if (name === 'review' && !normalizeReviewPathInput(args.join(' '))) {
     appendMessage(context.setMessages, 'command', formatReviewFileGuidance('/review '));
     return;
@@ -232,6 +236,15 @@ async function runCommand(name: string, args: string[], context: SubmitContext):
     return;
   }
   appendMessage(context.setMessages, 'command', formatBridgeData(name, result.data));
+}
+
+export function initConfigGuidance(): string {
+  return [
+    '重新初始化配置需要退出当前控制台后运行：',
+    'contract-agent console --initconfig',
+    '只想重配并保存、不进入控制台时运行：',
+    'contract-agent initconfig'
+  ].join('\n');
 }
 
 export function formatCommandError(command: string, code: string, message: string): string {
