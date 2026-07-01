@@ -155,7 +155,11 @@ def _parse_markdown_blocks(
 
     for logical_block in logical_blocks:
         if logical_block.block_type == "table":
-            page_no = _line_page_no(bounded_line_page_numbers, logical_block.line_start)
+            page_no = _table_block_page_no(
+                bounded_line_page_numbers,
+                logical_block.line_start,
+                logical_block.line_end,
+            )
             if page_no is None:
                 source_index = _table_source_index(
                     markdown_document.conversion_metadata, len(tables)
@@ -283,6 +287,21 @@ def _lines_with_page_boundaries(
         bounded_line_page_numbers.append(page_no)
         previous_page = page_no
     return bounded_lines, bounded_line_page_numbers
+
+
+def _table_block_page_no(
+    line_page_numbers: list[int | None] | None,
+    line_start: int,
+    line_end: int,
+) -> int | None:
+    if line_page_numbers is None:
+        return None
+    table_pages = {
+        page_no for page_no in line_page_numbers[line_start:line_end] if page_no is not None
+    }
+    if len(table_pages) != 1:
+        return None
+    return next(iter(table_pages))
 
 
 def _split_logical_blocks_by_page(

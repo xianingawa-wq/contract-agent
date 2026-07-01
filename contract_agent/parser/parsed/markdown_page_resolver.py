@@ -240,14 +240,10 @@ def _valid_explicit_markers(markers: list[_ExplicitPageMarker]) -> bool:
 
 
 def _uses_footer_style_markers(lines: list[str], markers: list[_ExplicitPageMarker]) -> bool:
-    segment_start = 0
-    for marker in markers:
-        if _has_body_content(lines, segment_start, marker.index) and (
-            _marker_followed_by_footer_boundary(lines, marker.index)
-        ):
-            return True
-        segment_start = marker.index + 1
-    return False
+    first_marker = markers[0]
+    return _has_body_content(lines, 0, first_marker.index) and (
+        _marker_followed_by_footer_boundary(lines, first_marker.index)
+    )
 
 
 def _page_numbers_from_explicit_headers(
@@ -291,8 +287,8 @@ def _has_page_boundary_context(lines: list[str], index: int) -> bool:
     previous_line = _nearest_non_empty_line(lines, index, step=-1)
     next_line = _nearest_non_empty_line(lines, index, step=1)
     return (
-        previous_line is None
-        or _is_page_separator(previous_line)
+        previous_line is not None
+        and _is_page_separator(previous_line)
         or (next_line is not None and _is_page_separator(next_line))
     )
 

@@ -272,6 +272,33 @@ class ParserPageEvidenceTests(unittest.TestCase):
         )
         self.assertEqual(document.blocks[0].block_type, "table")
 
+    def test_cross_page_pipe_table_block_page_is_unknown_when_rows_span_pages(self):
+        markdown = "\n".join(
+            [
+                "Page 1 of 2",
+                "| Item | Amount |",
+                "| --- | --- |",
+                "| Rent | 1000 |",
+                "Page 2 of 2",
+                "| Deposit | 2000 |",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertEqual(document.blocks[0].block_type, "table")
+        self.assertIsNone(document.blocks[0].location.page_no)
+        self.assertIsNone(document.tables[0].page_no)
+
     def test_cross_page_pipe_prose_keeps_page_boundary(self):
         markdown = "\n".join(
             [

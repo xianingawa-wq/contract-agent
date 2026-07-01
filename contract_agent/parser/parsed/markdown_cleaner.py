@@ -230,8 +230,8 @@ def _has_fraction_page_boundary_context(lines: list[str], index: int) -> bool:
     previous_line = _nearest_non_empty_line(lines, index, step=-1)
     next_line = _nearest_non_empty_line(lines, index, step=1)
     return (
-        previous_line is None
-        or _is_page_separator(previous_line)
+        previous_line is not None
+        and _is_page_separator(previous_line)
         or (next_line is not None and _is_page_separator(next_line))
     )
 

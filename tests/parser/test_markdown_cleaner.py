@@ -807,6 +807,29 @@ class MarkdownCleanerTests(unittest.TestCase):
         self.assertIn("2/2", document.raw_text)
         self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 0)
 
+    def test_parse_markdown_keeps_document_start_fraction_without_separator(self):
+        markdown = "\n".join(
+            [
+                "1/2",
+                "Legitimate ratio at document start.",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertIn("1/2", document.markdown_content)
+        self.assertIn("1/2", document.raw_text)
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_removed_lines"], 0)
+
     def test_parse_markdown_keeps_body_numbers_that_are_not_page_sequence(self):
         markdown = "\n".join(
             [

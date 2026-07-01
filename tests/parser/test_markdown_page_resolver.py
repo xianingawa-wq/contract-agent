@@ -146,6 +146,21 @@ class MarkdownPageResolverTests(unittest.TestCase):
         self.assertEqual(evidence.marker_count, 2)
         self.assertEqual(evidence.max_page_no, 2)
 
+    def test_header_page_marker_followed_by_separator_stays_header_style(self):
+        evidence = resolve_page_evidence(
+            [
+                "Page 1 of 2",
+                "Page one body",
+                "Page 2 of 2",
+                "---",
+                "Page two body",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [1, 1, 2, 2, 2])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 2)
+
     def test_body_line_before_explicit_marker_does_not_force_footer_style_without_boundary(self):
         evidence = resolve_page_evidence(
             [
@@ -250,18 +265,30 @@ class MarkdownPageResolverTests(unittest.TestCase):
         self.assertEqual(evidence.line_page_numbers, [None, None, None, None])
         self.assertEqual(evidence.marker_count, 0)
 
+    def test_document_start_fraction_without_separator_is_not_page_evidence(self):
+        evidence = resolve_page_evidence(
+            [
+                "1/2",
+                "Legitimate ratio at document start",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None, None])
+        self.assertEqual(evidence.marker_count, 0)
+
     def test_fraction_page_markers_require_boundary_context(self):
         evidence = resolve_page_evidence(
             [
                 "1/2",
-                "Page one body",
                 "---",
+                "Page one body",
                 "2/2",
+                "---",
                 "Page two body",
             ]
         )
 
-        self.assertEqual(evidence.line_page_numbers, [1, 1, 1, 2, 2])
+        self.assertEqual(evidence.line_page_numbers, [1, 1, 1, 2, 2, 2])
         self.assertEqual(evidence.marker_count, 2)
         self.assertEqual(evidence.max_page_no, 2)
 
