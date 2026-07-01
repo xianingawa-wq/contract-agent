@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from contract_agent.parser import ClauseChunk, DocumentMetadata, ParsedDocument
 from contract_agent.services.rule_engine import RuleEngine
@@ -67,7 +68,27 @@ class RuleEnginePageEvidenceTests(unittest.TestCase):
             ],
         )
 
-        risks = RuleEngine().check("通用合同", document)
+        with patch(
+            "contract_agent.services.rule_engine.RULES",
+            {
+                "通用合同": [
+                    {
+                        "rule_id": "TEST_PAYMENT",
+                        "title": "Payment evidence",
+                        "severity": "medium",
+                        "description": "desc",
+                        "risk_domain": "付款",
+                        "check_scope": "clause",
+                        "exclusions": [],
+                        "requires_cross_clause": False,
+                        "trigger_keywords": ["付款", "支付"],
+                        "must_have_any": [],
+                        "suggestion": "suggest",
+                    }
+                ]
+            },
+        ):
+            risks = RuleEngine().check("通用合同", document)
         payment_pages = [risk.page_no for risk in risks if risk.evidence == "付款"]
         pay_pages = [risk.page_no for risk in risks if risk.evidence == "支付"]
 

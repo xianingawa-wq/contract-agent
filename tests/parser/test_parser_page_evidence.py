@@ -61,6 +61,40 @@ class ParserPageEvidenceTests(unittest.TestCase):
         self.assertEqual([chunk.page_no for chunk in document.clause_chunks], [1, 2])
         self.assertEqual(document.conversion_metadata["markdown_page_evidence"]["marker_count"], 2)
 
+    def test_parse_markdown_removes_standalone_english_page_markers(self):
+        markdown = "\n".join(
+            [
+                "Page 1",
+                "Section 1 Payment",
+                "Buyer shall pay.",
+                "",
+                "Page 2",
+                "Section 2 Delivery",
+                "Seller shall deliver.",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertNotIn("Page 1", document.raw_text)
+        self.assertNotIn("Page 2", document.raw_text)
+        self.assertEqual(
+            [(block.text, block.location.page_no) for block in document.blocks],
+            [
+                ("Section 1 Payment Buyer shall pay.", 1),
+                ("Section 2 Delivery Seller shall deliver.", 2),
+            ],
+        )
+
     def test_parse_markdown_uses_chinese_page_markers(self):
         markdown = "\n".join(
             [
@@ -86,6 +120,32 @@ class ParserPageEvidenceTests(unittest.TestCase):
         self.assertNotIn("第 1 页", document.raw_text)
         self.assertEqual(document.metadata.page_count, 2)
         self.assertEqual([block.location.page_no for block in document.blocks], [1, 2])
+
+    def test_parse_markdown_uses_chinese_thousand_page_markers(self):
+        markdown = "\n".join(
+            [
+                "共一千页 第十页",
+                "Page ten body",
+                "",
+                "共一千页 第十一页",
+                "Page eleven body",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertNotIn("共一千页", document.raw_text)
+        self.assertEqual(document.metadata.page_count, 11)
+        self.assertEqual([block.location.page_no for block in document.blocks], [10, 11])
 
     def test_parse_markdown_preserves_page_marker_like_body_text(self):
         markdown = "\n".join(
@@ -177,6 +237,40 @@ class ParserPageEvidenceTests(unittest.TestCase):
             document.conversion_metadata["markdown_page_evidence"]["sources"],
             ["conversion_metadata"],
         )
+
+    def test_cross_page_pipe_table_rows_remain_contiguous_after_page_boundary_insertion(self):
+        markdown = "\n".join(
+            [
+                "Page 1 of 2",
+                "| Item | Amount |",
+                "| --- | --- |",
+                "| Rent | 1000 |",
+                "Page 2 of 2",
+                "| Deposit | 2000 |",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={"parser_backend": "docling"},
+            )
+        )
+
+        self.assertEqual(len(document.tables), 1)
+        self.assertEqual(
+            document.tables[0].rows,
+            [
+                ["Item", "Amount"],
+                ["Rent", "1000"],
+                ["Deposit", "2000"],
+            ],
+        )
+        self.assertEqual(document.blocks[0].block_type, "table")
 
     def test_merged_table_does_not_use_stale_docling_table_index_fallback(self):
         markdown = "\n".join(

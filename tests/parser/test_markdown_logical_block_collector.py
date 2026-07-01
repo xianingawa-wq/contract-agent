@@ -23,6 +23,8 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
             blocks[0].text,
             "Section 1 Payment Buyer shall pay within five days after receiving the invoice.",
         )
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 3)
 
     def test_list_continuation_stays_with_list_item(self):
         blocks = collect_logical_blocks(
@@ -39,6 +41,8 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
             blocks[0].text,
             "Payment obligation continues on the next line.",
         )
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 2)
 
     def test_lazy_list_continuation_stays_with_list_item(self):
         blocks = collect_logical_blocks(
@@ -75,6 +79,8 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
             "Payment obligation Buyer shall pay rent. Buyer shall pay deposit. "
             "Continued payment paragraph.",
         )
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 5)
         self.assertEqual(
             blocks[0].markdown,
             "1. Payment obligation\n"
@@ -83,6 +89,21 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
             "\n"
             "    Continued payment paragraph.",
         )
+
+    def test_two_space_nested_list_marker_stays_with_parent_list_item(self):
+        blocks = collect_logical_blocks(
+            [
+                "- Parent obligation",
+                "  - Child obligation",
+                "",
+                "- Next obligation",
+            ]
+        )
+
+        self.assertEqual([block.block_type for block in blocks], ["list_item", "list_item"])
+        self.assertEqual(blocks[0].text, "Parent obligation Child obligation")
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 2)
 
     def test_blockquote_lines_form_one_block_with_markdown_preserved(self):
         blocks = collect_logical_blocks(
@@ -98,6 +119,8 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
             blocks[0].markdown, "> Important notice\n> keep the original quote marker."
         )
         self.assertEqual(blocks[0].text, "Important notice keep the original quote marker.")
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 2)
 
     def test_blockquote_lazy_continuation_stays_with_quote(self):
         blocks = collect_logical_blocks(
@@ -129,6 +152,24 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
         self.assertEqual(len(blocks), 1)
         self.assertEqual(blocks[0].block_type, "fenced_code")
         self.assertEqual(blocks[0].text, "line one\n1. not a list item")
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 4)
+
+    def test_tilde_fenced_code_lines_form_one_block(self):
+        blocks = collect_logical_blocks(
+            [
+                "~~~text",
+                "line one",
+                "1. not a list item",
+                "~~~",
+            ]
+        )
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].block_type, "fenced_code")
+        self.assertEqual(blocks[0].text, "line one\n1. not a list item")
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 4)
 
     def test_long_fence_requires_closing_fence_at_least_as_long(self):
         blocks = collect_logical_blocks(
@@ -176,8 +217,14 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
             [block.block_type for block in blocks],
             ["title", "paragraph", "table", "paragraph"],
         )
+        self.assertEqual(blocks[0].line_start, 0)
+        self.assertEqual(blocks[0].line_end, 1)
+        self.assertEqual(blocks[1].line_start, 1)
+        self.assertEqual(blocks[1].line_end, 2)
         self.assertEqual(blocks[2].line_start, 2)
         self.assertEqual(blocks[2].line_end, 5)
+        self.assertEqual(blocks[3].line_start, 5)
+        self.assertEqual(blocks[3].line_end, 6)
 
     def test_empty_and_whitespace_only_input_returns_no_blocks(self):
         self.assertEqual(collect_logical_blocks([]), [])

@@ -107,6 +107,13 @@ class ParserLogicalBlockTests(unittest.TestCase):
                 for chunk in document.clause_chunks
             )
         )
+        self.assertTrue(
+            all(
+                document.raw_text[block.location.start_offset : block.location.end_offset]
+                == block.text
+                for block in document.blocks
+            )
+        )
 
 
 if __name__ == "__main__":

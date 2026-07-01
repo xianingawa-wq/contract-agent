@@ -54,6 +54,20 @@ class MarkdownPageResolverTests(unittest.TestCase):
         self.assertEqual(evidence.marker_count, 2)
         self.assertEqual(evidence.max_page_no, 102)
 
+    def test_chinese_page_markers_accept_thousand_unit(self):
+        evidence = resolve_page_evidence(
+            [
+                "共一千页 第十页",
+                "Body on page ten",
+                "共一千页 第十一页",
+                "Body on page eleven",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [10, 10, 11, 11])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 11)
+
     def test_inconsistent_page_marker_totals_are_not_used_as_page_evidence(self):
         evidence = resolve_page_evidence(
             [

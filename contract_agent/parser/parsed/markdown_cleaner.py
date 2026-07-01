@@ -16,6 +16,7 @@ _PAGE_NUMBER_PATTERNS = [
         rf"(?:\s*[，,]?\s*共\s*{_PAGE_NUMBER_TOKEN}\s*页)?$"
     ),
     re.compile(rf"^共\s*{_PAGE_NUMBER_TOKEN}\s*页\s*第\s*{_PAGE_NUMBER_TOKEN}\s*页$"),
+    re.compile(r"^page\s+\d+$", re.IGNORECASE),
     re.compile(r"^page\s+\d+\s+of\s+\d+$", re.IGNORECASE),
     re.compile(r"^\d+\s*/\s*\d+$"),
 ]

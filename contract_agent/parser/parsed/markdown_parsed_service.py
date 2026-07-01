@@ -23,6 +23,7 @@ from contract_agent.parser.parsed.markdown_page_resolver import (
     resolve_page_evidence,
     table_page_no,
 )
+from contract_agent.parser.parsed.markdown_table_row_parser import split_pipe_row
 from contract_agent.parser.parsed.markdown_table_parser import parse_table_rows, table_text
 from contract_agent.parser.parsed.semantic_graph_builder import build_semantic_graph
 
@@ -263,6 +264,7 @@ def _lines_with_page_boundaries(
             and page_no is not None
             and previous_page is not None
             and bounded_lines[-1].strip()
+            and not _looks_like_table_row_boundary(bounded_lines[-1], line)
         ):
             bounded_lines.append("")
             bounded_line_page_numbers.append(None)
@@ -270,6 +272,20 @@ def _lines_with_page_boundaries(
         bounded_line_page_numbers.append(page_no)
         previous_page = page_no
     return bounded_lines, bounded_line_page_numbers
+
+
+def _looks_like_table_row_boundary(previous_line: str, line: str) -> bool:
+    previous_cells = _pipe_row_cells(previous_line)
+    current_cells = _pipe_row_cells(line)
+    return bool(previous_cells and current_cells and len(previous_cells) == len(current_cells))
+
+
+def _pipe_row_cells(line: str) -> list[str]:
+    stripped = line.strip()
+    if "|" not in stripped:
+        return []
+    cells = split_pipe_row(stripped)
+    return cells if len(cells) >= 2 else []
 
 
 def _append_span(

@@ -33,7 +33,7 @@ class _ExplicitPageMarker:
     total_pages: int | None = None
 
 
-_CHINESE_PAGE_NUMBER_CHARS = "0-9零一二两三四五六七八九十百"
+_CHINESE_PAGE_NUMBER_CHARS = "0-9零一二两三四五六七八九十百千"
 _ENGLISH_PAGE_RE = re.compile(r"^page\s+(\d{1,4})(?:\s+of\s+(\d{1,4}))?$", re.IGNORECASE)
 _PAGE_FRACTION_RE = re.compile(r"^(\d{1,4})\s*/\s*(\d{1,4})$")
 _CHINESE_PAGE_RE = re.compile(
@@ -384,6 +384,11 @@ def _chinese_number(value: str) -> int | None:
         for char in value:
             result = result * 10 + _CHINESE_DIGITS[char]
         return result
+    if "千" in value:
+        left, _, right = value.partition("千")
+        thousand = _CHINESE_DIGITS.get(left, 1) if left else 1
+        tail = _chinese_number(right) or 0
+        return thousand * 1000 + tail
     if "百" in value:
         left, _, right = value.partition("百")
         hundred = _CHINESE_DIGITS.get(left, 1) if left else 1

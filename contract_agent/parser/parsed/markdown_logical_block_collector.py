@@ -19,8 +19,7 @@ class MarkdownLogicalBlock:
 
 _FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 _BLOCKQUOTE_RE = re.compile(r"^ {0,3}>\s?(.*)$")
-_LIST_ITEM_RE = re.compile(r"^ {0,3}(?:[-*+]\s+|\d+[\.)]\s+)(.*)$")
-_INDENTED_CONTINUATION_RE = re.compile(r"^(?: {4,}|\t)")
+_LIST_ITEM_RE = re.compile(r"^( {0,3})(?:[-*+]\s+|\d+[\.)]\s+)(.*)$")
 
 
 def collect_logical_blocks(lines: list[str]) -> list[MarkdownLogicalBlock]:
@@ -138,18 +137,23 @@ def _collect_blockquote(lines: list[str], start: int) -> tuple[MarkdownLogicalBl
 def _collect_list_item(lines: list[str], start: int) -> tuple[MarkdownLogicalBlock, int]:
     markdown_lines = [lines[start]]
     match = _LIST_ITEM_RE.match(lines[start])
-    text_parts = [match.group(1).strip() if match else lines[start].strip()]
+    text_parts = [match.group(2).strip() if match else lines[start].strip()]
+    continuation_column = _list_continuation_column(lines[start])
     index = start + 1
     while index < len(lines):
         line = lines[index]
         if not line.strip():
             next_index = index + 1
-            if next_index >= len(lines) or not _is_indented_continuation(lines[next_index]):
+            if next_index >= len(lines) or not _is_list_continuation_line(
+                lines[next_index], continuation_column
+            ):
                 break
             markdown_lines.append(line)
             index += 1
             continue
-        if _starts_new_block(lines, index) and not _is_indented_continuation(line):
+        if _starts_new_block(lines, index) and not _is_list_continuation_line(
+            line, continuation_column
+        ):
             break
         markdown_lines.append(line)
         text_parts.append(_list_continuation_text(line))
@@ -209,11 +213,41 @@ def _is_blockquote(line: str) -> bool:
     return bool(_BLOCKQUOTE_RE.match(line))
 
 
-def _is_indented_continuation(line: str) -> bool:
-    return bool(line.strip() and _INDENTED_CONTINUATION_RE.match(line))
+def _is_list_continuation_line(line: str, continuation_column: int) -> bool:
+    return bool(line.strip() and _indent_width(line) >= continuation_column)
 
 
 def _list_continuation_text(line: str) -> str:
     stripped = line.strip()
     match = _LIST_ITEM_RE.match(stripped)
-    return match.group(1).strip() if match else stripped
+    return match.group(2).strip() if match else stripped
+
+
+def _list_continuation_column(line: str) -> int:
+    match = _LIST_ITEM_RE.match(line)
+    if match is None:
+        return 4
+    return _prefix_width(line, match.start(2))
+
+
+def _indent_width(line: str) -> int:
+    width = 0
+    for char in line:
+        if char == " ":
+            width += 1
+            continue
+        if char == "\t":
+            width += 4 - (width % 4)
+            continue
+        break
+    return width
+
+
+def _prefix_width(line: str, end: int) -> int:
+    width = 0
+    for char in line[:end]:
+        if char == "\t":
+            width += 4 - (width % 4)
+            continue
+        width += 1
+    return width
