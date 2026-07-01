@@ -138,10 +138,11 @@ def _parse_markdown_blocks(
 
     for logical_block in logical_blocks:
         if logical_block.block_type == "table":
-            page_no = table_page_no(page_evidence, len(tables)) or _line_page_no(
-                line_page_numbers,
-                logical_block.line_start,
-            )
+            page_no = _line_page_no(line_page_numbers, logical_block.line_start)
+            if page_no is None and not markdown_document.conversion_metadata.get(
+                "markdown_cleaner_merged_tables",
+            ):
+                page_no = table_page_no(page_evidence, len(tables))
             block_markdown = logical_block.markdown
             rows = parse_table_rows(block_markdown)
             text = table_text(rows)

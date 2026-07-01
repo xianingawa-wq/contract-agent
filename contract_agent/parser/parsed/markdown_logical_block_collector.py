@@ -17,10 +17,9 @@ class MarkdownLogicalBlock:
     level: int | None = None
 
 
-_FENCE_RE = re.compile(r"^ {0,3}(```|~~~)")
+_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 _BLOCKQUOTE_RE = re.compile(r"^ {0,3}>\s?(.*)$")
 _LIST_ITEM_RE = re.compile(r"^ {0,3}(?:[-*+]\s+|\d+[\.)]\s+)(.*)$")
-_INDENTED_CONTINUATION_RE = re.compile(r"^ {2,}\S")
 
 
 def collect_logical_blocks(lines: list[str]) -> list[MarkdownLogicalBlock]:
@@ -82,11 +81,13 @@ def collect_logical_blocks(lines: list[str]) -> list[MarkdownLogicalBlock]:
 
 
 def _collect_fenced_code(lines: list[str], start: int) -> tuple[MarkdownLogicalBlock, int]:
-    fence = lines[start].strip()[:3]
+    fence_match = _FENCE_RE.match(lines[start])
+    fence = fence_match.group(1) if fence_match else lines[start].strip()[:3]
+    closing_fence_re = re.compile(rf"^{re.escape(fence[0])}{{{len(fence)},}}\s*$")
     index = start + 1
     body: list[str] = []
     while index < len(lines):
-        if lines[index].strip().startswith(fence):
+        if closing_fence_re.match(lines[index].strip()):
             index += 1
             break
         body.append(lines[index])
@@ -134,7 +135,7 @@ def _collect_list_item(lines: list[str], start: int) -> tuple[MarkdownLogicalBlo
         line = lines[index]
         if not line.strip():
             break
-        if _starts_new_block(lines, index) or not _INDENTED_CONTINUATION_RE.match(line):
+        if _starts_new_block(lines, index):
             break
         markdown_lines.append(line)
         text_parts.append(line.strip())

@@ -26,13 +26,23 @@ class MarkdownPageEvidence:
         }
 
 
-_ENGLISH_PAGE_RE = re.compile(r"^page\s+(\d{1,4})(?:\s+of\s+\d{1,4})?$", re.IGNORECASE)
-_PAGE_FRACTION_RE = re.compile(r"^(\d{1,4})\s*/\s*\d{1,4}$")
+@dataclass(frozen=True)
+class _ExplicitPageMarker:
+    index: int
+    page_no: int
+    total_pages: int | None = None
+
+
+_CHINESE_PAGE_NUMBER_CHARS = "0-9零一二两三四五六七八九十百"
+_ENGLISH_PAGE_RE = re.compile(r"^page\s+(\d{1,4})(?:\s+of\s+(\d{1,4}))?$", re.IGNORECASE)
+_PAGE_FRACTION_RE = re.compile(r"^(\d{1,4})\s*/\s*(\d{1,4})$")
 _CHINESE_PAGE_RE = re.compile(
-    r"^第\s*([0-9一二三四五六七八九十百]+)\s*页(?:\s*[，,、]?\s*共\s*[0-9一二三四五六七八九十百]+\s*页)?$"
+    rf"^第\s*([{_CHINESE_PAGE_NUMBER_CHARS}]+)\s*页"
+    rf"(?:\s*[，,、]?\s*共\s*([{_CHINESE_PAGE_NUMBER_CHARS}]+)\s*页)?$"
 )
 _CHINESE_TOTAL_FIRST_RE = re.compile(
-    r"^共\s*[0-9一二三四五六七八九十百]+\s*页\s*[，,、]?\s*第\s*([0-9一二三四五六七八九十百]+)\s*页$"
+    rf"^共\s*([{_CHINESE_PAGE_NUMBER_CHARS}]+)\s*页\s*[，,、]?\s*"
+    rf"第\s*([{_CHINESE_PAGE_NUMBER_CHARS}]+)\s*页$"
 )
 _NUMERIC_FOOTER_RE = re.compile(r"^[\-\s]*(\d{1,4})[\-\s]*$")
 _CHINESE_DIGITS = {
@@ -94,18 +104,20 @@ def page_numbers_for_cleaned_lines(
 
 def _resolve_from_explicit_markers(
     lines: list[str],
-    markers: dict[int, int],
+    markers: list[_ExplicitPageMarker],
 ) -> MarkdownPageEvidence:
-    pages: list[int | None] = []
-    current_page: int | None = None
-    for index in range(len(lines)):
-        if index in markers:
-            current_page = markers[index]
-        pages.append(current_page)
+    if not _valid_explicit_markers(markers):
+        return _empty_page_evidence(lines)
+
+    if _uses_footer_style_markers(lines, markers):
+        pages = _page_numbers_from_explicit_footers(lines, markers)
+    else:
+        pages = _page_numbers_from_explicit_headers(lines, markers)
+
     return MarkdownPageEvidence(
         line_page_numbers=pages,
         marker_count=len(markers),
-        max_page_no=max(markers.values()),
+        max_page_no=max(marker.page_no for marker in markers),
         sources=["page_marker"],
     )
 
@@ -133,28 +145,124 @@ def _resolve_from_numeric_footers(
     )
 
 
-def _explicit_page_markers(lines: list[str]) -> dict[int, int]:
-    markers: dict[int, int] = {}
+def _explicit_page_markers(lines: list[str]) -> list[_ExplicitPageMarker]:
+    markers: list[_ExplicitPageMarker] = []
     for index, line in enumerate(lines):
-        page_no = _explicit_page_no(line)
-        if page_no is not None:
-            markers[index] = page_no
+        marker = _explicit_page_marker(index, line)
+        if marker is not None:
+            markers.append(marker)
     return markers
 
 
 def _explicit_page_no(line: str) -> int | None:
+    marker = _explicit_page_marker(0, line)
+    return marker.page_no if marker is not None else None
+
+
+def _explicit_page_marker(index: int, line: str) -> _ExplicitPageMarker | None:
     stripped = line.strip()
-    for pattern in (
-        _ENGLISH_PAGE_RE,
-        _PAGE_FRACTION_RE,
-        _CHINESE_PAGE_RE,
-        _CHINESE_TOTAL_FIRST_RE,
-    ):
-        match = pattern.match(stripped)
-        if match is None:
-            continue
-        return _positive_page_no(match.group(1))
+    match = _ENGLISH_PAGE_RE.match(stripped) or _PAGE_FRACTION_RE.match(stripped)
+    if match is not None:
+        return _marker_from_values(index, match.group(1), match.group(2))
+
+    match = _CHINESE_PAGE_RE.match(stripped)
+    if match is not None:
+        return _marker_from_values(index, match.group(1), match.group(2))
+
+    match = _CHINESE_TOTAL_FIRST_RE.match(stripped)
+    if match is not None:
+        return _marker_from_values(index, match.group(2), match.group(1))
+
     return None
+
+
+def _marker_from_values(
+    index: int,
+    page_value: str,
+    total_value: str | None,
+) -> _ExplicitPageMarker | None:
+    page_no = _positive_page_no(page_value)
+    if page_no is None:
+        return None
+    total_pages = _positive_page_no(total_value) if total_value is not None else None
+    if total_value is not None and total_pages is None:
+        return None
+    return _ExplicitPageMarker(index=index, page_no=page_no, total_pages=total_pages)
+
+
+def _valid_explicit_markers(markers: list[_ExplicitPageMarker]) -> bool:
+    previous_page = 0
+    totals = {marker.total_pages for marker in markers if marker.total_pages is not None}
+    if len(totals) > 1:
+        return False
+    total_pages = next(iter(totals), None)
+    for marker in markers:
+        if marker.page_no < previous_page:
+            return False
+        if total_pages is not None and marker.page_no > total_pages:
+            return False
+        previous_page = marker.page_no
+    return True
+
+
+def _uses_footer_style_markers(lines: list[str], markers: list[_ExplicitPageMarker]) -> bool:
+    segment_start = 0
+    for marker in markers:
+        if _has_body_content(lines, segment_start, marker.index) and (
+            marker.index == markers[0].index
+            or _marker_followed_by_footer_boundary(lines, marker.index)
+        ):
+            return True
+        segment_start = marker.index + 1
+    return False
+
+
+def _page_numbers_from_explicit_headers(
+    lines: list[str],
+    markers: list[_ExplicitPageMarker],
+) -> list[int | None]:
+    pages: list[int | None] = []
+    marker_by_index = {marker.index: marker.page_no for marker in markers}
+    current_page: int | None = None
+    for index in range(len(lines)):
+        if index in marker_by_index:
+            current_page = marker_by_index[index]
+        pages.append(current_page)
+    return pages
+
+
+def _page_numbers_from_explicit_footers(
+    lines: list[str],
+    markers: list[_ExplicitPageMarker],
+) -> list[int | None]:
+    pages: list[int | None] = [None for _ in lines]
+    segment_start = 0
+    for marker in markers:
+        segment_end = marker.index
+        while segment_end + 1 < len(lines) and _is_numeric_footer_trailing_furniture(
+            lines[segment_end + 1]
+        ):
+            segment_end += 1
+        for index in range(segment_start, segment_end + 1):
+            pages[index] = marker.page_no
+        segment_start = segment_end + 1
+    return pages
+
+
+def _marker_followed_by_footer_boundary(lines: list[str], index: int) -> bool:
+    next_line = _nearest_non_empty_line(lines, index, step=1)
+    return next_line is None or _is_page_separator(next_line)
+
+
+def _has_body_content(lines: list[str], start: int, end: int) -> bool:
+    return any(
+        line.strip() and not _is_page_separator(line) and _explicit_page_no(line) is None
+        for line in lines[start:end]
+    )
+
+
+def _empty_page_evidence(lines: list[str]) -> MarkdownPageEvidence:
+    return MarkdownPageEvidence(line_page_numbers=[None for _ in lines])
 
 
 def _numeric_footer_markers(lines: list[str]) -> list[tuple[int, int]]:

@@ -127,6 +127,44 @@ class ParserPageEvidenceTests(unittest.TestCase):
             ["conversion_metadata"],
         )
 
+    def test_merged_table_does_not_use_stale_docling_table_index_fallback(self):
+        markdown = "\n".join(
+            [
+                "| Item | Amount |",
+                "| --- | --- |",
+                "| Page one | 100 |",
+                "noise",
+                "| Item | Amount |",
+                "| --- | --- |",
+                "| Page two | 200 |",
+                "",
+                "| Fee | Amount |",
+                "| --- | --- |",
+                "| Service | 300 |",
+            ]
+        )
+
+        document = ContractParser().parse_markdown(
+            MarkdownDocument(
+                markdown_content=markdown,
+                file_name="contract.pdf",
+                file_type="pdf",
+                source_path="contract.pdf",
+                backend_name="docling",
+                conversion_metadata={
+                    "parser_backend": "docling",
+                    "docling_tables": [
+                        {"index": 0, "page": 1, "bbox": {"bottom": 0.95}},
+                        {"index": 1, "page": 2, "bbox": {"top": 0.05}},
+                        {"index": 2, "page": 3, "bbox": {"top": 0.40}},
+                    ],
+                },
+            )
+        )
+
+        self.assertEqual(document.conversion_metadata["markdown_cleaner_merged_tables"], 1)
+        self.assertEqual([table.page_no for table in document.tables], [None, None])
+
     def test_build_metadata_page_count_uses_only_concrete_page_numbers(self):
         no_pages = build_metadata(
             file_name="same.txt",

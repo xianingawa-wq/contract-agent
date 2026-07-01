@@ -187,8 +187,8 @@ class ParserSerializerTests(unittest.TestCase):
         self.assertEqual(evidence["chunks"][1]["page_no"], 2)
         self.assertIsNone(rag_documents[0]["metadata"]["page_no"])
         self.assertEqual(rag_documents[1]["metadata"]["page_no"], 2)
-        self.assertIn("page=?", llm_context)
-        self.assertIn("page=2", llm_context)
+        self.assertIn("[block_id=p0-b0 page=? confidence=1.00] Unknown page", llm_context)
+        self.assertIn("[block_id=p2-b1 page=2 confidence=1.00] Known page", llm_context)
         json.dumps(evidence, allow_nan=False)
 
     def test_to_markdown_does_not_double_prefix_block_markdown(self):

@@ -75,9 +75,30 @@ class RuleEnginePageEvidenceTests(unittest.TestCase):
             clause_chunks=[target, other_unknown, same_page],
         )
 
-        related = RuleEngine()._related_chunks(document, target)
+        engine = RuleEngine()
+        related = engine._related_chunks(document, target)
 
         self.assertEqual(related, [])
+
+        known_target = ClauseChunk(
+            chunk_id="known-target",
+            chunk_level="paragraph",
+            section_title="Known target",
+            page_no=2,
+            start_offset=23,
+            end_offset=35,
+            source_text="Known target",
+        )
+        related_known = engine._related_chunks(
+            ParsedDocument(
+                metadata=document.metadata,
+                raw_text=document.raw_text,
+                clause_chunks=[known_target, other_unknown, same_page],
+            ),
+            known_target,
+        )
+
+        self.assertEqual([chunk.chunk_id for chunk in related_known], ["known-target", "same-page"])
 
 
 if __name__ == "__main__":

@@ -8,8 +8,12 @@ from typing import Any
 from contract_agent.parser.parsed.markdown_table_row_parser import split_pipe_row
 
 
+_CHINESE_PAGE_NUMBER_CHARS = "零一二两三四五六七八九十百千"
 _PAGE_NUMBER_PATTERNS = [
-    re.compile(r"^第\s*[\d一二三四五六七八九十百千]+\s*页(?:\s*[，,]?\s*共\s*\d+\s*页)?$"),
+    re.compile(
+        rf"^第\s*[\d{_CHINESE_PAGE_NUMBER_CHARS}]+\s*页"
+        rf"(?:\s*[，,]?\s*共\s*[\d{_CHINESE_PAGE_NUMBER_CHARS}]+\s*页)?$"
+    ),
     re.compile(r"^共\s*\d+\s*页\s*第\s*\d+\s*页$"),
     re.compile(r"^page\s+\d+\s+of\s+\d+$", re.IGNORECASE),
     re.compile(r"^\d+\s*/\s*\d+$"),

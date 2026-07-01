@@ -40,6 +40,61 @@ class MarkdownPageResolverTests(unittest.TestCase):
         self.assertEqual(evidence.marker_count, 2)
         self.assertEqual(evidence.max_page_no, 2)
 
+    def test_chinese_page_markers_accept_supported_digits(self):
+        evidence = resolve_page_evidence(
+            [
+                "第两页",
+                "Body on page two",
+                "第一百零一页",
+                "Body on page one hundred one",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [2, 2, 101, 101])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 101)
+
+    def test_inconsistent_page_marker_totals_are_not_used_as_page_evidence(self):
+        evidence = resolve_page_evidence(
+            [
+                "Page 2 of 1",
+                "Body should not receive impossible page evidence.",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None, None])
+        self.assertEqual(evidence.marker_count, 0)
+        self.assertEqual(evidence.max_page_no, 0)
+
+    def test_non_monotonic_explicit_page_markers_are_not_used_as_page_evidence(self):
+        evidence = resolve_page_evidence(
+            [
+                "Page 2 of 3",
+                "Body two",
+                "Page 1 of 3",
+                "Body one",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None, None, None, None])
+        self.assertEqual(evidence.marker_count, 0)
+        self.assertEqual(evidence.max_page_no, 0)
+
+    def test_explicit_page_markers_can_label_footer_segments(self):
+        evidence = resolve_page_evidence(
+            [
+                "Body on page one",
+                "Page 1 of 2",
+                "---",
+                "Body on page two",
+                "Page 2 of 2",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [1, 1, 1, 2, 2])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 2)
+
     def test_numeric_footer_sequence_assigns_page_before_each_footer(self):
         evidence = resolve_page_evidence(
             [

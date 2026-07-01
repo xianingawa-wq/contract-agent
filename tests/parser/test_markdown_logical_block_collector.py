@@ -40,6 +40,22 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
             "Payment obligation continues on the next line.",
         )
 
+    def test_lazy_list_continuation_stays_with_list_item(self):
+        blocks = collect_logical_blocks(
+            [
+                "1. Payment obligation",
+                "continues without indentation.",
+                "",
+                "2. Delivery obligation",
+            ]
+        )
+
+        self.assertEqual([block.block_type for block in blocks], ["list_item", "list_item"])
+        self.assertEqual(
+            blocks[0].text,
+            "Payment obligation continues without indentation.",
+        )
+
     def test_blockquote_lines_form_one_block_with_markdown_preserved(self):
         blocks = collect_logical_blocks(
             [
@@ -68,6 +84,21 @@ class MarkdownLogicalBlockCollectorTests(unittest.TestCase):
         self.assertEqual(len(blocks), 1)
         self.assertEqual(blocks[0].block_type, "fenced_code")
         self.assertEqual(blocks[0].text, "line one\n1. not a list item")
+
+    def test_long_fence_requires_closing_fence_at_least_as_long(self):
+        blocks = collect_logical_blocks(
+            [
+                "````",
+                "line one",
+                "```",
+                "still code",
+                "````",
+                "Tail paragraph",
+            ]
+        )
+
+        self.assertEqual([block.block_type for block in blocks], ["fenced_code", "paragraph"])
+        self.assertEqual(blocks[0].text, "line one\n```\nstill code")
 
     def test_heading_table_and_paragraph_boundaries_stay_separate(self):
         blocks = collect_logical_blocks(
