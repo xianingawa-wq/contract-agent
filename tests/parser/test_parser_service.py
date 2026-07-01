@@ -767,6 +767,10 @@ class ContractParserServiceTests(unittest.TestCase):
 
     def test_unsupported_suffix_raises_parser_exception(self):
         with self.assertRaises(UnsupportedFileType):
+            _builtin_parser().parse_bytes("contract.exe", b"data")
+
+    def test_builtin_only_parser_reports_supported_global_suffix_when_backend_cannot_convert(self):
+        with self.assertRaisesRegex(DocumentLoadError, "builtin unavailable"):
             _builtin_parser().parse_bytes("contract.xlsx", b"data")
 
     def test_empty_or_undecodable_text_raises_clear_parser_exception(self):

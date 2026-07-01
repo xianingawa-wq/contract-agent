@@ -90,6 +90,12 @@ parser:
     - .doc
     - .docx
     - .pdf
+    - .md
+    - .markdown
+    - .html
+    - .htm
+    - .csv
+    - .xlsx
   allow_path_input: false
   # Reserved until URL source loading is implemented; true fails fast today.
   allow_url_input: false
@@ -114,6 +120,15 @@ parser:
     enabled: false
   docling:
     enabled: true
+    supported_suffixes:
+      - .pdf
+      - .docx
+      - .md
+      - .markdown
+      - .html
+      - .htm
+      - .csv
+      - .xlsx
     enable_ocr: true
     ocr_lang:
       - chinese

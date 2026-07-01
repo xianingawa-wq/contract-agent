@@ -19,7 +19,21 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(config.fallback_order, ["docling", "builtin"])
         self.assertTrue(config.allow_converter_fallback)
         self.assertFalse(config.strict_converter_availability)
-        self.assertEqual(config.allowed_suffixes, [".txt", ".doc", ".docx", ".pdf"])
+        self.assertEqual(
+            config.allowed_suffixes,
+            [
+                ".txt",
+                ".doc",
+                ".docx",
+                ".pdf",
+                ".md",
+                ".markdown",
+                ".html",
+                ".htm",
+                ".csv",
+                ".xlsx",
+            ],
+        )
         self.assertFalse(config.allow_path_input)
         self.assertFalse(config.allow_url_input)
         self.assertEqual(config.trusted_path_roots, [])
@@ -46,6 +60,10 @@ class ParserConfigTests(unittest.TestCase):
         self.assertTrue(config.docling_do_table_structure)
         self.assertTrue(config.docling_compact_tables)
         self.assertFalse(config.docling_enable_remote_services)
+        self.assertEqual(
+            config.docling_supported_suffixes,
+            [".pdf", ".docx", ".md", ".markdown", ".html", ".htm", ".csv", ".xlsx"],
+        )
 
     def test_parser_config_rejects_empty_allowed_suffixes_after_normalization(self):
         with self.assertRaisesRegex(ValueError, "allowed_suffixes"):
@@ -59,6 +77,7 @@ class ParserConfigTests(unittest.TestCase):
                 "PARSER_FALLBACK_ORDER": "markitdown,builtin",
                 "PARSER_ALLOW_CONVERTER_FALLBACK": "false",
                 "PARSER_ALLOWED_SUFFIXES": ".txt,.docx",
+                "PARSER_DOCLING_SUPPORTED_SUFFIXES": ".pdf,.docx",
                 "PARSER_TRUSTED_PATH_ROOTS": "",
                 "PARSER_MAX_INPUT_BYTES": "",
                 "PARSER_MIN_DETECTOR_CONFIDENCE": "0.72",
@@ -72,6 +91,7 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(settings.parser_fallback_order, ["markitdown", "builtin"])
         self.assertFalse(settings.parser_allow_converter_fallback)
         self.assertEqual(settings.parser_allowed_suffixes, [".txt", ".docx"])
+        self.assertEqual(settings.parser_docling_supported_suffixes, [".pdf", ".docx"])
         self.assertEqual(settings.parser_trusted_path_roots, [])
         self.assertIsNone(settings.parser_max_input_bytes)
         self.assertEqual(settings.parser_min_detector_confidence, 0.72)
@@ -85,6 +105,10 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(settings.parser_enabled_converters, ["docling", "builtin"])
         self.assertEqual(settings.parser_fallback_order, ["docling", "builtin"])
         self.assertTrue(settings.parser_docling_enabled)
+        self.assertEqual(
+            settings.parser_docling_supported_suffixes,
+            [".pdf", ".docx", ".md", ".markdown", ".html", ".htm", ".csv", ".xlsx"],
+        )
 
     def test_app_config_to_parser_config_flattens_nested_parser_section_and_upload_limit(self):
         app_config = AppConfig.model_validate(
@@ -106,7 +130,7 @@ class ParserConfigTests(unittest.TestCase):
                         "target_chars": 300,
                         "min_header_confidence": 0.7,
                     },
-                    "docling": {"enabled": True},
+                    "docling": {"enabled": True, "supported_suffixes": [".pdf", ".docx"]},
                 },
             }
         )
@@ -124,6 +148,7 @@ class ParserConfigTests(unittest.TestCase):
         self.assertEqual(parser_config.chunk_target_chars, 300)
         self.assertEqual(parser_config.min_header_confidence, 0.7)
         self.assertTrue(parser_config.docling_enabled)
+        self.assertEqual(parser_config.docling_supported_suffixes, [".pdf", ".docx"])
 
         stricter_parser_config = AppConfig.model_validate(
             {
@@ -143,6 +168,7 @@ class ParserConfigTests(unittest.TestCase):
                     "PARSER_FALLBACK_ORDER": "markitdown,builtin",
                     "PARSER_MARKITDOWN_ENABLED": "true",
                     "PARSER_CHUNK_TARGET_CHARS": "256",
+                    "PARSER_DOCLING_SUPPORTED_SUFFIXES": ".pdf,.docx",
                 },
             )
 
@@ -150,6 +176,12 @@ class ParserConfigTests(unittest.TestCase):
             self.assertEqual(context.parser_config.fallback_order, ["markitdown", "builtin"])
             self.assertTrue(context.parser_config.markitdown_enabled)
             self.assertEqual(context.parser_config.chunk_target_chars, 256)
+            self.assertEqual(context.parser_config.docling_supported_suffixes, [".pdf", ".docx"])
+
+    def test_parser_config_normalizes_docling_supported_suffixes(self):
+        config = ParserConfig(docling_supported_suffixes=["pdf", ".DOCX", " md ", "", ".pdf"])
+
+        self.assertEqual(config.docling_supported_suffixes, [".pdf", ".docx", ".md"])
 
     def test_contract_parser_uses_injected_parser_config_without_global_mutation(self):
         parser = ContractParser(

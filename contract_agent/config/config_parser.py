@@ -6,7 +6,28 @@ from pydantic import BaseModel, Field, model_validator
 
 
 DEFAULT_ENABLED_CONVERTERS = ["docling", "builtin"]
-DEFAULT_ALLOWED_SUFFIXES = [".txt", ".doc", ".docx", ".pdf"]
+DEFAULT_ALLOWED_SUFFIXES = [
+    ".txt",
+    ".doc",
+    ".docx",
+    ".pdf",
+    ".md",
+    ".markdown",
+    ".html",
+    ".htm",
+    ".csv",
+    ".xlsx",
+]
+DEFAULT_DOCLING_SUPPORTED_SUFFIXES = [
+    ".pdf",
+    ".docx",
+    ".md",
+    ".markdown",
+    ".html",
+    ".htm",
+    ".csv",
+    ".xlsx",
+]
 DEFAULT_ENABLED_DETECTORS = ["metadata", "clause_header", "definition", "reference"]
 
 
@@ -44,6 +65,9 @@ class ParserConfig(BaseModel):
     docling_do_table_structure: bool = True
     docling_compact_tables: bool = True
     docling_enable_remote_services: bool = False
+    docling_supported_suffixes: list[str] = Field(
+        default_factory=lambda: DEFAULT_DOCLING_SUPPORTED_SUFFIXES.copy()
+    )
 
     @model_validator(mode="after")
     def _validate_converter_settings(self) -> "ParserConfig":
@@ -53,6 +77,9 @@ class ParserConfig(BaseModel):
         self.enabled_detectors = _dedupe_non_empty(self.enabled_detectors)
         self.allowed_suffixes = _dedupe_non_empty(
             [_normalize_suffix(suffix) for suffix in self.allowed_suffixes]
+        )
+        self.docling_supported_suffixes = _dedupe_non_empty(
+            [_normalize_suffix(suffix) for suffix in self.docling_supported_suffixes]
         )
         self.docling_ocr_lang = _dedupe_non_empty(self.docling_ocr_lang)
         self.trusted_path_roots = [root for root in self.trusted_path_roots if root]
@@ -154,6 +181,7 @@ class ParserConfig(BaseModel):
             docling_do_table_structure=settings.parser_docling_do_table_structure,
             docling_compact_tables=settings.parser_docling_compact_tables,
             docling_enable_remote_services=settings.parser_docling_enable_remote_services,
+            docling_supported_suffixes=list(settings.parser_docling_supported_suffixes),
         )
 
     @classmethod

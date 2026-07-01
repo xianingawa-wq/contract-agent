@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from contract_agent.config.config_parser import (
     DEFAULT_ALLOWED_SUFFIXES,
+    DEFAULT_DOCLING_SUPPORTED_SUFFIXES,
     DEFAULT_ENABLED_CONVERTERS,
     DEFAULT_ENABLED_DETECTORS,
     ParserConfig,
@@ -104,6 +105,9 @@ class ParserAdapterSection(BaseModel):
 
 class DoclingAdapterSection(ParserAdapterSection):
     enabled: bool = True
+    supported_suffixes: list[str] = Field(
+        default_factory=lambda: DEFAULT_DOCLING_SUPPORTED_SUFFIXES.copy()
+    )
     enable_ocr: bool = True
     ocr_lang: list[str] = Field(default_factory=lambda: ["chinese"])
     force_full_page_ocr: bool = True
@@ -219,6 +223,7 @@ class AppConfig(BaseModel):
             docling_do_table_structure=self.parser.docling.do_table_structure,
             docling_compact_tables=self.parser.docling.compact_tables,
             docling_enable_remote_services=self.parser.docling.enable_remote_services,
+            docling_supported_suffixes=list(self.parser.docling.supported_suffixes),
         )
 
     def to_settings(self) -> Settings:
@@ -289,6 +294,7 @@ class AppConfig(BaseModel):
             parser_min_header_confidence=self.parser.chunking.min_header_confidence,
             parser_markitdown_enabled=self.parser.markitdown.enabled,
             parser_docling_enabled=self.parser.docling.enabled,
+            parser_docling_supported_suffixes=list(self.parser.docling.supported_suffixes),
             parser_docling_enable_ocr=self.parser.docling.enable_ocr,
             parser_docling_ocr_lang=list(self.parser.docling.ocr_lang),
             parser_docling_force_full_page_ocr=self.parser.docling.force_full_page_ocr,

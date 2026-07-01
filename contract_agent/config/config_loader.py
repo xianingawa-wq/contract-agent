@@ -485,6 +485,13 @@ def _apply_environment_overlay(
     copy(
         environ,
         data,
+        ("parser", "docling", "supported_suffixes"),
+        settings.parser_docling_supported_suffixes,
+        "PARSER_DOCLING_SUPPORTED_SUFFIXES",
+    )
+    copy(
+        environ,
+        data,
         ("parser", "docling", "ocr_lang"),
         settings.parser_docling_ocr_lang,
         "PARSER_DOCLING_OCR_LANG",
