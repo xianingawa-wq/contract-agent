@@ -1,4 +1,4 @@
-import {execFile} from 'node:child_process';
+import {execFile, spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -16,6 +16,17 @@ export type TokenUsage = {
 export type ChatData = {
   reply: string;
   usage: TokenUsage;
+};
+
+export type InitConfigCommandOptions = {
+  python?: string;
+  configPath?: string;
+  profilePath?: string;
+};
+
+export type InitConfigCommand = {
+  executable: string;
+  args: string[];
 };
 
 export async function callBridge<T>(
@@ -44,6 +55,57 @@ export async function callBridge<T>(
   } catch (error) {
     return bridgeErrorFromExecFailure(error);
   }
+}
+
+export function buildInitConfigCommand(options: InitConfigCommandOptions = {}): InitConfigCommand {
+  const executable = options.python || process.env.CONTRACT_AGENT_PYTHON || 'python';
+  const args = ['-m', 'contract_agent.interfaces.cli'];
+  const configPath = options.configPath ?? process.env.CONTRACT_AGENT_CONFIG;
+  if (configPath) {
+    args.push('--config', configPath);
+  }
+  args.push('initconfig');
+  const profilePath = options.profilePath ?? process.env.CONTRACT_AGENT_PROFILE;
+  if (profilePath) {
+    args.push('--profile', profilePath);
+  }
+  return {executable, args};
+}
+
+export async function runForegroundInitConfig(): Promise<BridgeResponse<{exitCode: number}>> {
+  const command = buildInitConfigCommand();
+  return new Promise(resolve => {
+    const child = spawn(command.executable, command.args, {
+      cwd: process.env.CONTRACT_AGENT_ROOT || process.cwd(),
+      env: process.env,
+      stdio: 'inherit',
+      windowsHide: false
+    });
+
+    child.on('error', error => {
+      resolve({
+        ok: false,
+        error: {
+          code: 'initconfig_unavailable',
+          message: `配置初始化不可用：${error.message}`
+        }
+      });
+    });
+    child.on('close', code => {
+      const exitCode = code ?? 1;
+      if (exitCode === 0) {
+        resolve({ok: true, data: {exitCode}});
+        return;
+      }
+      resolve({
+        ok: false,
+        error: {
+          code: 'initconfig_failed',
+          message: `配置初始化失败，退出码：${exitCode}`
+        }
+      });
+    });
+  });
 }
 
 export function bridgeErrorFromExecFailure(error: unknown): BridgeResponse<never> {

@@ -189,7 +189,7 @@ def _error(code: str, message: str) -> BridgeResult:
 
 
 def _write_json(payload: BridgeResult) -> None:
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+    sys.stdout.write(json.dumps(payload))
     sys.stdout.write("\n")
 
 

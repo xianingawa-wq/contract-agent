@@ -120,6 +120,29 @@ class ConsoleBridgeTests(unittest.TestCase):
         self.assertEqual(payload["data"]["estimated_tokens"], 1)
         self.assertEqual(completed.stderr, "")
 
+    def test_module_cli_chat_stdout_is_ascii_safe_for_node_bridge(self):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "contract_agent.interfaces.console_bridge",
+                "chat",
+                "--payload-json",
+                json.dumps({"message": "dfdfdfd"}, ensure_ascii=False),
+            ],
+            check=False,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stderr, b"")
+        self.assertTrue(all(byte < 128 for byte in completed.stdout), completed.stdout)
+        payload = json.loads(completed.stdout.decode("ascii"))
+        self.assertEqual(
+            payload["data"]["reply"],
+            "演示回复：已收到“dfdfdfd”。可使用 /help 查看内置命令。",
+        )
+
     def test_module_cli_applies_profile_from_environment(self):
         with tempfile.TemporaryDirectory() as tmp:
             profile_path = os.path.join(tmp, "profile.yaml")

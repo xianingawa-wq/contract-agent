@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'vitest';
 
-import {bridgeErrorFromExecFailure} from '../src/bridge.js';
+import {buildInitConfigCommand, bridgeErrorFromExecFailure} from '../src/bridge.js';
 
 describe('bridgeErrorFromExecFailure', () => {
   test('preserves structured Python bridge errors from stdout', () => {
@@ -48,5 +48,26 @@ describe('bridgeErrorFromExecFailure', () => {
       expect(result.error.code).toBe('pdf_ocr_memory_exhausted');
       expect(result.error.message).toContain('PARSER_DOCLING_ENABLE_OCR');
     }
+  });
+});
+
+describe('buildInitConfigCommand', () => {
+  test('runs the Python CLI initconfig command with the active config and profile', () => {
+    const command = buildInitConfigCommand({
+      python: 'python-test',
+      configPath: 'config.example.yaml',
+      profilePath: 'profile.yaml'
+    });
+
+    expect(command.executable).toBe('python-test');
+    expect(command.args).toEqual([
+      '-m',
+      'contract_agent.interfaces.cli',
+      '--config',
+      'config.example.yaml',
+      'initconfig',
+      '--profile',
+      'profile.yaml'
+    ]);
   });
 });

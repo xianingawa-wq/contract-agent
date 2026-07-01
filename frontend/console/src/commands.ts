@@ -14,7 +14,7 @@ export const BUILT_IN_COMMANDS: CommandSuggestion[] = [
   {name: '/config', description: '查看脱敏模型配置'},
   {name: '/review', description: '审查合同文件'},
   {name: '/tokens', description: '查看 token 估算'},
-  {name: '/initconfig', description: '查看重新初始化配置命令'},
+  {name: '/initconfig', description: '重新初始化模型配置'},
   {name: '/clear', description: '清空当前会话'},
   {name: '/exit', description: '退出控制台'}
 ] as const;

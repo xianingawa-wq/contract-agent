@@ -1,8 +1,9 @@
 import React from 'react';
 import {renderToString} from 'ink';
-import {describe, expect, test} from 'vitest';
+import {describe, expect, test, vi} from 'vitest';
 
-import {AppFrame, formatCommandError, initConfigGuidance} from '../src/App.js';
+import {AppFrame, formatCommandError, initConfigGuidance, runCommand} from '../src/App.js';
+import * as bridge from '../src/bridge.js';
 import {createEmptyTokenState} from '../src/tokenState.js';
 
 describe('AppFrame', () => {
@@ -95,8 +96,9 @@ describe('AppFrame', () => {
   test('formats initconfig guidance for the React console', () => {
     const output = initConfigGuidance();
 
-    expect(output).toContain('contract-agent console --initconfig');
+    expect(output).toContain('/initconfig');
     expect(output).toContain('contract-agent initconfig');
+    expect(output).not.toContain('contract-agent console --initconfig');
   });
 
   test('renders command suggestions with descriptions and selected marker', () => {
@@ -122,5 +124,38 @@ describe('AppFrame', () => {
     expect(output).toContain('查看帮助');
     expect(output).toContain('› /review');
     expect(output).toContain('审查合同文件');
+  });
+});
+
+describe('runCommand', () => {
+  test('runs initconfig in the foreground terminal instead of printing exit guidance', async () => {
+    const messages: string[] = [];
+    const setMessages = vi.fn(updater => {
+      const next = updater(messages.map((text, index) => ({id: String(index), role: 'command', text})));
+      messages.splice(0, messages.length, ...next.map(item => item.text));
+    });
+    const suspendTerminal = vi.fn(async callback => {
+      await callback();
+    });
+    const initConfig = vi.spyOn(bridge, 'runForegroundInitConfig').mockResolvedValue({
+      ok: true,
+      data: {exitCode: 0}
+    });
+
+    await runCommand('initconfig', [], {
+      exit: vi.fn(),
+      suspendTerminal,
+      setInput: vi.fn(),
+      setLoading: vi.fn(),
+      setMessages,
+      setTokenState: vi.fn()
+    });
+
+    expect(suspendTerminal).toHaveBeenCalledOnce();
+    expect(initConfig).toHaveBeenCalledOnce();
+    expect(messages.join('\n')).toContain('配置已重新保存');
+    expect(messages.join('\n')).not.toContain('contract-agent console --initconfig');
+
+    initConfig.mockRestore();
   });
 });

@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {Box, Text, useApp, useInput} from 'ink';
+import {Box, Text, useApp, useInput, type SuspendTerminal} from 'ink';
 
 import {
   BUILT_IN_COMMANDS,
@@ -12,7 +12,7 @@ import {
   type CommandSuggestion,
   unknownCommandText
 } from './commands.js';
-import {callBridge, type ChatData} from './bridge.js';
+import {callBridge, runForegroundInitConfig, type ChatData} from './bridge.js';
 import {
   completeReviewInput,
   formatReviewFileGuidance,
@@ -119,7 +119,7 @@ export function AppFrame({
 }
 
 export function App(): React.ReactElement {
-  const {exit} = useApp();
+  const {exit, suspendTerminal} = useApp();
   const [messages, setMessages] = useState<ConsoleMessage[]>([
     {id: 'welcome', role: 'system', text: '控制台已启动。输入 /help 查看内置命令。'}
   ]);
@@ -168,6 +168,7 @@ export function App(): React.ReactElement {
     if (key.return) {
       void submitInput(input, {
         exit,
+        suspendTerminal,
         setInput,
         setLoading,
         setMessages,
@@ -198,8 +199,9 @@ export function App(): React.ReactElement {
   );
 }
 
-type SubmitContext = {
+export type SubmitContext = {
   exit: () => void;
+  suspendTerminal: SuspendTerminal;
   setInput: React.Dispatch<React.SetStateAction<string>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setMessages: React.Dispatch<React.SetStateAction<ConsoleMessage[]>>;
@@ -233,7 +235,11 @@ async function submitInput(value: string, context: SubmitContext): Promise<void>
   await runCommand(parsed.name, parsed.args, context);
 }
 
-async function runCommand(name: string, args: string[], context: SubmitContext): Promise<void> {
+export async function runCommand(
+  name: string,
+  args: string[],
+  context: SubmitContext
+): Promise<void> {
   if (!isBuiltInCommand(name)) {
     appendMessage(context.setMessages, 'error', unknownCommandText(name));
     return;
@@ -256,7 +262,7 @@ async function runCommand(name: string, args: string[], context: SubmitContext):
     return;
   }
   if (name === 'initconfig') {
-    appendMessage(context.setMessages, 'command', initConfigGuidance());
+    await runInitConfigCommand(context);
     return;
   }
   if (name === 'review' && !normalizeReviewPathInput(args.join(' '))) {
@@ -279,12 +285,41 @@ async function runCommand(name: string, args: string[], context: SubmitContext):
   appendMessage(context.setMessages, 'command', formatBridgeData(name, result.data));
 }
 
+async function runInitConfigCommand(context: SubmitContext): Promise<void> {
+  appendMessage(context.setMessages, 'command', '开始重新初始化配置，按提示完成后会回到当前控制台。');
+  context.setLoading(true);
+  let result: Awaited<ReturnType<typeof runForegroundInitConfig>> | undefined;
+  try {
+    await context.suspendTerminal(async () => {
+      result = await runForegroundInitConfig();
+    });
+  } catch (error) {
+    result = {
+      ok: false,
+      error: {
+        code: 'initconfig_failed',
+        message: error instanceof Error ? error.message : String(error)
+      }
+    };
+  } finally {
+    context.setLoading(false);
+  }
+
+  if (!result) {
+    appendMessage(context.setMessages, 'error', '配置初始化没有返回结果。');
+    return;
+  }
+  if (!result.ok) {
+    appendMessage(context.setMessages, 'error', result.error.message);
+    return;
+  }
+  appendMessage(context.setMessages, 'command', '配置已重新保存。后续命令会读取新的本地模型配置。');
+}
+
 export function initConfigGuidance(): string {
   return [
-    '重新初始化配置需要退出当前控制台后运行：',
-    'contract-agent console --initconfig',
-    '只想重配并保存、不进入控制台时运行：',
-    'contract-agent initconfig'
+    '输入 /initconfig 后会在当前控制台直接进入配置流程。',
+    '也可以在控制台外运行：contract-agent initconfig'
   ].join('\n');
 }
 

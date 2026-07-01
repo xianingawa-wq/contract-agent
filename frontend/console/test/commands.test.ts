@@ -70,6 +70,10 @@ describe('parseConsoleInput', () => {
       description: '查看帮助'
     });
     expect(suggestions.map(item => item.name)).toContain('/review');
+    expect(suggestions).toContainEqual({
+      name: '/initconfig',
+      description: '重新初始化模型配置'
+    });
   });
 
   test('filters command suggestions while typing command names', () => {
