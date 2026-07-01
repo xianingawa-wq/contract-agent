@@ -13,16 +13,17 @@ from contract_agent.parser.models import (
     DocumentTable,
     ParsedDocument,
 )
-from contract_agent.parser.parsed.markdown_block_parser import block_type_and_text, normalize_text
 from contract_agent.parser.parsed.markdown_cleaner import clean_markdown
 from contract_agent.parser.parsed.markdown_chunker import ContractChunker
+from contract_agent.parser.parsed.markdown_logical_block_collector import collect_logical_blocks
 from contract_agent.parser.parsed.markdown_metadata_builder import build_metadata
-from contract_agent.parser.parsed.markdown_table_parser import (
-    collect_table_lines,
-    is_table_start,
-    parse_table_rows,
-    table_text,
+from contract_agent.parser.parsed.markdown_page_resolver import (
+    MarkdownPageEvidence,
+    page_numbers_for_cleaned_lines,
+    resolve_page_evidence,
+    table_page_no,
 )
+from contract_agent.parser.parsed.markdown_table_parser import parse_table_rows, table_text
 from contract_agent.parser.parsed.semantic_graph_builder import build_semantic_graph
 
 
@@ -38,14 +39,25 @@ class MarkdownParsedService:
         self.logger = logger or get_parser_logger()
 
     def parse(self, markdown_document: MarkdownDocument) -> ParsedDocument:
+        original_lines = markdown_document.markdown_content.splitlines()
+        page_evidence = resolve_page_evidence(
+            original_lines,
+            conversion_metadata=markdown_document.conversion_metadata,
+        )
         cleaned_markdown = clean_markdown(
             markdown_document.markdown_content,
             conversion_metadata=markdown_document.conversion_metadata,
+        )
+        cleaned_line_page_numbers = page_numbers_for_cleaned_lines(
+            original_lines,
+            cleaned_markdown.markdown_content.splitlines(),
+            page_evidence,
         )
         conversion_metadata = {
             **markdown_document.conversion_metadata,
             "markdown_cleaner_removed_lines": cleaned_markdown.removed_lines,
             "markdown_cleaner_merged_tables": cleaned_markdown.merged_tables,
+            "markdown_page_evidence": page_evidence.to_metadata(),
         }
         markdown_document = markdown_document.model_copy(
             update={
@@ -53,7 +65,11 @@ class MarkdownParsedService:
                 "conversion_metadata": conversion_metadata,
             }
         )
-        raw_text, spans, blocks, tables = _parse_markdown_blocks(markdown_document)
+        raw_text, spans, blocks, tables = _parse_markdown_blocks(
+            markdown_document,
+            line_page_numbers=cleaned_line_page_numbers,
+            page_evidence=page_evidence,
+        )
         metadata = build_metadata(
             file_name=markdown_document.file_name,
             source_path=markdown_document.source_path,
@@ -107,6 +123,9 @@ def document_from_markdown(
 
 def _parse_markdown_blocks(
     markdown_document: MarkdownDocument,
+    *,
+    line_page_numbers: list[int | None] | None = None,
+    page_evidence: MarkdownPageEvidence | None = None,
 ) -> tuple[str, list[DocumentSpan], list[DocumentBlock], list[DocumentTable]]:
     lines = markdown_document.markdown_content.splitlines()
     spans: list[DocumentSpan] = []
@@ -115,18 +134,15 @@ def _parse_markdown_blocks(
     raw_parts: list[str] = []
     cursor = 0
     block_index = 0
-    index = 0
-    page_no = 1
+    logical_blocks = collect_logical_blocks(lines)
 
-    while index < len(lines):
-        line = lines[index]
-        if not line.strip():
-            index += 1
-            continue
-
-        if is_table_start(lines, index):
-            table_lines, next_index = collect_table_lines(lines, index)
-            block_markdown = "\n".join(table_lines)
+    for logical_block in logical_blocks:
+        if logical_block.block_type == "table":
+            page_no = table_page_no(page_evidence, len(tables)) or _line_page_no(
+                line_page_numbers,
+                logical_block.line_start,
+            )
+            block_markdown = logical_block.markdown
             rows = parse_table_rows(block_markdown)
             text = table_text(rows)
             span, cursor = _append_span(
@@ -164,12 +180,13 @@ def _parse_markdown_blocks(
                 )
             )
             block_index += 1
-            index = next_index
             continue
 
-        block_type, text, level = block_type_and_text(line)
+        page_no = _line_page_no(line_page_numbers, logical_block.line_start)
+        block_type = logical_block.block_type
+        text = logical_block.text
+        level = logical_block.level
         if not text:
-            index += 1
             continue
         span, cursor = _append_span(
             spans,
@@ -184,7 +201,7 @@ def _parse_markdown_blocks(
                 block_id=span.span_id,
                 block_type=block_type,
                 text=text,
-                markdown=line.strip(),
+                markdown=logical_block.markdown.strip(),
                 level=level,
                 location=BlockLocation(
                     page_no=span.page_no,
@@ -197,9 +214,14 @@ def _parse_markdown_blocks(
             )
         )
         block_index += 1
-        index += 1
 
     return "\n".join(raw_parts), spans, blocks, tables
+
+
+def _line_page_no(line_page_numbers: list[int | None] | None, index: int) -> int | None:
+    if line_page_numbers is None or index >= len(line_page_numbers):
+        return None
+    return line_page_numbers[index]
 
 
 def _append_span(
@@ -211,7 +233,7 @@ def _append_span(
     block_index: int,
     cursor: int,
 ) -> tuple[DocumentSpan, int]:
-    normalized = normalize_text(text)
+    normalized = text.strip()
     start_offset = cursor
     end_offset = start_offset + len(normalized)
     span = DocumentSpan(

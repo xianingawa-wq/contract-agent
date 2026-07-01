@@ -1,0 +1,75 @@
+import unittest
+
+from contract_agent.parser.parsed.markdown_page_resolver import resolve_page_evidence
+
+
+class MarkdownPageResolverTests(unittest.TestCase):
+    def test_without_page_evidence_returns_none_for_body_lines(self):
+        evidence = resolve_page_evidence(["Section 1 Payment", "Buyer shall pay."])
+
+        self.assertEqual(evidence.line_page_numbers, [None, None])
+        self.assertEqual(evidence.marker_count, 0)
+        self.assertEqual(evidence.max_page_no, 0)
+
+    def test_english_page_markers_assign_following_body_lines(self):
+        evidence = resolve_page_evidence(
+            [
+                "Page 1 of 2",
+                "Section 1 Payment",
+                "",
+                "Page 2 of 2",
+                "Section 2 Delivery",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [1, 1, 1, 2, 2])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 2)
+
+    def test_chinese_page_markers_assign_following_body_lines(self):
+        evidence = resolve_page_evidence(
+            [
+                "第 1 页，共 2 页",
+                "Page one body",
+                "第 2 页，共 2 页",
+                "Page two body",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [1, 1, 2, 2])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 2)
+
+    def test_numeric_footer_sequence_assigns_page_before_each_footer(self):
+        evidence = resolve_page_evidence(
+            [
+                "Page one body",
+                "1",
+                "---",
+                "Page two body",
+                "2",
+                "---",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [1, 1, 1, 2, 2, 2])
+        self.assertEqual(evidence.marker_count, 2)
+        self.assertEqual(evidence.max_page_no, 2)
+
+    def test_standalone_body_numbers_without_boundary_context_are_not_page_evidence(self):
+        evidence = resolve_page_evidence(
+            [
+                "Payment amount",
+                "1000",
+                "",
+                "Section number",
+                "1",
+            ]
+        )
+
+        self.assertEqual(evidence.line_page_numbers, [None, None, None, None, None])
+        self.assertEqual(evidence.marker_count, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
