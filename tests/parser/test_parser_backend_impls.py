@@ -289,6 +289,46 @@ class ParserBackendImplTests(unittest.TestCase):
         )
         self.assertEqual([fmt.name for fmt in kwargs["format_options"]], ["PDF"])
 
+    def test_docling_convertor_allows_non_pdf_when_pdf_options_are_unavailable(self):
+        converter_kwargs: list[dict] = []
+        markdown = "# DOCX\n\nBody\n\n"
+
+        class FakeDoclingDocument:
+            pages = {}
+            tables = []
+
+            def export_to_markdown(self, **kwargs: object) -> str:
+                return markdown
+
+        class FakeBackendResult:
+            document = FakeDoclingDocument()
+
+        class FakeDocumentConverter:
+            def __init__(self, **kwargs: object) -> None:
+                converter_kwargs.append(kwargs)
+
+            def convert(self, source: str) -> FakeBackendResult:
+                self.source = source
+                return FakeBackendResult()
+
+        result = _run_docling_fake(
+            FakeDocumentConverter,
+            ParserConfig(
+                docling_enabled=True,
+                allowed_suffixes=[".docx"],
+                docling_supported_suffixes=[".docx"],
+            ),
+            file_name="project.docx",
+            include_pdf_options=False,
+            fail_pipeline_options_import=True,
+        )
+
+        self.assertEqual(result.markdown_content, markdown)
+        self.assertEqual(result.conversion_metadata["docling_input_format"], "DOCX")
+        self.assertTrue(converter_kwargs)
+        self.assertEqual([fmt.name for fmt in converter_kwargs[0]["allowed_formats"]], ["DOCX"])
+        self.assertEqual(converter_kwargs[0]["format_options"], {})
+
     def test_docling_convertor_maps_text_structured_suffixes_to_input_format_metadata(self):
         class FakeDoclingDocument:
             pages = {}
@@ -558,6 +598,8 @@ def _run_docling_fake(
     *,
     file_name: str = "project.pdf",
     source: ParserSource | None = None,
+    include_pdf_options: bool = True,
+    fail_pipeline_options_import: bool = False,
 ) -> object:
     package = types.ModuleType("docling")
     module = types.ModuleType("docling.document_converter")
@@ -617,10 +659,38 @@ def _run_docling_fake(
             self.pipeline_options = pipeline_options
 
     module.DocumentConverter = document_converter_cls
-    module.PdfFormatOption = FakePdfFormatOption
+    if include_pdf_options:
+        module.PdfFormatOption = FakePdfFormatOption
     base_models.InputFormat = FakeInputFormat
-    pipeline_options.PdfPipelineOptions = FakePdfPipelineOptions
-    pipeline_options.RapidOcrOptions = RapidOcrOptions
+    if include_pdf_options:
+        pipeline_options.PdfPipelineOptions = FakePdfPipelineOptions
+        pipeline_options.RapidOcrOptions = RapidOcrOptions
+
+    original_import_module = importlib.import_module
+
+    def fake_import_module(name: str) -> object:
+        if fail_pipeline_options_import and name == "docling.datamodel.pipeline_options":
+            raise ImportError(name)
+        return original_import_module(name)
+
+    if source is not None:
+        with patch.dict(
+            sys.modules,
+            {
+                "docling": package,
+                "docling.document_converter": module,
+                "docling.datamodel.base_models": base_models,
+                "docling.datamodel.pipeline_options": pipeline_options,
+            },
+        ):
+            with (
+                patch("importlib.import_module", side_effect=fake_import_module),
+                patch("importlib.util.find_spec", return_value=_module_spec("docling")),
+            ):
+                return DoclingParserImpl().convert(
+                    source,
+                    parser_config or ParserConfig(docling_enabled=True),
+                )
 
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / file_name
@@ -634,9 +704,12 @@ def _run_docling_fake(
                 "docling.datamodel.pipeline_options": pipeline_options,
             },
         ):
-            with patch("importlib.util.find_spec", return_value=_module_spec("docling")):
+            with (
+                patch("importlib.import_module", side_effect=fake_import_module),
+                patch("importlib.util.find_spec", return_value=_module_spec("docling")),
+            ):
                 return DoclingParserImpl().convert(
-                    source or ParserSource.from_path(path),
+                    ParserSource.from_path(path),
                     parser_config or ParserConfig(docling_enabled=True),
                 )
 

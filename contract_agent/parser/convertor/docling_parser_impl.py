@@ -95,24 +95,15 @@ class DoclingParserImpl:
         try:
             module = importlib.import_module("docling.document_converter")
             base_models = importlib.import_module("docling.datamodel.base_models")
-            pipeline_options_module = importlib.import_module("docling.datamodel.pipeline_options")
         except Exception as exc:
             raise DocumentLoadError(f"Docling 依赖不可用：{exc}") from exc
 
         converter_cls = getattr(module, "DocumentConverter", None)
-        pdf_format_option_cls = getattr(module, "PdfFormatOption", None)
         input_format_cls = getattr(base_models, "InputFormat", None)
-        pdf_pipeline_options_cls = getattr(pipeline_options_module, "PdfPipelineOptions", None)
-        rapid_ocr_options_cls = getattr(pipeline_options_module, "RapidOcrOptions", None)
         if converter_cls is None:
             raise DocumentLoadError("Docling 未找到 DocumentConverter 入口。")
-        if (
-            pdf_format_option_cls is None
-            or input_format_cls is None
-            or pdf_pipeline_options_cls is None
-            or rapid_ocr_options_cls is None
-        ):
-            raise DocumentLoadError("Docling 未找到 PDF/RapidOCR 配置入口。")
+        if input_format_cls is None:
+            raise DocumentLoadError("Docling 未找到 InputFormat 入口。")
 
         suffix = _source_suffix(source)
         if source.kind == "text":
@@ -131,23 +122,40 @@ class DoclingParserImpl:
         if docling_input_format is None:
             raise DocumentLoadError(f"Docling unsupported suffix: {suffix or 'unknown'}")
 
-        pipeline_options = pdf_pipeline_options_cls(
-            do_ocr=config.docling_enable_ocr,
-            ocr_options=rapid_ocr_options_cls(
-                lang=config.docling_ocr_lang,
-                force_full_page_ocr=config.docling_force_full_page_ocr,
-                bitmap_area_threshold=config.docling_bitmap_area_threshold,
-                text_score=config.docling_text_score,
-            ),
-            do_table_structure=config.docling_do_table_structure,
-            ocr_batch_size=1,
-            layout_batch_size=1,
-            table_batch_size=1,
-        )
-        format_options = {
-            input_format_cls.PDF: pdf_format_option_cls(pipeline_options=pipeline_options)
-        }
         allowed_formats = _configured_docling_allowed_formats(config, input_format_map)
+        format_options: dict[object, object] = {}
+        if input_format_cls.PDF in allowed_formats:
+            try:
+                pipeline_options_module = importlib.import_module(
+                    "docling.datamodel.pipeline_options"
+                )
+            except Exception as exc:
+                raise DocumentLoadError(f"Docling 依赖不可用：{exc}") from exc
+            pdf_format_option_cls = getattr(module, "PdfFormatOption", None)
+            pdf_pipeline_options_cls = getattr(pipeline_options_module, "PdfPipelineOptions", None)
+            rapid_ocr_options_cls = getattr(pipeline_options_module, "RapidOcrOptions", None)
+            if (
+                pdf_format_option_cls is None
+                or pdf_pipeline_options_cls is None
+                or rapid_ocr_options_cls is None
+            ):
+                raise DocumentLoadError("Docling 未找到 PDF/RapidOCR 配置入口。")
+            pipeline_options = pdf_pipeline_options_cls(
+                do_ocr=config.docling_enable_ocr,
+                ocr_options=rapid_ocr_options_cls(
+                    lang=config.docling_ocr_lang,
+                    force_full_page_ocr=config.docling_force_full_page_ocr,
+                    bitmap_area_threshold=config.docling_bitmap_area_threshold,
+                    text_score=config.docling_text_score,
+                ),
+                do_table_structure=config.docling_do_table_structure,
+                ocr_batch_size=1,
+                layout_batch_size=1,
+                table_batch_size=1,
+            )
+            format_options[input_format_cls.PDF] = pdf_format_option_cls(
+                pipeline_options=pipeline_options
+            )
         converter = converter_cls(allowed_formats=allowed_formats, format_options=format_options)
 
         with local_parser_source(source) as input_path:

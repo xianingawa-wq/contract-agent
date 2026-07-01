@@ -36,6 +36,8 @@ class DoclingSmokeTests(unittest.TestCase):
 
                     self.assertEqual(markdown.backend_name, "docling")
                     self.assertTrue(markdown.markdown_content.strip())
+                    self.assertIn("Project", markdown.markdown_content)
+                    self.assertIn("Alpha", markdown.markdown_content)
                     self.assertEqual(
                         markdown.conversion_metadata["docling_input_format"],
                         {
@@ -68,7 +70,10 @@ def _write_structured_samples(root: Path) -> dict[str, Path]:
     doc.save(docx_path)
 
     md_path = root / "contract.md"
-    md_path.write_text("# Markdown Contract\n\n| Key | Value |\n| --- | --- |\n", encoding="utf-8")
+    md_path.write_text(
+        "# Markdown Contract\n\n| Key | Value |\n| --- | --- |\n| Project | Alpha |\n",
+        encoding="utf-8",
+    )
 
     html_path = root / "contract.html"
     html_path.write_text(
